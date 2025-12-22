@@ -115,26 +115,26 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     case 'Lock': return 'text-rose-600 dark:text-rose-400'; 
                     case 'Cpu': return 'text-cyan-600 dark:text-cyan-400'; 
                     case 'CheckThick': return 'text-green-600 dark:text-green-400'; 
-                    default: return 'text-gray-500 dark:text-slate-400';
+                    default: return 'text-gray-500 dark:text-slate-300';
                 }
             };
 
             return (
-                <div key={g.id} className="mb-3 border border-gray-100 dark:border-slate-800 rounded-lg p-3 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-900 transition-shadow hover:shadow-md">
-                    <div className="flex items-center justify-between p-3.5 bg-gray-50/50 dark:bg-slate-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" onClick={() => toggleGroup(g.id)}>
+                <div key={g.id} className="mb-3 border border-gray-100 dark:border-slate-700/60 rounded-lg p-3 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-800 transition-shadow hover:shadow-md">
+                    <div className="flex items-center justify-between p-3.5 bg-gray-50/50 dark:bg-slate-800/40 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" onClick={() => toggleGroup(g.id)}>
                         <div className="flex items-center gap-3">
                             <button className={`p-1.5 rounded-lg shadow-sm group-select-icon transition-all border border-transparent ${isGroupSelected ? 'bg-emerald-600 text-white selected border-emerald-700' : 'bg-white dark:bg-slate-700'}`} onClick={(e) => { e.stopPropagation(); toggleAllClausesInGroup(g.id); }}>
                                 {isGroupSelected ? <CheckLineart size={16} className="stroke-white"/> : <Icon name={g.icon} size={16} className={isGroupSelected ? '' : getGroupIconColor(g.icon)}/>}
                                 {isGroupPartiallySelected && !isGroupSelected && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-indigo-500 rounded-full border border-white dark:border-slate-900"></span>}
                             </button>
-                            <h4 className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wider">{g.title}</h4>
+                            <h4 className="text-xs font-bold text-gray-700 dark:text-slate-100 uppercase tracking-wider">{g.title}</h4>
                         </div>
-                        <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={14} className="text-gray-400"/>
+                        <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={14} className="text-gray-400 dark:text-slate-500"/>
                     </div>
-                    {isExpanded && <div className="p-2 space-y-1 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
+                    {isExpanded && <div className="p-2 space-y-1 bg-white dark:bg-slate-900 border-t dark:border-slate-700/60">
                         {filtered.map(c => (
                             <div key={c.id} onClick={() => toggleClause(c.id)} className="group border border-gray-100 dark:border-slate-800 rounded-lg p-3 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-900 transition-all flex items-start gap-3 relative overflow-hidden cursor-pointer">
-                                <div className={`mt-0.5 flex-shrink-0 transition-colors ${selectedClauses.includes(c.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-300 dark:text-slate-600 hover:text-gray-400'}`}>
+                                <div className={`mt-0.5 flex-shrink-0 transition-colors ${selectedClauses.includes(c.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-300 dark:text-slate-500 hover:text-gray-400 dark:hover:text-slate-400'}`}>
                                     {selectedClauses.includes(c.id) ? <Icon name="CheckSquare" size={18}/> : <Icon name="Square" size={18}/>}
                                 </div>
                                 <div className="flex-1 min-w-0">

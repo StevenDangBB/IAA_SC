@@ -130,6 +130,52 @@ function App() {
         });
     };
 
+    const handleNewSession = () => {
+        if (window.confirm("Start New Session? \n\nCurrent data will be backed up, then cleared.")) {
+            // Backup
+            const backup = {
+                evidence,
+                analysisResult,
+                finalReportText,
+                selectedClauses,
+                auditInfo
+            };
+            localStorage.setItem("iso_session_backup", JSON.stringify(backup));
+
+            // Clear
+            setEvidence("");
+            setPastedImages([]);
+            setAnalysisResult(null);
+            setFinalReportText(null);
+            setSelectedClauses([]);
+            setAuditInfo({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
+            setLayoutMode('evidence');
+        }
+    };
+
+    const handleRecallSession = () => {
+        const backupStr = localStorage.getItem("iso_session_backup");
+        if (backupStr) {
+            if(window.confirm("Recall previous session? \n\nCurrent unsaved data will be replaced by the backup.")) {
+                try {
+                    const backup = JSON.parse(backupStr);
+                    if(backup.evidence !== undefined) setEvidence(backup.evidence);
+                    if(backup.analysisResult) setAnalysisResult(backup.analysisResult);
+                    if(backup.finalReportText) setFinalReportText(backup.finalReportText);
+                    if(backup.selectedClauses) setSelectedClauses(backup.selectedClauses);
+                    if(backup.auditInfo) setAuditInfo(backup.auditInfo);
+                    
+                    if (backup.analysisResult) setLayoutMode('findings');
+                    else if (backup.evidence) setLayoutMode('evidence');
+                } catch(e) {
+                    alert("Failed to parse backup data.");
+                }
+            }
+        } else {
+            alert("No backup session found in history.");
+        }
+    };
+
     const handleOcrUpload = async () => {
         if (pastedImages.length === 0) return;
         setIsOcrLoading(true);
@@ -326,11 +372,13 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
                         <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1"><Icon name="AIIndicator" size={18} className="text-amber-400 animate-pulse"/> v{APP_VERSION} (AI Core)</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => window.location.reload()} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:text-red-500" title="Refresh"><Icon name="RefreshCw" size={18}/></button>
-                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:text-amber-500" title="Theme"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
+                <div className="flex items-center gap-2">
+                    <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-800" title="New Session"><Icon name="FilePlus2" size={18}/></button>
+                    <button onClick={handleRecallSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all border border-transparent hover:border-emerald-100 dark:hover:border-emerald-800" title="Recall Session"><Icon name="History" size={18}/></button>
+                    <div className="w-px h-6 bg-gray-200 dark:bg-slate-700 mx-1"></div>
+                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all" title="Theme"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={adjustFontSize} />
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 hover:text-indigo-700 font-semibold text-xs flex items-center gap-2">
+                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700">
                         <Icon name="Info" size={18}/> ABOUT
                     </button>
                 </div>
@@ -370,7 +418,7 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
                                     </div>
                                 </div>
                              </div>
-                             <textarea ref={evidenceRef} className="structured-input-textarea w-full h-full p-5 text-adjustable-sm font-mono leading-relaxed outline-none shadow-sm dark:text-slate-200 placeholder-gray-300" placeholder="Enter notes..." value={evidence} onChange={e => { setEvidence(e.target.value); setCursorPosition(e.target.selectionStart); }} onSelect={e => setCursorPosition(e.currentTarget.selectionStart)}></textarea>
+                             <textarea ref={evidenceRef} className="structured-input-textarea w-full h-full p-5 text-adjustable-sm font-mono leading-relaxed outline-none shadow-sm dark:text-slate-300 dark:placeholder-slate-600 placeholder-gray-300" placeholder="Enter notes..." value={evidence} onChange={e => { setEvidence(e.target.value); setCursorPosition(e.target.selectionStart); }} onSelect={e => setCursorPosition(e.currentTarget.selectionStart)}></textarea>
                         </div>
                     </div>
 
@@ -403,7 +451,7 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
                                         <button onClick={() => setSelectedSuggestions(p => ({...p, [res.clauseId]: !p[res.clauseId]}))} className={`w-8 h-8 flex items-center justify-center rounded-full ${selectedSuggestions[res.clauseId] ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>{selectedSuggestions[res.clauseId] ? <Icon name="X"/> : <CheckLineart size={16} className="stroke-white"/>}</button>
                                     </div>
                                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">{res.reason}</p>
-                                    <textarea className="w-full text-xs p-2 bg-gray-50 dark:bg-slate-800 rounded border-none resize-y" value={res.conclusion_report} onChange={e => {
+                                    <textarea className="w-full text-xs p-2 bg-gray-50 dark:bg-slate-800 dark:text-slate-300 rounded border-none resize-y" value={res.conclusion_report} onChange={e => {
                                         const newArr = [...analysisResult]; newArr[i].conclusion_report = e.target.value; setAnalysisResult(newArr);
                                     }}/>
                                 </div>
@@ -427,7 +475,7 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
                                     <p className="text-indigo-600 mt-4">Generating Report...</p>
                                 </div>
                              ) : (
-                                <textarea className="flex-1 w-full h-full p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-mono resize-none outline-none dark:text-slate-200" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Generate report to view..."/>
+                                <textarea className="flex-1 w-full h-full p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-mono resize-none outline-none dark:text-slate-300" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Generate report to view..."/>
                              )}
                         </div>
                     </div>
@@ -439,15 +487,15 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
             
             <Modal isOpen={showImportModal} title="Import Standard" onClose={() => setShowImportModal(false)}>
                  <div className="space-y-4">
-                    <textarea className="w-full h-32 p-3 bg-gray-50 dark:bg-slate-800 border rounded-xl text-xs font-mono" placeholder="Paste text..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
-                    <div className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer" onPaste={(e) => {
+                    <textarea className="w-full h-32 p-3 bg-gray-50 dark:bg-slate-800 dark:text-slate-200 border rounded-xl text-xs font-mono" placeholder="Paste text..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
+                    <div className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer dark:border-slate-700" onPaste={(e) => {
                          const items = e.clipboardData.items; const files = [];
                          for(let i=0; i<items.length; i++) if (items[i].type.indexOf("image") !== -1) files.push(items[i].getAsFile());
                          if(files.length) setImportImages([...importImages, ...files as File[]]);
                     }}>
-                        <p className="text-xs">Paste Images (Ctrl+V)</p>
+                        <p className="text-xs dark:text-slate-400">Paste Images (Ctrl+V)</p>
                         <div className="flex gap-2 justify-center mt-2 flex-wrap">
-                            {importImages.map((img, i) => <span key={i} className="text-[10px] bg-gray-200 px-2 py-1 rounded">{img.name}</span>)}
+                            {importImages.map((img, i) => <span key={i} className="text-[10px] bg-gray-200 dark:bg-slate-700 dark:text-slate-300 px-2 py-1 rounded">{img.name}</span>)}
                         </div>
                     </div>
                     <button onClick={handleImportStandard} disabled={!!importStatus} className="w-full h-10 bg-indigo-600 text-white rounded-xl font-bold">{importStatus || "Process & Add"}</button>
