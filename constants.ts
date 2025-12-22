@@ -1,8 +1,10 @@
 import { StandardsData } from './types';
 
 export const APP_VERSION = "1.1";
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
-export const DEFAULT_VISION_MODEL = "gemini-2.5-flash-preview-09-2025"; 
+// Use gemini-3-pro-preview for complex reasoning tasks like ISO audit analysis
+export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
+// Use gemini-3-flash-preview for general text and multimodal tasks like OCR
+export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
 export const AUDIT_TYPES: Record<string, string> = {
     "Stage 1": "Initial review of documentation and readiness.",

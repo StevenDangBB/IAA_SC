@@ -414,7 +414,7 @@ Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.
                                     <div className="flex gap-2">
                                         <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => { if (e.target.files) setPastedImages(p => [...p, ...Array.from(e.target.files!)]); }} className="hidden"/>
                                         <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl bg-indigo-500 text-white"><Icon name="UploadCloud" size={20}/></button>
-                                        {pastedImages.length > 0 && <button onClick={handleOcrUpload} disabled={isOcrLoading} className="p-2.5 rounded-xl bg-emerald-500 text-white">{isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/></button>}
+                                        {pastedImages.length > 0 && <button onClick={handleOcrUpload} disabled={isOcrLoading} className="p-2.5 rounded-xl bg-emerald-500 text-white">{isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/>}</button>}
                                     </div>
                                 </div>
                              </div>
