@@ -141,7 +141,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         {selection.all ? <Icon name="CheckSquare" size={16}/> : selection.some ? <div className="w-4 h-4 bg-indigo-500 rounded flex items-center justify-center"><div className="w-2.5 h-0.5 bg-white"></div></div> : <Icon name="Square" size={16}/>}
                     </button>
                     <div className="flex-1 min-w-0" onClick={() => hasSubs ? toggleClauseExpand(c.id) : toggleClauseSelection(c)}>
-                        {/* Clause Title Row */}
+                        {/* Improvement: Clause Name and Code on line 1 */}
                         <div className="flex items-start justify-between gap-1.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 uppercase shrink-0 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{c.code}</span>
@@ -149,7 +149,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                             </div>
                             {hasSubs && <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={12} className="text-gray-400 mt-0.5 shrink-0"/>}
                         </div>
-                        {/* Description Row - Full width, no truncation */}
+                        {/* Improvement: Description on line 2 */}
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 italic mt-1.5 leading-relaxed block w-full whitespace-normal border-t border-gray-100 dark:border-slate-800 pt-1">
                             {c.description}
                         </div>
@@ -211,7 +211,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     <div className="relative">
                         <IconSelect icon="Book" iconColor={auditFieldIconColor} value={standardKey} onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} options={[...Object.keys(standards).map(k => ({ value: k, label: standards[k].name })), {value: "ADD_NEW", label: "+ Add New Standard..."}]} defaultText="Select ISO Standard" />
                         {standardKey && (
-                            <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.score === 100 ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Health Status">
+                            <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.score === 100 ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
                                 <Icon name={health.score === 100 ? "CheckCircle2" : "AlertCircle"} size={14}/>
                             </button>
                         )}
@@ -219,12 +219,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
                     <div className="grid grid-cols-2 gap-3">
                         <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="Audit Code (SMO)" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="Audit ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
                     </div>
-                    {/* Restored Department and Auditee fields */}
+                    {/* RESTORED: Department and Auditee/Interviewee fields */}
                     <div className="grid grid-cols-2 gap-3">
                         <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
-                        <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Interviewee" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
+                        <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
                     </div>
                 </div>
             </div>
@@ -234,16 +234,16 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1">
                             <span className="absolute left-3 top-2.5 text-blue-700 dark:text-blue-400 font-bold"><Icon name="Search" size={14}/></span>
-                            <input className="w-full pl-9 pr-3 py-2 text-xs bg-gray-100 dark:bg-slate-800 rounded-xl outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400 border border-transparent focus:border-indigo-100" placeholder="Filter clauses..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
+                            <input className="w-full pl-9 pr-3 py-2 text-xs bg-gray-100 dark:bg-slate-800 rounded-xl outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400 border border-transparent focus:border-indigo-100" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
                         </div>
                         {selectedClauses.length > 0 && (
                             <div className="flex gap-2">
-                                {/* Restored Copy button */}
+                                {/* RESTORED: Copy Selected button */}
                                 <button onClick={handleCopySelectedClauses} className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 hover:bg-indigo-100 transition-colors relative shadow-sm border border-indigo-100 dark:border-indigo-900/30" title="Copy Selected Clauses">
                                     <Icon name="Copy" size={16} />
                                 </button>
-                                {/* Restored Trash button with Badge */}
-                                <button onClick={() => setSelectedClauses([])} className="p-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-colors relative shadow-sm border border-red-100 dark:border-red-900/30" title="Clear Selections">
+                                {/* RESTORED: Trash/Clear button with badge */}
+                                <button onClick={() => setSelectedClauses([])} className="p-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-colors relative shadow-sm border border-red-100 dark:border-red-900/30" title="Clear All">
                                     <Icon name="Trash2" size={16} />
                                     <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-sm">{selectedClauses.length}</div>
                                 </button>
@@ -254,21 +254,21 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3">{renderClauses()}</div>
             </div>
 
-            <Modal isOpen={showIntegrityModal} title="Standard Internal Health Check" onClose={() => setShowIntegrityModal(false)}>
+            <Modal isOpen={showIntegrityModal} title="Standard Health Index" onClose={() => setShowIntegrityModal(false)}>
                  <div className="space-y-6">
                     <div className="flex items-center gap-5 p-5 rounded-3xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-inner">
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-black shadow-xl ring-4 ring-white dark:ring-slate-700 ${health.score === 100 ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
                             {health.score}%
                         </div>
                         <div className="flex-1">
-                            <h4 className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Data Health Index</h4>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">{health.score === 100 ? 'Perfect! This standard contains all required core clauses for professional auditing.' : 'Warning: Some critical controls or descriptions are missing or incomplete.'}</p>
+                            <h4 className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Data Health</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">{health.score === 100 ? 'Excellent! Data is complete and structured.' : 'Information might be incomplete for professional audit.'}</p>
                         </div>
                     </div>
                     <div className="space-y-3">
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Checklist Report</h5>
+                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Integrity Checklist</h5>
                         {health.items.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm group hover:border-indigo-100 transition-colors">
+                            <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm">
                                 <div className="flex items-center gap-4">
                                     <div className={`p-1.5 rounded-full shadow-sm ${item.status === 'pass' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-red-500 bg-red-50 dark:bg-red-900/20'}`}>
                                         <Icon name={item.status === 'pass' ? "CheckCircle2" : "AlertCircle"} size={18}/>

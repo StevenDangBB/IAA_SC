@@ -1,61 +1,58 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, DEFAULT_GEMINI_MODEL } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, FindingDetail } from './types';
-import { Icon, Modal, IconInput, FontSizeController, SparkleLoader } from './components/UI';
+import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
+import { StandardsData, AuditInfo, AnalysisResult } from './types';
+// Added Modal to the import list from ./components/UI to fix the missing component name errors
+import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText } from './services/geminiService';
-import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard } from './utils';
-import { CheckLineart } from './components/UI';
+import { cleanAndParseJSON, fileToBase64, cleanFileName } from './utils';
 
-// Define layout modes
+declare var mammoth: any;
+
 type LayoutMode = 'evidence' | 'findings' | 'report' | 'split';
+type ExportLanguage = 'en' | 'vi';
 
 function App() {
     // -- STATE --
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(380);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showAboutModal, setShowAboutModal] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
+    const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
+    const [isDragging, setIsDragging] = useState(false);
     
-    // Data State
+    const [reportTemplate, setReportTemplate] = useState<string>("");
+    const [templateFileName, setTemplateFileName] = useState<string>("");
+    
     const [customStandards, setCustomStandards] = useState<StandardsData>({});
-    const [standardKey, setStandardKey] = useState<string>("");
+    const [standardKey, setStandardKey] = useState<string>("ISO 9001:2015");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
     const [pastedImages, setPastedImages] = useState<File[]>([]);
     
-    // Analysis State
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult[] | null>(null);
-    const [selectedSuggestions, setSelectedSuggestions] = useState<Record<string, boolean>>({});
-    const [findingDetails, setFindingDetails] = useState<Record<string, FindingDetail>>({});
+    const [selectedFindings, setSelectedFindings] = useState<Record<string, boolean>>({});
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
-    const [layoutMode, setLayoutMode] = useState<LayoutMode>('evidence');
+    const [layoutMode, setLayoutMode] = useState('evidence' as LayoutMode);
     
-    // UI Loading/Error State
     const [isOcrLoading, setIsOcrLoading] = useState(false);
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
     const [isNotesExportLoading, setIsNotesExportLoading] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
-    const [isAnalysisSuccess, setIsAnalysisSuccess] = useState<boolean | null>(null);
     
-    // Import State
     const [importText, setImportText] = useState("");
-    const [importImages, setImportImages] = useState<File[]>([]);
     const [importStatus, setImportStatus] = useState("");
     
-    // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const evidenceRef = useRef<HTMLTextAreaElement>(null);
-    const [cursorPosition, setCursorPosition] = useState(0);
-    
-    // --- COMPUTED ---
+    const templateInputRef = useRef<HTMLInputElement>(null);
+
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
     const isAnalyzeDisabled = isAnalyzeLoading || selectedClauses.length === 0;
@@ -64,441 +61,365 @@ function App() {
     useEffect(() => {
         const storedScale = localStorage.getItem('iso_font_scale');
         if (storedScale) setFontSizeScale(parseFloat(storedScale));
-
         const savedAuditInfo = localStorage.getItem("iso_audit_info");
-        const savedSelectedClauses = localStorage.getItem("iso_selected_clauses");
         const savedEvidence = localStorage.getItem("iso_evidence");
-        const savedSidebarW = localStorage.getItem("iso_sidebar_width");
-        const savedSidebarOpen = localStorage.getItem("iso_sidebar_open");
         const savedDarkMode = localStorage.getItem('iso_dark_mode');
-        const savedCustomStandards = localStorage.getItem("iso_custom_standards");
+        const savedTemplate = localStorage.getItem('iso_report_template');
+        const savedTemplateName = localStorage.getItem('iso_report_template_name');
 
         if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
-        if (savedSelectedClauses) setSelectedClauses(JSON.parse(savedSelectedClauses));
         if (savedEvidence && savedEvidence.trim() !== '') setEvidence(savedEvidence);
-        if (savedSidebarW) setSidebarWidth(Math.max(360, parseInt(savedSidebarW)));
-        if (savedSidebarOpen !== null) setIsSidebarOpen(savedSidebarOpen === 'true');
-        if (savedDarkMode) setIsDarkMode(savedDarkMode === 'true');
-        if (savedCustomStandards) setCustomStandards(JSON.parse(savedCustomStandards));
+        
+        if (savedDarkMode !== null) {
+            setIsDarkMode(savedDarkMode === 'true');
+        } else {
+            setIsDarkMode(true); 
+        }
+        
+        if (savedTemplate) setReportTemplate(savedTemplate);
+        if (savedTemplateName) setTemplateFileName(savedTemplateName);
     }, []);
 
-    useEffect(() => { document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString()); }, [fontSizeScale]);
-    
     useEffect(() => {
-        localStorage.setItem('iso_dark_mode', String(isDarkMode));
         if (isDarkMode) document.body.classList.add('dark');
         else document.body.classList.remove('dark');
+        localStorage.setItem('iso_dark_mode', String(isDarkMode));
     }, [isDarkMode]);
 
     useEffect(() => { localStorage.setItem("iso_audit_info", JSON.stringify(auditInfo)); }, [auditInfo]);
-    useEffect(() => { localStorage.setItem("iso_selected_clauses", JSON.stringify(selectedClauses)); }, [selectedClauses]);
     useEffect(() => { localStorage.setItem("iso_evidence", evidence); }, [evidence]);
-    useEffect(() => { localStorage.setItem("iso_sidebar_width", String(sidebarWidth)); }, [sidebarWidth]);
-    useEffect(() => { localStorage.setItem("iso_sidebar_open", String(isSidebarOpen)); }, [isSidebarOpen]);
-
     useEffect(() => {
-        const handleGlobalPaste = (e: ClipboardEvent) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            const newImages: File[] = [];
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("pdf") !== -1) {
-                    const file = items[i].getAsFile();
-                    if (file) newImages.push(file);
-                }
-            }
-            if (newImages.length > 0) {
-                e.preventDefault();
-                setPastedImages(prev => [...prev, ...newImages]);
-                setLayoutMode('evidence');
-            }
-        };
-        window.addEventListener('paste', handleGlobalPaste);
-        return () => window.removeEventListener('paste', handleGlobalPaste);
-    }, []);
-
-    // --- ACTIONS ---
-
-    const adjustFontSize = (dir: string) => {
-        setFontSizeScale(prev => {
-            let n = prev;
-            if (dir === 'increase') n = Math.min(1.3, prev + 0.05);
-            else if (dir === 'decrease') n = Math.max(0.85, prev - 0.05);
-            n = Math.round(n * 100) / 100;
-            localStorage.setItem('iso_font_scale', String(n));
-            return n;
-        });
-    };
+        localStorage.setItem('iso_report_template', reportTemplate);
+        localStorage.setItem('iso_report_template_name', templateFileName);
+    }, [reportTemplate, templateFileName]);
 
     const handleNewSession = () => {
-        if (window.confirm("Start New Session? \n\nCurrent data will be backed up, then cleared.")) {
-            // Backup
-            const backup = {
-                evidence,
-                analysisResult,
-                finalReportText,
-                selectedClauses,
-                auditInfo
-            };
-            localStorage.setItem("iso_session_backup", JSON.stringify(backup));
-
-            // Clear
-            setEvidence("");
+        if (window.confirm("Start new session? Current work will be cleared.")) {
+            setAuditInfo({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
+            setSelectedClauses([]);
+            setEvidence(INITIAL_EVIDENCE);
             setPastedImages([]);
             setAnalysisResult(null);
+            setSelectedFindings({});
             setFinalReportText(null);
-            setSelectedClauses([]);
-            setAuditInfo({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
             setLayoutMode('evidence');
+            setAiError(null);
         }
     };
 
-    const handleRecallSession = () => {
-        const backupStr = localStorage.getItem("iso_session_backup");
-        if (backupStr) {
-            if(window.confirm("Recall previous session? \n\nCurrent unsaved data will be replaced by the backup.")) {
-                try {
-                    const backup = JSON.parse(backupStr);
-                    if(backup.evidence !== undefined) setEvidence(backup.evidence);
-                    if(backup.analysisResult) setAnalysisResult(backup.analysisResult);
-                    if(backup.finalReportText) setFinalReportText(backup.finalReportText);
-                    if(backup.selectedClauses) setSelectedClauses(backup.selectedClauses);
-                    if(backup.auditInfo) setAuditInfo(backup.auditInfo);
-                    
-                    if (backup.analysisResult) setLayoutMode('findings');
-                    else if (backup.evidence) setLayoutMode('evidence');
-                } catch(e) {
-                    alert("Failed to parse backup data.");
-                }
-            }
+    const handleRecall = () => {
+        const savedAuditInfo = localStorage.getItem("iso_audit_info");
+        const savedEvidence = localStorage.getItem("iso_evidence");
+        if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
+        if (savedEvidence) setEvidence(savedEvidence);
+        alert("Previous session recalled successfully.");
+    };
+
+    const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setTemplateFileName(file.name);
+        if (file.name.endsWith('.docx')) {
+            const arrayBuffer = await file.arrayBuffer();
+            mammoth.extractRawText({ arrayBuffer })
+                .then((result: any) => setReportTemplate(result.value))
+                .catch((err: any) => console.error("Mammoth Error:", err));
         } else {
-            alert("No backup session found in history.");
-        }
-    };
-
-    const handleOcrUpload = async () => {
-        if (pastedImages.length === 0) return;
-        setIsOcrLoading(true);
-        setLayoutMode('evidence');
-        try {
-            const promises = pastedImages.map(async (file) => {
-                const b64 = await fileToBase64(file);
-                // Enhanced prompt for specific extraction
-                const prompt = `
-                ACT AS AN ISO LEAD AUDITOR. ANALYZE THIS EVIDENCE (Image/File).
-
-                OBJECTIVE: Extract specific metadata and provide a professional, condensed summary suitable for audit working papers.
-
-                1.  **METADATA EXTRACTION** (If found, otherwise state "Not Visible"):
-                    *   **Document Name (Tên tài liệu):** [Exact Name]
-                    *   **Document Code (Mã tài liệu):** [Exact Code]
-                    *   **Effective/Revision Date (Ngày hiệu lực):** [Date]
-
-                2.  **CORE CONTENT SUMMARY (Tóm tắt trọng tâm):**
-                    *   Summarize the *essential* purpose and content of the document.
-                    *   Focus on process steps, criteria, or requirements defined.
-                    *   Discard irrelevant boilerplate text.
-
-                3.  **ADVANCED TABLE & VISUAL DATA INTERPRETATION (Diễn giải chi tiết bảng biểu):**
-                    *   **Structure Recognition:** Carefully identify Column Headers and Row Labels. Treat the visual grid as structured data. Handle complex layouts with merged cells logically.
-                    *   **Data Relationship Mapping:** Ensure every data point is correctly associated with its specific header/category.
-                    *   **Narrative Synthesis:** Convert these relationships into clear, professional sentences describing the specific findings.
-                        *   *Bad:* "Date: 01/01/2023. Name: John. Result: Pass."
-                        *   *Good:* "The 'Training Record' table shows that on 2023-01-01, John Smith achieved a 'Pass' result for the Fire Safety module."
-                    *   **Gap Analysis:** Explicitly highlight any missing data in mandatory fields (signatures, dates, check-boxes, approvals).
-
-                4.  **AUDIT RELEVANCE:**
-                    *   Briefly mention what ISO requirement this might support (e.g., "Evidence for Clause 7.5 Documented Information").
-
-                OUTPUT FORMAT: Plain Text, separated by sections.
-                `;
-                return await generateOcrContent(prompt, b64, file.type);
-            });
-            const results = await Promise.all(promises);
-            const newText = results.join('\n\n--------------------------------\n\n');
-            
-            setEvidence(prev => {
-                const prefix = prev.substring(0, cursorPosition);
-                const suffix = prev.substring(cursorPosition);
-                const insertedText = (cursorPosition === 0 || prev[cursorPosition - 1] === '\n') ? newText : `\n\n${newText}`;
-                return `${prefix}${insertedText}${suffix}`;
-            });
-            setPastedImages([]);
-        } catch (error: any) {
-            setAiError("OCR Failed: " + error.message);
-        } finally {
-            setIsOcrLoading(false);
+            const reader = new FileReader();
+            reader.onload = (re) => setReportTemplate(re.target?.result as string);
+            reader.readAsText(file);
         }
     };
 
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
-        setIsAnalyzeLoading(true);
-        setAnalysisResult(null);
-        setAiError(null);
-        setIsAnalysisSuccess(null);
-        
+        setIsAnalyzeLoading(true); setAiError(null);
         try {
             const scopeClauses = allStandards[standardKey].groups.flatMap(g => g.clauses).filter(c => selectedClauses.includes(c.id));
             const clausesTxt = scopeClauses.map(c => `- ${c.code} ${c.title}: ${c.description}`).join('\n');
-            
-            const prompt = `Act as an ISO Lead Auditor specializing in ${standardKey}. Evaluate compliance against:
+            const prompt = `Act as an ISO Lead Auditor. Evaluate compliance:
 ${clausesTxt}
-
 CONTEXT: ${auditInfo.type} for ${auditInfo.company}.
 RAW EVIDENCE: """ ${evidence} """
-
-For each clause, determine status (COMPLIANT, NON_COMPLIANT, WARNING), Reason (English), Suggestion (English), Evidence quote, and Conclusion_Report (Professional English Stage 2 Audit narrative).
-Return JSON ARRAY.`;
-
-            const systemInstruction = `You are an experienced ISO Certification Auditor. Output a JSON array only.`;
-            const resultStr = await generateAnalysis(prompt, systemInstruction);
+Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report.`;
+            const resultStr = await generateAnalysis(prompt, `Output JSON array only.`);
             const result = cleanAndParseJSON(resultStr);
-            if (result) {
-                setAnalysisResult(result);
-                setIsAnalysisSuccess(true);
-                setLayoutMode('findings');
-            } else {
-                throw new Error("Invalid JSON from AI");
+            if (result) { 
+                setAnalysisResult(result); 
+                const initialSelection: Record<string, boolean> = {};
+                result.forEach((r: any) => initialSelection[r.clauseId] = true);
+                setSelectedFindings(initialSelection);
+                setLayoutMode('findings'); 
             }
-        } catch (e: any) {
-            setAiError(e.message);
-            setIsAnalysisSuccess(false);
-        } finally {
-            setIsAnalyzeLoading(false);
-        }
+        } catch (e: any) { setAiError(e.message); } finally { setIsAnalyzeLoading(false); }
     };
 
     const handleGenerateReport = async () => {
         if (!analysisResult) return;
-        setIsReportLoading(true);
-        setFinalReportText(null);
-        setLayoutMode('report');
-        
+        setIsReportLoading(true); setLayoutMode('report');
         try {
-             const scopeClauses = allStandards[standardKey].groups.flatMap(g => g.clauses).filter(c => selectedClauses.includes(c.id));
-             const clauseMap = new Map(scopeClauses.map(c => [c.id, c.title]));
-             
-             let findingsSection = '';
-             Object.keys(selectedSuggestions).forEach(clauseId => {
-                 if (selectedSuggestions[clauseId]) {
-                     const res = analysisResult.find(r => r.clauseId === clauseId);
-                     if (res) findingsSection += `\nFINDING [${clauseId}]: ${res.conclusion_report}\n`;
-                 }
-             });
-
-             const prompt = `Generate a Final Audit Report in English.
-CONTEXT: ${JSON.stringify(auditInfo)}
-RAW NOTES: ${evidence}
-FINDINGS: ${findingsSection || "None"}
-ALL CLAUSES STATUS: ${analysisResult.map(r => `${r.clauseId}: ${r.status}`).join(', ')}
-
-Structure: Executive Summary, Raw Notes, Compliance Overview, Detailed Findings.`;
-
-             const text = await generateTextReport(prompt, "You are an ISO Lead Auditor. Output professional English plain text report.");
+             const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
+             const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
+             const text = await generateTextReport(prompt, "Expert ISO Report Compiler.");
              setFinalReportText(text);
-
-        } catch (e: any) {
-             setAiError(e.message);
-        } finally {
-            setIsReportLoading(false);
-        }
+        } catch (e: any) { setAiError(e.message); } finally { setIsReportLoading(false); }
     };
-    
-    const handleExport = async (text: string, type: 'notes' | 'report') => {
-        if (!text) return;
-        const setLoading = type === 'notes' ? setIsNotesExportLoading : setIsExportLoading;
-        setLoading(true);
+
+    const handleOcrUpload = async () => {
+        if (pastedImages.length === 0) return;
+        setIsOcrLoading(true);
         try {
-            const prompt = `Translate to professional English (if not already). Maintain format. Text: """${text}"""`;
-            const trans = await generateTextReport(prompt, "Translator.");
-            
-            const fileName = `${cleanFileName(standardKey)}_${cleanFileName(auditInfo.type)}_${cleanFileName(auditInfo.company)}_${type}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.txt`;
-            const element = document.createElement("a");
-            const file = new Blob([trans], {type: 'text/plain;charset=utf-8'});
-            element.href = URL.createObjectURL(file);
-            element.download = fileName;
-            document.body.appendChild(element);
-            element.click();
-            document.body.removeChild(element);
-        } catch (e: any) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
+            const promises = pastedImages.map(async (file) => {
+                const b64 = await fileToBase64(file);
+                return await generateOcrContent("Extract text accurately.", b64, file.type);
+            });
+            const results = await Promise.all(promises);
+            setEvidence(prev => prev + "\n\n" + results.join('\n\n---\n\n'));
+            setPastedImages([]);
+        } catch (e: any) { setAiError(e.message); } finally { setIsOcrLoading(false); }
     };
 
-    const handleImportStandard = async () => {
-         if (!importText && importImages.length === 0) return;
-         setImportStatus("Processing...");
-         try {
-             let content = importText;
-             if (importImages.length > 0) {
-                 const proms = importImages.map(async f => {
-                     const b64 = await fileToBase64(f);
-                     return await generateOcrContent("Extract text.", b64, f.type);
-                 });
-                 content += "\n" + (await Promise.all(proms)).join("\n");
-             }
-             const prompt = `Convert text to JSON schema: { "name": "Name", "groups": [ { "id": "ID", "title": "Title", "icon": "FileShield", "clauses": [ { "id": "ID", "code": "Code", "title": "Title", "description": "Desc" } ] } ] }. RAW TEXT: ${content.substring(0, 30000)}`;
-             const res = await generateJsonFromText(prompt, "JSON Agent.");
-             const parsed = cleanAndParseJSON(res);
-             if (parsed && parsed.name) {
-                 const nw = { ...customStandards, [parsed.name]: parsed };
-                 setCustomStandards(nw);
-                 localStorage.setItem("iso_custom_standards", JSON.stringify(nw));
-                 setStandardKey(parsed.name);
-                 setShowImportModal(false);
-                 setImportText(""); setImportImages([]);
-             }
-         } catch (e: any) {
-             setImportStatus("Failed: " + e.message);
-         } finally {
-             setImportStatus("");
-         }
+    const handleExport = async (text: string, type: 'notes' | 'report', lang: ExportLanguage) => {
+        if (!text) return;
+        if (type === 'notes') setIsNotesExportLoading(true); else setIsExportLoading(true);
+        try {
+            const targetLang = lang === 'vi' ? 'Vietnamese' : 'English';
+            const prompt = `Translate to ${targetLang}. Maintain formatting. Text: """${text}"""`;
+            const trans = await generateTextReport(prompt, "Translator.");
+            const blob = new Blob([trans], {type: 'text/plain;charset=utf-8'});
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${cleanFileName(auditInfo.company)}_${type}_${lang}.txt`;
+            link.click();
+        } catch (e: any) { console.error(e); } finally { setIsNotesExportLoading(false); setIsExportLoading(false); }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+            setPastedImages(prev => [...prev, ...files]);
+        }
     };
 
     return (
-        <div className="flex flex-col h-screen w-full bg-gray-100 dark:bg-slate-900 transition-colors duration-200">
-            {/* Header */}
-            <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg z-20 flex justify-between items-center h-14">
+        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200" style={{ '--font-scale': fontSizeScale } as any}>
+            <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-14">
                 <div className="flex items-center gap-4">
-                    <div className="relative flex items-center text-indigo-600 cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                    <div className="relative flex items-center text-indigo-600 cursor-pointer" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
                          <div className={`text-orange-500 transition-transform duration-700 ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}><Icon name="TDSolidLink" size={48}/></div>
-                         <div className="absolute top-1 left-1 w-6 h-6 z-10 pointer-events-none"><Icon name="Sparkle" size={10} className="text-white animate-star-orbit"/></div>
                     </div>
                     <div>
-                        <h1 className="font-extrabold text-2xl text-slate-800 dark:text-slate-100">ISO Audit Assistant</h1>
-                        <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1"><Icon name="AIIndicator" size={18} className="text-amber-400 animate-pulse"/> v{APP_VERSION} (AI Core)</span>
+                        <h1 className="font-extrabold text-2xl text-slate-800 dark:text-slate-100 leading-tight">ISO Audit Pro</h1>
+                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter">AI AUDITOR ASSISTANT v{APP_VERSION}</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-800" title="New Session"><Icon name="FilePlus2" size={18}/></button>
-                    <button onClick={handleRecallSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all border border-transparent hover:border-emerald-100 dark:hover:border-emerald-800" title="Recall Session"><Icon name="History" size={18}/></button>
-                    <div className="w-px h-6 bg-gray-200 dark:bg-slate-700 mx-1"></div>
-                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all" title="Theme"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
-                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={adjustFontSize} />
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700">
-                        <Icon name="Info" size={18}/> ABOUT
-                    </button>
+                    <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
+                    <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
+                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
+                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.3, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
+                    <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
                 </div>
             </div>
 
-            {/* Layout */}
-            <div className="flex flex-1 min-h-0 w-full">
+            <div className="flex flex-1 min-h-0 w-full relative overflow-hidden bg-white dark:bg-slate-900">
                 <Sidebar isOpen={isSidebarOpen} width={sidebarWidth} setWidth={setSidebarWidth} standards={allStandards} standardKey={standardKey} setStandardKey={setStandardKey} auditInfo={auditInfo} setAuditInfo={setAuditInfo} selectedClauses={selectedClauses} setSelectedClauses={setSelectedClauses} onAddNewStandard={() => setShowImportModal(true)}/>
                 
                 <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
                     {/* Block 1: Evidence */}
-                    <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
-                        <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-10">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 w-8 h-8 flex items-center justify-center rounded-lg">1</span> Audit Notes & Evidence</h3>
-                            <div className="flex gap-2">
-                                <button onClick={() => handleExport(evidence, 'notes')} disabled={isNotesExportLoading} className="w-10 h-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white flex items-center justify-center">{isNotesExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>
-                                <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-10 h-10 text-gray-400 hover:text-indigo-600"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                    <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl relative z-10 ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
+                        <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-20">
+                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3">
+                                <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 w-8 h-8 flex items-center justify-center rounded-lg">
+                                    <Icon name="FileText" size={16}/>
+                                </span> 
+                                Evidence & Notes
+                            </h3>
+                            <div className="flex gap-2 items-center">
+                                <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mr-2">
+                                    <button onClick={() => setNotesLanguage('en')} className={`px-2 py-0.5 text-[9px] font-bold rounded-lg ${notesLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
+                                    <button onClick={() => setNotesLanguage('vi')} className={`px-2 py-0.5 text-[9px] font-bold rounded-lg ${notesLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                                </div>
+                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 flex items-center justify-center border dark:border-slate-700" title="Export Evidence">
+                                    {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-indigo-500"/> : <Icon name="Download" size={18} className="text-indigo-500"/>}
+                                </button>
+                                <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-10 h-10 text-gray-400 hover:text-indigo-600" title="Switch View"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
-                        <div className="flex-1 p-5 flex flex-col min-h-0 relative bg-gray-50/30 dark:bg-slate-950">
-                             <div className={`mb-4 p-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center ${pastedImages.length ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-200 dark:border-slate-700'}`}>
-                                <div className="w-full flex items-center justify-between gap-4">
-                                    <div className="flex-1 flex gap-3 overflow-x-auto pb-2 custom-scrollbar p-1">
-                                        {pastedImages.length > 0 ? pastedImages.map((f, i) => (
-                                            <div key={i} className="relative group/img shrink-0">
-                                                <div className="h-14 w-14 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 overflow-hidden border border-gray-300">
-                                                    {f.type.includes('image') ? <img src={URL.createObjectURL(f)} className="h-full w-full object-cover"/> : 'PDF'}
-                                                </div>
-                                                <button onClick={() => setPastedImages(p => p.filter((_, idx) => idx !== i))} className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center"><Icon name="X" size={10}/></button>
-                                            </div>
-                                        )) : <div className="text-center text-gray-400 flex-1"><p className="text-xs">Drag & Drop Image/PDF or Paste (Ctrl+V)</p></div>}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => { if (e.target.files) setPastedImages(p => [...p, ...Array.from(e.target.files!)]); }} className="hidden"/>
-                                        <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl bg-indigo-500 text-white"><Icon name="UploadCloud" size={20}/></button>
-                                        {pastedImages.length > 0 && <button onClick={handleOcrUpload} disabled={isOcrLoading} className="p-2.5 rounded-xl bg-emerald-500 text-white">{isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/>}</button>}
+                        <div 
+                            className="flex-1 p-5 flex flex-col min-h-0 relative bg-gray-50/10 dark:bg-slate-950/30"
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
+                            {isDragging && (
+                                <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm z-[60] flex items-center justify-center border-4 border-dashed border-indigo-500 rounded-xl pointer-events-none">
+                                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-3">
+                                        <Icon name="UploadCloud" size={48} className="text-indigo-500 animate-bounce" />
+                                        <p className="font-bold text-indigo-600">Drop files to upload as evidence</p>
                                     </div>
                                 </div>
+                            )}
+
+                             <div className={`mb-4 p-4 border-2 border-dashed rounded-xl flex items-center justify-between bg-white dark:bg-slate-900 group transition-all ${pastedImages.length ? 'border-emerald-400 bg-emerald-50/5' : 'border-slate-300 dark:border-slate-700'}`}>
+                                <div className="flex-1 flex gap-3 overflow-x-auto custom-scrollbar p-1">
+                                    {pastedImages.length > 0 ? pastedImages.map((f, i) => (
+                                        <div key={i} className="relative shrink-0 pt-2 pr-2">
+                                            <div className="h-14 w-14 rounded-lg bg-gray-100 dark:bg-slate-800 flex items-center justify-center border dark:border-slate-700 overflow-hidden shadow-sm">
+                                                {f.type.includes('image') ? <img src={URL.createObjectURL(f)} className="h-full w-full object-cover" alt="Evidence"/> : <Icon name="FileText" size={16}/>}
+                                            </div>
+                                            <button onClick={() => setPastedImages(p => p.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-lg border border-white hover:bg-red-700"><Icon name="X" size={10}/></button>
+                                        </div>
+                                    )) : (
+                                        <div className="flex flex-col">
+                                            <span className="text-adjustable-xs text-slate-400 font-medium uppercase tracking-tighter">Evidence Processing Queue</span>
+                                            <span className="text-[10px] text-slate-400 italic">Drag images/PDFs here or use the upload button...</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 ml-4">
+                                    <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => setPastedImages([...pastedImages, ...Array.from(e.target.files || [])])} className="hidden"/>
+                                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl bg-indigo-500 text-white shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all" title="Upload Evidence (Images/PDF)">
+                                        <Icon name="UploadCloud" size={20}/>
+                                    </button>
+                                    {pastedImages.length > 0 && (
+                                        <button onClick={handleOcrUpload} disabled={isOcrLoading} className="p-2.5 rounded-xl bg-emerald-500 text-white shadow-xl hover:bg-emerald-600 animate-in fade-in slide-in-from-right-2" title="Convert to Text (OCR)">
+                                            {isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/>}
+                                        </button>
+                                    )}
+                                </div>
                              </div>
-                             <textarea ref={evidenceRef} className="structured-input-textarea w-full h-full p-5 text-adjustable-sm font-mono leading-relaxed outline-none shadow-sm dark:text-slate-300 dark:placeholder-slate-600 placeholder-gray-300" placeholder="Enter notes..." value={evidence} onChange={e => { setEvidence(e.target.value); setCursorPosition(e.target.selectionStart); }} onSelect={e => setCursorPosition(e.currentTarget.selectionStart)}></textarea>
+                             
+                             <div className="flex-1 relative pb-20 z-0">
+                                <textarea 
+                                    className="w-full h-full p-6 bg-white dark:bg-slate-950 caret-indigo-600 dark:caret-indigo-400 outline-none rounded-xl border-2 border-slate-200 dark:border-slate-800 font-sans text-adjustable-sm leading-relaxed text-slate-800 dark:text-slate-100 resize-none shadow-inner focus:border-indigo-300 dark:focus:border-indigo-900 transition-colors" 
+                                    placeholder="Paste interview notes, audit evidence or case descriptions here..." 
+                                    value={evidence} 
+                                    onChange={e => setEvidence(e.target.value)}
+                                ></textarea>
+
+                                {hasEvidence && (layoutMode === 'evidence' || layoutMode === 'split') && (
+                                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[40]">
+                                        <button onClick={handleAnalyze} disabled={isAnalyzeDisabled} className={`w-16 h-16 rounded-full shadow-2xl btn-brain-wave text-white flex items-center justify-center transition-all ${isAnalyzeDisabled ? 'opacity-50 grayscale' : 'hover:scale-110 active:scale-90 ring-8 ring-indigo-50 dark:ring-indigo-900/10'}`} title="Start AI Analysis">
+                                            {isAnalyzeLoading ? <SparkleLoader size={28}/> : <Icon name="Wand2" size={28}/>}
+                                        </button>
+                                    </div>
+                                )}
+                             </div>
                         </div>
                     </div>
 
-                     {/* Analyze Button */}
-                     {hasEvidence && (layoutMode === 'evidence' || layoutMode === 'split') && (
-                        <div className="flex justify-center -translate-y-7 z-[2] flex-shrink-0">
-                            <button onClick={handleAnalyze} disabled={isAnalyzeDisabled} className={`w-14 h-14 rounded-full shadow-2xl btn-brain-wave text-white flex items-center justify-center transition-all ${isAnalyzeDisabled ? 'opacity-50' : 'hover:scale-110'}`}>
-                                {isAnalyzeLoading ? <SparkleLoader size={24}/> : <Icon name="Wand2" size={24}/>}
-                            </button>
-                        </div>
-                    )}
-
                     {/* Block 2: Findings */}
-                    <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-lg ${layoutMode === 'findings' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
+                    <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-lg relative ${layoutMode === 'findings' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center z-10 justify-between">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-emerald-100 dark:bg-emerald-900 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-lg">2</span> AI Analysis</h3>
+                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-emerald-100 dark:bg-emerald-900 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-lg"><Icon name="CheckCircle2" size={16}/></span> Validated Findings</h3>
                             <div className="flex gap-2">
-                                {analysisResult && <button onClick={handleGenerateReport} className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Icon name="Wand2" size={20}/></button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-10 h-10 text-gray-400 hover:text-emerald-600"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                                {analysisResult && <button onClick={handleGenerateReport} className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md active:scale-95" title="Generate Final Report"><Icon name="Wand2" size={20}/></button>}
+                                <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-10 h-10 text-gray-400 hover:text-emerald-600" title="Switch View"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
-                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/50 dark:bg-slate-950 min-h-0 overflow-y-auto">
+                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-100/30 dark:bg-slate-950/40 min-h-0 overflow-y-auto custom-scrollbar">
                             {analysisResult ? analysisResult.map((res, i) => (
-                                <div key={i} className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${res.status === 'COMPLIANT' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{res.status}</span>
-                                            <span className="font-bold text-sm dark:text-slate-200">{res.clauseId}</span>
+                                <div key={i} className={`p-4 bg-white dark:bg-slate-900 rounded-xl border-2 transition-all ${selectedFindings[res.clauseId] ? 'border-indigo-200 dark:border-indigo-900/50 shadow-md' : 'border-transparent opacity-60'}`}>
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{res.clauseId}</span>
+                                                <select className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border-none cursor-pointer ${res.status === 'COMPLIANT' ? 'bg-green-100 text-green-700' : res.status === 'NC_MAJOR' ? 'bg-red-100 text-red-700' : res.status === 'NC_MINOR' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`} value={res.status} onChange={(e) => {
+                                                    const newArr = [...analysisResult]; newArr[i].status = e.target.value as any; setAnalysisResult(newArr);
+                                                }}>
+                                                    <option value="COMPLIANT">Compliant</option>
+                                                    <option value="NC_MAJOR">NC Major</option>
+                                                    <option value="NC_MINOR">NC Minor</option>
+                                                    <option value="OFI">OFI</option>
+                                                </select>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-mono italic">AI Reason: {res.reason}</p>
                                         </div>
-                                        <button onClick={() => setSelectedSuggestions(p => ({...p, [res.clauseId]: !p[res.clauseId]}))} className={`w-8 h-8 flex items-center justify-center rounded-full ${selectedSuggestions[res.clauseId] ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>{selectedSuggestions[res.clauseId] ? <Icon name="X"/> : <CheckLineart size={16} className="stroke-white"/>}</button>
+                                        <button onClick={() => setSelectedFindings(p => ({...p, [res.clauseId]: !p[res.clauseId]}))} className={`w-10 h-10 flex items-center justify-center rounded-xl ${selectedFindings[res.clauseId] ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'}`}>
+                                            <CheckLineart size={18} className="stroke-current"/>
+                                        </button>
                                     </div>
-                                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">{res.reason}</p>
-                                    <textarea className="w-full text-xs p-2 bg-gray-50 dark:bg-slate-800 dark:text-slate-300 rounded border-none resize-y" value={res.conclusion_report} onChange={e => {
+                                    <textarea className="w-full text-adjustable-xs p-4 bg-gray-50 dark:bg-slate-800/50 dark:text-slate-300 rounded-xl border border-transparent focus:border-indigo-200 outline-none resize-y min-h-[100px]" value={res.conclusion_report} onChange={e => {
                                         const newArr = [...analysisResult]; newArr[i].conclusion_report = e.target.value; setAnalysisResult(newArr);
                                     }}/>
                                 </div>
-                            )) : <div className="text-center text-gray-400 mt-10">No Analysis Results.</div>}
+                            )) : <div className="text-center text-gray-400 mt-10 italic">Analysis results will appear here...</div>}
                         </div>
                     </div>
 
-                    {/* Block 3: Report */}
-                    <div className={`flex flex-col bg-white dark:bg-slate-900 transition-all duration-500 ${layoutMode === 'report' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
+                    {/* Block 3: Final Synthesis */}
+                    <div className={`flex flex-col bg-white dark:bg-slate-900 transition-all duration-500 relative ${layoutMode === 'report' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                          <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-10">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-blue-100 dark:bg-blue-900 text-blue-700 w-8 h-8 flex items-center justify-center rounded-lg">3</span> Report</h3>
-                            <div className="flex gap-2">
-                                {finalReportText && <button onClick={() => handleExport(finalReportText, 'report')} disabled={isExportLoading} className="w-10 h-10 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-10 h-10 text-gray-400 hover:text-blue-600"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-blue-100 dark:bg-blue-900 text-blue-700 w-8 h-8 flex items-center justify-center rounded-lg"><Icon name="FileEdit" size={16}/></span> Final Synthesis</h3>
+                            <div className="flex gap-2 items-center">
+                                <div className="flex items-center gap-2 mr-4">
+                                    <input ref={templateInputRef} type="file" accept=".docx,.txt" onChange={handleTemplateUpload} className="hidden" />
+                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold border ${templateFileName ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-slate-500 border-slate-200 shadow-sm hover:bg-white transition-all'}`} title="Load Report Template">
+                                        <Icon name="UploadCloud" size={14} className="text-emerald-500"/> {templateFileName ? `Template: ${templateFileName.substring(0, 10)}...` : "Load Template"}
+                                    </button>
+                                </div>
+                                <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
+                                    <button onClick={() => setExportLanguage('en')} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg ${exportLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
+                                    <button onClick={() => setExportLanguage('vi')} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg ${exportLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                                </div>
+                                {finalReportText && <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md active:scale-95" title="Download Report">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
+                                <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-10 h-10 text-gray-400 hover:text-blue-600" title="Switch View"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
-                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/50 dark:bg-slate-950 min-h-0 relative">
+                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/10 dark:bg-slate-950/20 min-h-0 relative">
                              {isReportLoading ? (
                                 <div className="flex flex-col items-center justify-center h-full">
-                                    <SparkleLoader size={32}/>
-                                    <p className="text-indigo-600 mt-4">Generating Report...</p>
+                                    <SparkleLoader size={64} className="mb-6"/>
+                                    <p className="text-indigo-600 dark:text-indigo-400 font-bold text-lg animate-pulse uppercase tracking-widest">Assembling Final Report...</p>
                                 </div>
                              ) : (
-                                <textarea className="flex-1 w-full h-full p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-mono resize-none outline-none dark:text-slate-300" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Generate report to view..."/>
+                                <textarea className="flex-1 w-full h-full p-8 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl text-adjustable-sm font-mono leading-relaxed outline-none dark:text-slate-200 shadow-inner custom-scrollbar" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Final synthesized content will appear here..."/>
                              )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Modals */}
             <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
             
-            <Modal isOpen={showImportModal} title="Import Standard" onClose={() => setShowImportModal(false)}>
+            {/* Modal component imported correctly to fix the errors on lines 396 and 422 */}
+            <Modal isOpen={showImportModal} title="Import ISO Standard" onClose={() => setShowImportModal(false)}>
                  <div className="space-y-4">
-                    <textarea className="w-full h-32 p-3 bg-gray-50 dark:bg-slate-800 dark:text-slate-200 border rounded-xl text-xs font-mono" placeholder="Paste text..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
-                    <div className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer dark:border-slate-700" onPaste={(e) => {
-                         const items = e.clipboardData.items; const files = [];
-                         for(let i=0; i<items.length; i++) if (items[i].type.indexOf("image") !== -1) files.push(items[i].getAsFile());
-                         if(files.length) setImportImages([...importImages, ...files as File[]]);
-                    }}>
-                        <p className="text-xs dark:text-slate-400">Paste Images (Ctrl+V)</p>
-                        <div className="flex gap-2 justify-center mt-2 flex-wrap">
-                            {importImages.map((img, i) => <span key={i} className="text-[10px] bg-gray-200 dark:bg-slate-700 dark:text-slate-300 px-2 py-1 rounded">{img.name}</span>)}
-                        </div>
-                    </div>
-                    <button onClick={handleImportStandard} disabled={!!importStatus} className="w-full h-10 bg-indigo-600 text-white rounded-xl font-bold">{importStatus || "Process & Add"}</button>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Paste content from PDF/Docx to extract structure:</p>
+                    <textarea className="w-full h-40 p-4 bg-white dark:bg-slate-800 dark:text-slate-200 border border-gray-200 dark:border-slate-700 rounded-2xl text-[10px] font-mono outline-none shadow-inner" placeholder="Paste clause data here..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
+                    <button onClick={async () => {
+                        setImportStatus("Extracting Structure...");
+                        try {
+                            const systemInst = `You are a professional ISO Document Architect. Convert the provided text into a structured JSON 'Standard' object.
+Structure: { name: string, description: string, groups: Array<{ id: string, title: string, icon: string, clauses: Array<{ id: string, code: string, title: string, description: string, subClauses: [] }> }> }
+Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid JSON only.`;
+                            const res = await generateJsonFromText(importText, systemInst);
+                            const parsed = cleanAndParseJSON(res);
+                            if (parsed) {
+                                setCustomStandards({...customStandards, [parsed.name]: parsed});
+                                setStandardKey(parsed.name);
+                                setShowImportModal(false);
+                            }
+                        } catch(e) { 
+                            console.error(e); 
+                            setAiError("Failed to extract standard structure.");
+                        } finally { setImportStatus(""); }
+                    }} disabled={!!importStatus} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-xl text-sm uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3">
+                        {importStatus ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Cpu" />}
+                        {importStatus || "Extract & Load Standard"}
+                    </button>
                  </div>
             </Modal>
         </div>

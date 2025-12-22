@@ -3,6 +3,7 @@ export interface Clause {
     code: string;
     title: string;
     description: string;
+    subClauses?: Clause[];
 }
 
 export interface Group {
@@ -31,9 +32,11 @@ export interface AuditInfo {
     type: string;
 }
 
+export type FindingStatus = 'COMPLIANT' | 'NC_MAJOR' | 'NC_MINOR' | 'OFI' | 'N_A';
+
 export interface AnalysisResult {
     clauseId: string;
-    status: 'COMPLIANT' | 'NON_COMPLIANT' | 'WARNING';
+    status: FindingStatus;
     reason: string;
     suggestion: string;
     evidence: string;
@@ -42,10 +45,4 @@ export interface AnalysisResult {
 
 export interface FindingDetail {
     classification: 'N_A' | 'OFI' | 'NC_Minor' | 'NC_Major';
-}
-
-export interface FindingStats {
-    OFI: number;
-    NC_Minor: number;
-    NC_Major: number;
 }
