@@ -15,7 +15,8 @@ type ExportLanguage = 'en' | 'vi';
 
 function App() {
     // -- STATE --
-    const [fontSizeScale, setFontSizeScale] = useState(1.0);
+    // Changed default font scale from 1.0 to 1.3 (130%)
+    const [fontSizeScale, setFontSizeScale] = useState(1.3);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(380);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -228,7 +229,8 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
                     <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
-                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.3, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
+                    {/* Increased max scale to 1.6 to accommodate the new default of 1.3 */}
+                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
                     <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
                 </div>
             </div>
