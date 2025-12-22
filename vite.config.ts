@@ -9,11 +9,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    // BASE URL for GitHub Pages
-    base: '/StevenD_CodeBase/', 
+    // BASE URL set to relative './' to work in both GitHub Pages and Codespaces Preview
+    base: './', 
     define: {
       // Safely expose ONLY the API_KEY to the client bundle
-      // This replaces 'process.env.API_KEY' in your code with the actual string value during build
       'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY)
     },
     build: {
