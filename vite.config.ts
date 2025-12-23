@@ -9,11 +9,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    // Setting base to './' ensures index.html uses relative paths for assets (js/css).
-    // This allows the app to run on any domain or subfolder (like GitHub Pages).
+    // Use relative base path for compatibility with any deployment subpath
     base: './', 
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY)
+      // Ensure API_KEY is always a string (empty if missing) to prevent crash
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
     },
     build: {
       outDir: 'dist',

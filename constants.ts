@@ -3,7 +3,7 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.2";
+export const APP_VERSION = "2.3";
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -26,8 +26,19 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.2 (Decoupled Data)",
+        version: "2.3 (Baseline Release)",
         date: new Date().toISOString().substring(0, 10),
+        features: [
+            "INTEGRITY: Added Standard Health Index to monitor data quality.",
+            "AI REPAIR: Self-healing capability to fix missing clause descriptions.",
+            "UX: Enhanced Drag & Drop Evidence Zone with instant preview.",
+            "LOCALIZATION: Added EN/VI toggles for notes and report exports.",
+            "REPORTING: Support for .docx Template ingestion for custom layouts."
+        ]
+    },
+    {
+        version: "2.2 (Decoupled Data)",
+        date: "2024-05-20",
         features: [
             "DATA: Fully isolated standard modules to prevent truncation.",
             "ISO 27001: Complete 93 controls + PDCA structure.",

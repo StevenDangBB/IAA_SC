@@ -1,10 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
 
-// Access API key via process.env.API_KEY as per guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getApiKey = () => {
+    // Safely check for process.env to prevent "ReferenceError: process is not defined" in browser
+    let envKey = "";
+    try {
+        if (typeof process !== "undefined" && process.env) {
+            envKey = process.env.API_KEY || "";
+        }
+    } catch (e) {
+        // Ignore error if process is accessed in strict mode or undefined
+    }
+    return localStorage.getItem("iso_api_key") || envKey || "";
+};
+
+const getAiClient = () => {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key is missing. Please set it in Settings or configure .env file.");
+    return new GoogleGenAI({ apiKey });
+};
 
 export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string) => {
+    const ai = getAiClient();
+    
     const response = await ai.models.generateContent({
         model: DEFAULT_VISION_MODEL,
         contents: {
@@ -23,6 +41,8 @@ export const generateOcrContent = async (textPrompt: string, base64Image: string
 };
 
 export const generateAnalysis = async (prompt: string, systemInstruction: string) => {
+    const ai = getAiClient();
+
     const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
         contents: prompt,
@@ -50,6 +70,8 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
 };
 
 export const generateTextReport = async (prompt: string, systemInstruction: string) => {
+    const ai = getAiClient();
+
     const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
         contents: prompt,
@@ -61,6 +83,8 @@ export const generateTextReport = async (prompt: string, systemInstruction: stri
 };
 
 export const generateJsonFromText = async (prompt: string, systemInstruction: string) => {
+    const ai = getAiClient();
+
      const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
         contents: prompt,
@@ -71,3 +95,19 @@ export const generateJsonFromText = async (prompt: string, systemInstruction: st
     });
     return response.text || "";
 }
+
+export const generateMissingDescriptions = async (clauses: { code: string, title: string }[]) => {
+    const ai = getAiClient();
+    const prompt = `You are an ISO Lead Auditor. Provide professional, concise (10-15 words) descriptions for these missing ISO clause descriptions:
+${JSON.stringify(clauses)}
+Output JSON format: { "clause_code": "description string", ... }`;
+    
+    const response = await ai.models.generateContent({
+        model: DEFAULT_GEMINI_MODEL,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json"
+        }
+    });
+    return response.text || "{}";
+};

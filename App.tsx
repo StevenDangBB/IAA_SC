@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult } from './types';
+import { StandardsData, AuditInfo, AnalysisResult, Standard } from './types';
 import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
@@ -14,12 +14,14 @@ type ExportLanguage = 'en' | 'vi';
 
 function App() {
     // -- STATE --
-    const [fontSizeScale, setFontSizeScale] = useState(1.3);
+    const [fontSizeScale, setFontSizeScale] = useState(1.0);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(380);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [userApiKey, setUserApiKey] = useState("");
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
     const [isDragging, setIsDragging] = useState(false);
@@ -60,11 +62,13 @@ function App() {
     useEffect(() => {
         const storedScale = localStorage.getItem('iso_font_scale');
         if (storedScale) setFontSizeScale(parseFloat(storedScale));
+        
         const savedAuditInfo = localStorage.getItem("iso_audit_info");
         const savedEvidence = localStorage.getItem("iso_evidence");
         const savedDarkMode = localStorage.getItem('iso_dark_mode');
         const savedTemplate = localStorage.getItem('iso_report_template');
         const savedTemplateName = localStorage.getItem('iso_report_template_name');
+        const savedApiKey = localStorage.getItem('iso_api_key');
 
         if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
         if (savedEvidence && savedEvidence.trim() !== '') setEvidence(savedEvidence);
@@ -77,6 +81,7 @@ function App() {
         
         if (savedTemplate) setReportTemplate(savedTemplate);
         if (savedTemplateName) setTemplateFileName(savedTemplateName);
+        if (savedApiKey) setUserApiKey(savedApiKey);
     }, []);
 
     useEffect(() => {
@@ -84,6 +89,12 @@ function App() {
         else document.body.classList.remove('dark');
         localStorage.setItem('iso_dark_mode', String(isDarkMode));
     }, [isDarkMode]);
+    
+    // Apply Font Scale Global
+    useEffect(() => {
+        document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString());
+        localStorage.setItem('iso_font_scale', fontSizeScale.toString());
+    }, [fontSizeScale]);
 
     useEffect(() => { localStorage.setItem("iso_audit_info", JSON.stringify(auditInfo)); }, [auditInfo]);
     useEffect(() => { localStorage.setItem("iso_evidence", evidence); }, [evidence]);
@@ -112,6 +123,23 @@ function App() {
         if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
         if (savedEvidence) setEvidence(savedEvidence);
         alert("Previous session recalled successfully.");
+    };
+
+    const handleSaveApiKey = () => {
+        localStorage.setItem("iso_api_key", userApiKey);
+        setShowSettingsModal(false);
+    };
+
+    const handleUpdateStandard = (updated: Standard) => {
+        setCustomStandards(prev => ({ ...prev, [updated.name]: updated }));
+    };
+
+    const handleResetStandard = (key: string) => {
+        setCustomStandards(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
     };
 
     const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -212,7 +240,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
     };
 
     return (
-        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200" style={{ '--font-scale': fontSizeScale } as any}>
+        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
             <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-14">
                 <div className="flex items-center gap-4">
                     <div className="relative flex items-center text-indigo-600 cursor-pointer" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
@@ -228,12 +256,27 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
+                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="Settings"><Icon name="Settings" size={18}/></button>
                     <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
                 </div>
             </div>
 
             <div className="flex flex-1 min-h-0 w-full relative overflow-hidden bg-white dark:bg-slate-900">
-                <Sidebar isOpen={isSidebarOpen} width={sidebarWidth} setWidth={setSidebarWidth} standards={allStandards} standardKey={standardKey} setStandardKey={setStandardKey} auditInfo={auditInfo} setAuditInfo={setAuditInfo} selectedClauses={selectedClauses} setSelectedClauses={setSelectedClauses} onAddNewStandard={() => setShowImportModal(true)}/>
+                <Sidebar 
+                    isOpen={isSidebarOpen} 
+                    width={sidebarWidth} 
+                    setWidth={setSidebarWidth} 
+                    standards={allStandards} 
+                    standardKey={standardKey} 
+                    setStandardKey={setStandardKey} 
+                    auditInfo={auditInfo} 
+                    setAuditInfo={setAuditInfo} 
+                    selectedClauses={selectedClauses} 
+                    setSelectedClauses={setSelectedClauses} 
+                    onAddNewStandard={() => setShowImportModal(true)} 
+                    onUpdateStandard={handleUpdateStandard}
+                    onResetStandard={handleResetStandard}
+                />
                 
                 <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
                     {/* Error Banner */}
@@ -250,21 +293,21 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     {/* Block 1: Evidence */}
                     <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl relative z-10 ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-20">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3">
-                                <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 w-8 h-8 flex items-center justify-center rounded-lg">
+                            <h3 className="font-bold text-lg text-indigo-950 dark:text-indigo-100 flex items-center gap-3">
+                                <span className="bg-indigo-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-indigo-500/20">
                                     <Icon name="FileText" size={16}/>
                                 </span> 
                                 Evidence & Notes
                             </h3>
-                            <div className="flex gap-2 items-center">
-                                <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mr-2">
-                                    <button onClick={() => setNotesLanguage('en')} className={`px-4 py-2 text-sm font-bold rounded-lg ${notesLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
-                                    <button onClick={() => setNotesLanguage('vi')} className={`px-4 py-2 text-sm font-bold rounded-lg ${notesLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                            <div className="flex gap-3 items-center">
+                                <div className="flex items-center bg-indigo-50 dark:bg-slate-800 rounded-xl p-1 border border-indigo-100 dark:border-slate-700">
+                                    <button onClick={() => setNotesLanguage('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'en' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>EN</button>
+                                    <button onClick={() => setNotesLanguage('vi')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'vi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>VI</button>
                                 </div>
-                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 flex items-center justify-center border dark:border-slate-700" title="Export Evidence">
-                                    {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-indigo-500"/> : <Icon name="Download" size={18} className="text-indigo-500"/>}
+                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Export Evidence">
+                                    {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-white"/> : <><Icon name="Download" size={16} className="text-white"/> Export</>}
                                 </button>
-                                <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-10 h-10 text-gray-400 hover:text-indigo-600" title="Switch View"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                                <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-9 h-9 rounded-xl text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
                         <div 
@@ -333,10 +376,13 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     {/* Block 2: Findings */}
                     <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-lg relative ${layoutMode === 'findings' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center z-10 justify-between">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-emerald-100 dark:bg-emerald-900 text-emerald-700 w-8 h-8 flex items-center justify-center rounded-lg"><Icon name="CheckCircle2" size={16}/></span> Validated Findings</h3>
+                            <h3 className="font-bold text-lg text-emerald-950 dark:text-emerald-100 flex items-center gap-3">
+                                <span className="bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-emerald-500/20"><Icon name="CheckCircle2" size={16}/></span> 
+                                Validated Findings
+                            </h3>
                             <div className="flex gap-2">
-                                {analysisResult && <button onClick={handleGenerateReport} className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md active:scale-95" title="Generate Final Report"><Icon name="Wand2" size={20}/></button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-10 h-10 text-gray-400 hover:text-emerald-600" title="Switch View"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                                {analysisResult && <button onClick={handleGenerateReport} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Generate Final Report"><Icon name="Wand2" size={16}/> Generate Report</button>}
+                                <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-9 h-9 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
                         <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-100/30 dark:bg-slate-950/40 min-h-0 overflow-y-auto custom-scrollbar">
@@ -372,20 +418,23 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     {/* Block 3: Final Synthesis */}
                     <div className={`flex flex-col bg-white dark:bg-slate-900 transition-all duration-500 relative ${layoutMode === 'report' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                          <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-10">
-                            <h3 className="font-semibold text-lg text-slate-500 dark:text-slate-400 flex items-center gap-3"><span className="bg-blue-100 dark:bg-blue-900 text-blue-700 w-8 h-8 flex items-center justify-center rounded-lg"><Icon name="FileEdit" size={16}/></span> Final Synthesis</h3>
+                            <h3 className="font-bold text-lg text-blue-950 dark:text-blue-100 flex items-center gap-3">
+                                <span className="bg-blue-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-blue-500/20"><Icon name="FileEdit" size={16}/></span> 
+                                Final Synthesis
+                            </h3>
                             <div className="flex gap-2 items-center">
                                 <div className="flex items-center gap-2 mr-4">
                                     <input ref={templateInputRef} type="file" accept=".docx,.txt" onChange={handleTemplateUpload} className="hidden" />
-                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border ${templateFileName ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-slate-500 border-slate-200 shadow-sm hover:bg-white transition-all'}`} title="Load Report Template">
-                                        <Icon name="UploadCloud" size={16} className="text-emerald-500"/> {templateFileName ? `Template: ${templateFileName.substring(0, 10)}...` : "Load Template"}
+                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-bold border-2 transition-all active:scale-95 ${templateFileName ? 'bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-white border-blue-200 text-blue-700 hover:border-blue-400 dark:bg-slate-800 dark:border-slate-600 dark:text-blue-400'}`} title="Load Report Template">
+                                        <Icon name="UploadCloud" size={14} className={templateFileName ? "text-emerald-500" : "text-blue-500"}/> {templateFileName ? `Template Loaded` : "Load Template"}
                                     </button>
                                 </div>
-                                <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
-                                    <button onClick={() => setExportLanguage('en')} className={`px-4 py-2 text-sm font-bold rounded-lg ${exportLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
-                                    <button onClick={() => setExportLanguage('vi')} className={`px-4 py-2 text-sm font-bold rounded-lg ${exportLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                                <div className="flex items-center bg-blue-50 dark:bg-slate-800 rounded-xl p-1 border border-blue-100 dark:border-slate-700">
+                                    <button onClick={() => setExportLanguage('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${exportLanguage === 'en' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-blue-600'}`}>EN</button>
+                                    <button onClick={() => setExportLanguage('vi')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${exportLanguage === 'vi' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-blue-600'}`}>VI</button>
                                 </div>
-                                {finalReportText && <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md active:scale-95" title="Download Report">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-10 h-10 text-gray-400 hover:text-blue-600" title="Switch View"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
+                                {finalReportText && <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 active:scale-95 transition-all" title="Download Report">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
+                                <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-9 h-9 text-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30 rounded-xl transition-all" title="Switch View"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
                         <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/10 dark:bg-slate-950/20 min-h-0 relative">
@@ -430,6 +479,36 @@ Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid
                         {importStatus || "Extract & Load Standard"}
                     </button>
                  </div>
+            </Modal>
+
+            <Modal isOpen={showSettingsModal} title="Settings" onClose={() => setShowSettingsModal(false)}>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Gemini API Key</label>
+                        <div className="relative">
+                            <input 
+                                type="password" 
+                                className="w-full pl-10 pr-3 py-2.5 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-indigo-100 dark:focus:border-indigo-900 rounded-xl text-sm transition-all text-slate-900 dark:text-slate-100 font-normal placeholder-gray-400 focus:bg-white dark:focus:bg-slate-900 shadow-sm"
+                                placeholder="Enter your Google Gemini API Key..."
+                                value={userApiKey}
+                                onChange={(e) => setUserApiKey(e.target.value)}
+                            />
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                <Icon name="Key" size={18} />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2">
+                            The key is stored locally in your browser. Leave empty to use the environment variable (if configured).
+                            <br/>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">Get a key from AI Studio</a>
+                        </p>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                        <button onClick={handleSaveApiKey} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

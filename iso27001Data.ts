@@ -4,7 +4,7 @@ export const ISO27001: Standard = {
     name: "ISO/IEC 27001:2022 (ISMS)",
     description: "Information Security Management System",
     groups: [
-        { id: "CLAUSES_27001", title: "ISMS Clauses (4-10)", icon: "FileShield", clauses: [
+        { id: "PLAN_27001", title: "Plan (4-6) Context & Leadership", icon: "FileShield", clauses: [
             { id: "4", code: "4", title: "Context of organization", description: "Internal/external issues and scope.", subClauses: [
                 { id: "4.1", code: "4.1", title: "Context", description: "Identifying security issues." },
                 { id: "4.2", code: "4.2", title: "Interested parties", description: "Needs and expectations." },
@@ -21,28 +21,26 @@ export const ISO27001: Standard = {
                 { id: "6.1.2", code: "6.1.2", title: "Risk assessment", description: "Information security risk process." },
                 { id: "6.1.3", code: "6.1.3", title: "Risk treatment", description: "SoA and planning." },
                 { id: "6.2", code: "6.2", title: "Security objectives", description: "Achievement planning." }
-            ]},
-            { id: "7", code: "7", title: "Support", description: "Resources.", subClauses: [
-                { id: "7.1", code: "7.1", title: "Resources", description: "Availability." },
-                { id: "7.2", code: "7.2", title: "Competence", description: "Training requirements." },
-                { id: "7.3", code: "7.3", title: "Awareness", description: "Understanding policy." },
-                { id: "7.4", code: "7.4", title: "Communication", description: "Info flow rules." },
-                { id: "7.5", code: "7.5", title: "Documented info", description: "Control of records." }
-            ]},
-            { id: "8", code: "8", title: "Operation", description: "Implementation.", subClauses: [
-                { id: "8.1", code: "8.1", title: "Operational planning", description: "Securing processes." },
-                { id: "8.2", code: "8.2", title: "Risk assessment", description: "Execution at intervals." },
-                { id: "8.3", code: "8.3", title: "Risk treatment", description: "Implementing treatments." }
-            ]},
-            { id: "9", code: "9", title: "Performance evaluation", description: "Review.", subClauses: [
-                { id: "9.1", code: "9.1", title: "Monitoring", description: "Measuring effectiveness." },
-                { id: "9.2", code: "9.2", title: "Internal audit", description: "Periodic checks." },
-                { id: "9.3", code: "9.3", title: "Management review", description: "Strategic eval." }
-            ]},
-            { id: "10", code: "10", title: "Improvement", description: "Correction.", subClauses: [
-                { id: "10.1", code: "10.1", title: "Continual improvement", description: "Growth." },
-                { id: "10.2", code: "10.2", title: "Nonconformity", description: "Corrective actions." }
             ]}
+        ]},
+        { id: "SUPPORT_27001", title: "Support (7) Resources", icon: "LayoutList", clauses: [
+            { id: "7.1", code: "7.1", title: "Resources", description: "Availability." },
+            { id: "7.2", code: "7.2", title: "Competence", description: "Training requirements." },
+            { id: "7.3", code: "7.3", title: "Awareness", description: "Understanding policy." },
+            { id: "7.4", code: "7.4", title: "Communication", description: "Info flow rules." },
+            { id: "7.5", code: "7.5", title: "Documented info", description: "Control of records." }
+        ]},
+        { id: "DO_27001", title: "Do (8) Operation", icon: "Cpu", clauses: [
+            { id: "8.1", code: "8.1", title: "Operational planning", description: "Securing processes." },
+            { id: "8.2", code: "8.2", title: "Risk assessment", description: "Execution at intervals." },
+            { id: "8.3", code: "8.3", title: "Risk treatment", description: "Implementing treatments." }
+        ]},
+        { id: "CHECK_ACT_27001", title: "Check & Act (9-10)", icon: "CheckThick", clauses: [
+            { id: "9.1", code: "9.1", title: "Monitoring", description: "Measuring effectiveness." },
+            { id: "9.2", code: "9.2", title: "Internal audit", description: "Periodic checks." },
+            { id: "9.3", code: "9.3", title: "Management review", description: "Strategic eval." },
+            { id: "10.1", code: "10.1", title: "Continual improvement", description: "Growth." },
+            { id: "10.2", code: "10.2", title: "Nonconformity", description: "Corrective actions." }
         ]},
         { id: "ANNEX_A_5", title: "Annex A.5 Organizational (37 Controls)", icon: "Lock", clauses: [
             { id: "A.5.1", code: "A.5.1", title: "Policies for information security", description: "Reviewed for suitability." },
