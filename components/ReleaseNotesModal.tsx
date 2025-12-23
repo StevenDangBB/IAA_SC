@@ -1,4 +1,3 @@
-import React from 'react';
 import { Icon } from './UI';
 import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES } from '../constants';
 

@@ -87,3 +87,7 @@ typings/
 
 # Vite build output
 dist
+
+# Electron build output
+release
+dist-electron

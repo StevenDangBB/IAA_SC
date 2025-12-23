@@ -19,7 +19,7 @@ export const generateOcrContent = async (textPrompt: string, base64Image: string
             ]
         }
     });
-    return response.text;
+    return response.text || "";
 };
 
 export const generateAnalysis = async (prompt: string, systemInstruction: string) => {
@@ -46,7 +46,7 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
             }
         }
     });
-    return response.text;
+    return response.text || "";
 };
 
 export const generateTextReport = async (prompt: string, systemInstruction: string) => {
@@ -57,7 +57,7 @@ export const generateTextReport = async (prompt: string, systemInstruction: stri
             systemInstruction: systemInstruction
         }
     });
-    return response.text;
+    return response.text || "";
 };
 
 export const generateJsonFromText = async (prompt: string, systemInstruction: string) => {
@@ -69,5 +69,5 @@ export const generateJsonFromText = async (prompt: string, systemInstruction: st
              responseMimeType: "application/json"
         }
     });
-    return response.text;
+    return response.text || "";
 }

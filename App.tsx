@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult } from './types';
-// Added Modal to the import list from ./components/UI to fix the missing component name errors
 import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
@@ -15,7 +14,6 @@ type ExportLanguage = 'en' | 'vi';
 
 function App() {
     // -- STATE --
-    // Changed default font scale from 1.0 to 1.3 (130%)
     const [fontSizeScale, setFontSizeScale] = useState(1.3);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(380);
@@ -144,7 +142,7 @@ CONTEXT: ${auditInfo.type} for ${auditInfo.company}.
 RAW EVIDENCE: """ ${evidence} """
 Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report.`;
             const resultStr = await generateAnalysis(prompt, `Output JSON array only.`);
-            const result = cleanAndParseJSON(resultStr);
+            const result = cleanAndParseJSON(resultStr || "");
             if (result) { 
                 setAnalysisResult(result); 
                 const initialSelection: Record<string, boolean> = {};
@@ -162,7 +160,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
              const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
              const text = await generateTextReport(prompt, "Expert ISO Report Compiler.");
-             setFinalReportText(text);
+             setFinalReportText(text || "");
         } catch (e: any) { setAiError(e.message); } finally { setIsReportLoading(false); }
     };
 
@@ -187,7 +185,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
             const targetLang = lang === 'vi' ? 'Vietnamese' : 'English';
             const prompt = `Translate to ${targetLang}. Maintain formatting. Text: """${text}"""`;
             const trans = await generateTextReport(prompt, "Translator.");
-            const blob = new Blob([trans], {type: 'text/plain;charset=utf-8'});
+            const blob = new Blob([trans || ""], {type: 'text/plain;charset=utf-8'});
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
             link.download = `${cleanFileName(auditInfo.company)}_${type}_${lang}.txt`;
@@ -229,7 +227,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
                     <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
-                    {/* Increased max scale to 1.6 to accommodate the new default of 1.3 */}
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
                     <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
                 </div>
@@ -239,6 +236,17 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 <Sidebar isOpen={isSidebarOpen} width={sidebarWidth} setWidth={setSidebarWidth} standards={allStandards} standardKey={standardKey} setStandardKey={setStandardKey} auditInfo={auditInfo} setAuditInfo={setAuditInfo} selectedClauses={selectedClauses} setSelectedClauses={setSelectedClauses} onAddNewStandard={() => setShowImportModal(true)}/>
                 
                 <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
+                    {/* Error Banner */}
+                    {aiError && (
+                        <div className="absolute top-4 left-4 right-4 z-[100] bg-red-100 dark:bg-red-900/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-3 rounded-xl flex items-center justify-between shadow-lg animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-2">
+                                <Icon name="AlertCircle" size={20}/>
+                                <span className="text-sm font-bold">{aiError}</span>
+                            </div>
+                            <button onClick={() => setAiError(null)}><Icon name="X" size={18}/></button>
+                        </div>
+                    )}
+
                     {/* Block 1: Evidence */}
                     <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl relative z-10 ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-20">
@@ -250,8 +258,8 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                             </h3>
                             <div className="flex gap-2 items-center">
                                 <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mr-2">
-                                    <button onClick={() => setNotesLanguage('en')} className={`px-2 py-0.5 text-[9px] font-bold rounded-lg ${notesLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
-                                    <button onClick={() => setNotesLanguage('vi')} className={`px-2 py-0.5 text-[9px] font-bold rounded-lg ${notesLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                                    <button onClick={() => setNotesLanguage('en')} className={`px-4 py-2 text-sm font-bold rounded-lg ${notesLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
+                                    <button onClick={() => setNotesLanguage('vi')} className={`px-4 py-2 text-sm font-bold rounded-lg ${notesLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
                                 </div>
                                 <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 flex items-center justify-center border dark:border-slate-700" title="Export Evidence">
                                     {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-indigo-500"/> : <Icon name="Download" size={18} className="text-indigo-500"/>}
@@ -368,13 +376,13 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                             <div className="flex gap-2 items-center">
                                 <div className="flex items-center gap-2 mr-4">
                                     <input ref={templateInputRef} type="file" accept=".docx,.txt" onChange={handleTemplateUpload} className="hidden" />
-                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold border ${templateFileName ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-slate-500 border-slate-200 shadow-sm hover:bg-white transition-all'}`} title="Load Report Template">
-                                        <Icon name="UploadCloud" size={14} className="text-emerald-500"/> {templateFileName ? `Template: ${templateFileName.substring(0, 10)}...` : "Load Template"}
+                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border ${templateFileName ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-slate-500 border-slate-200 shadow-sm hover:bg-white transition-all'}`} title="Load Report Template">
+                                        <Icon name="UploadCloud" size={16} className="text-emerald-500"/> {templateFileName ? `Template: ${templateFileName.substring(0, 10)}...` : "Load Template"}
                                     </button>
                                 </div>
                                 <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
-                                    <button onClick={() => setExportLanguage('en')} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg ${exportLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
-                                    <button onClick={() => setExportLanguage('vi')} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg ${exportLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
+                                    <button onClick={() => setExportLanguage('en')} className={`px-4 py-2 text-sm font-bold rounded-lg ${exportLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
+                                    <button onClick={() => setExportLanguage('vi')} className={`px-4 py-2 text-sm font-bold rounded-lg ${exportLanguage === 'vi' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>VI</button>
                                 </div>
                                 {finalReportText && <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md active:scale-95" title="Download Report">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
                                 <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-10 h-10 text-gray-400 hover:text-blue-600" title="Switch View"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
@@ -396,7 +404,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
 
             <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
             
-            {/* Modal component imported correctly to fix the errors on lines 396 and 422 */}
             <Modal isOpen={showImportModal} title="Import ISO Standard" onClose={() => setShowImportModal(false)}>
                  <div className="space-y-4">
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Paste content from PDF/Docx to extract structure:</p>
@@ -408,15 +415,15 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
 Structure: { name: string, description: string, groups: Array<{ id: string, title: string, icon: string, clauses: Array<{ id: string, code: string, title: string, description: string, subClauses: [] }> }> }
 Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid JSON only.`;
                             const res = await generateJsonFromText(importText, systemInst);
-                            const parsed = cleanAndParseJSON(res);
+                            const parsed = cleanAndParseJSON(res || "");
                             if (parsed) {
                                 setCustomStandards({...customStandards, [parsed.name]: parsed});
                                 setStandardKey(parsed.name);
                                 setShowImportModal(false);
                             }
-                        } catch(e) { 
+                        } catch(e: any) { 
                             console.error(e); 
-                            setAiError("Failed to extract standard structure.");
+                            setAiError(e.message || "Failed to extract standard structure.");
                         } finally { setImportStatus(""); }
                     }} disabled={!!importStatus} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-xl text-sm uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3">
                         {importStatus ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Cpu" />}
