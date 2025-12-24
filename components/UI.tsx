@@ -3,7 +3,33 @@ import React, { useState, useEffect, useRef } from 'react';
 
 // --- Icons ---
 export const Icons: Record<string, React.ReactNode> = {
-    TDSolidLink: (<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16 A 7 7 0 0 1 12 5 V 19 A 7 7 0 0 0 17 8" /></svg>),
+    TDSolidLink: (
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+            <defs>
+                <linearGradient id="future_td_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#06b6d4" /> {/* Cyan */}
+                    <stop offset="50%" stopColor="#6366f1" /> {/* Indigo */}
+                    <stop offset="100%" stopColor="#f59e0b" /> {/* Amber */}
+                </linearGradient>
+                <filter id="glow_td" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="0.6" result="coloredBlur"/>
+                    <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                </filter>
+            </defs>
+            {/* The Monogram: T bar connected to D loop */}
+            <path 
+                d="M5 6H11V18H14C17.866 18 21 15.3137 21 12C21 8.68629 17.866 6 14 6H11" 
+                stroke="url(#future_td_grad)" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                filter="url(#glow_td)"
+            />
+        </svg>
+    ),
     Sparkle: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-amber-400 drop-shadow-[0_0_4px_rgba(252,211,77,0.7)] animate-pulse-slow"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>,
     FilePlus2: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M3 15h6"/><path d="M6 12v6"/></svg>,
     History: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,

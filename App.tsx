@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard } from './types';
@@ -250,8 +251,8 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 <div className="flex items-center gap-5">
                     {/* Floating Logo Container with Halo Effect */}
                     <div className="relative group cursor-pointer animate-float" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                        <div className="absolute inset-0 bg-orange-500/20 dark:bg-orange-500/30 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className={`relative z-10 text-orange-600 dark:text-orange-500 transition-transform duration-700 drop-shadow-lg ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}>
+                        <div className="absolute inset-0 bg-indigo-500/20 dark:bg-cyan-500/30 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className={`relative z-10 transition-transform duration-700 drop-shadow-lg ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}>
                              <Icon name="TDSolidLink" size={48}/>
                         </div>
                     </div>
