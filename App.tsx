@@ -247,15 +247,29 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
     return (
         <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
             <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-14">
-                <div className="flex items-center gap-4">
-                    <div className="relative flex items-center text-indigo-600 cursor-pointer" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                         <div className={`text-orange-500 transition-transform duration-700 ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}><Icon name="TDSolidLink" size={48}/></div>
+                <div className="flex items-center gap-5">
+                    {/* Floating Logo Container with Halo Effect */}
+                    <div className="relative group cursor-pointer animate-float" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                        <div className="absolute inset-0 bg-orange-500/20 dark:bg-orange-500/30 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className={`relative z-10 text-orange-600 dark:text-orange-500 transition-transform duration-700 drop-shadow-lg ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}>
+                             <Icon name="TDSolidLink" size={48}/>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="font-extrabold text-2xl text-slate-800 dark:text-slate-100 leading-tight">ISO Audit Pro</h1>
-                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter">AI AUDITOR ASSISTANT v{APP_VERSION}</span>
+                    
+                    {/* Enhanced Title Section */}
+                    <div className="flex flex-col">
+                        <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-800 to-slate-900 dark:from-white dark:via-indigo-200 dark:to-indigo-400 filter drop-shadow-sm leading-none">
+                            ISO Audit Pro
+                        </h1>
+                        <div className="flex items-center gap-2 mt-1">
+                             <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-[10px] font-bold text-indigo-600 dark:text-indigo-300 uppercase tracking-widest shadow-sm">
+                                AI Assistant
+                            </span>
+                            <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500">v{APP_VERSION}</span>
+                        </div>
                     </div>
                 </div>
+                
                 <div className="flex items-center gap-2">
                     <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
                     <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
