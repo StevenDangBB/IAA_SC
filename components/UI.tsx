@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 
 // --- Icons ---
 export const Icons: Record<string, React.ReactNode> = {
@@ -45,11 +46,12 @@ export const Icons: Record<string, React.ReactNode> = {
     Key: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>),
     Loader: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>,
     Keyboard: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M6 12h.001"/><path d="M10 12h.001"/><path d="M14 12h.001"/><path d="M18 12h.001"/><path d="M7 16h10"/></svg>,
-    TextSize: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 21V8a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v13"/><path d="M14 21v-8a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v8"/><path d="M4 14h5"/><path d="M16 16h4"/></svg>,
+    TextSize: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5h7v2"/><path d="M6.5 5v14"/><path d="M14 13v-2h7v2"/><path d="M17.5 11v8"/></svg>,
     AuditUser: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M22 22 18 18 16 20 20 24 24 20Z"/></svg>),
     ScanText: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/><path d="M7 12h.01"/><path d="M10 12h4"/><path d="M17 12h.01"/><path d="M12 7v10"/></svg>,
     Building: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 18h.01"/></svg>,
-    User: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    User: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+    Snowflake: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
 };
 
 export const Icon = ({ name, size = 16, className = "" }: { name: string; size?: number; className?: string }) => {
@@ -134,14 +136,14 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: { fontSize
                 <Icon name="TextSize" size={18}/> 
             </button>
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-28 bg-white dark:bg-slate-800 rounded-xl shadow-lg ring-1 ring-black/5 p-2 flex items-center justify-center gap-2 z-50 animate-in fade-in slide-in-from-top-1">
-                    <button onClick={() => adjustFontSize('decrease')} className="w-8 h-8 rounded-lg text-gray-700 hover:text-indigo-600 bg-gray-100 dark:bg-slate-700 shadow-sm transition-colors">
+                <div className="absolute right-0 mt-2 w-28 bg-white dark:bg-slate-900 rounded-xl shadow-lg ring-1 ring-black/5 dark:ring-slate-700 p-2 flex items-center justify-center gap-2 z-50 animate-in fade-in slide-in-from-top-1 border dark:border-slate-700">
+                    <button onClick={() => adjustFontSize('decrease')} className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:text-white dark:hover:border-indigo-500 transition-all">
                         <Icon name="Minus" size={14} className="mx-auto" />
                     </button>
                     <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-8 text-center">
                         {(fontSizeScale * 100).toFixed(0)}%
                     </span>
-                    <button onClick={() => adjustFontSize('increase')} className="w-8 h-8 rounded-lg text-gray-700 hover:text-indigo-600 bg-gray-100 dark:bg-slate-700 shadow-sm transition-colors">
+                    <button onClick={() => adjustFontSize('increase')} className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:text-white dark:hover:border-indigo-500 transition-all">
                         <Icon name="Plus" size={14} className="mx-auto" />
                     </button>
                 </div>
@@ -149,3 +151,78 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: { fontSize
         </div>
     );
 };
+
+export const SnowOverlay = () => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let w = canvas.width = window.innerWidth;
+        let h = canvas.height = window.innerHeight;
+        
+        const flakes: {x: number, y: number, r: number, d: number}[] = [];
+        const maxFlakes = 80;
+
+        for(let i = 0; i < maxFlakes; i++) {
+            flakes.push({
+                x: Math.random() * w,
+                y: Math.random() * h,
+                r: Math.random() * 2 + 0.5,
+                d: Math.random() * maxFlakes
+            })
+        }
+
+        const draw = () => {
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+            ctx.beginPath();
+            for(let i = 0; i < maxFlakes; i++) {
+                const f = flakes[i];
+                ctx.moveTo(f.x, f.y);
+                ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2, true);
+            }
+            ctx.fill();
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        let angle = 0;
+        const update = () => {
+            angle += 0.01;
+            for(let i = 0; i < maxFlakes; i++) {
+                const f = flakes[i];
+                f.y += Math.pow(f.d, 0.5) * 0.1 + 0.5; // Gravity
+                f.x += Math.sin(angle) * 0.5; // Wind
+
+                if(f.y > h) {
+                    flakes[i] = { x: Math.random() * w, y: 0, r: f.r, d: f.d };
+                }
+                if (f.x > w + 5 || f.x < -5) {
+                    if (Math.sin(angle) > 0) {
+                        flakes[i] = { x: -5, y: Math.random() * h, r: f.r, d: f.d };
+                    } else {
+                        flakes[i] = { x: w + 5, y: Math.random() * h, r: f.r, d: f.d };
+                    }
+                }
+            }
+        }
+        
+        const anim = requestAnimationFrame(draw);
+        
+        const handleResize = () => {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            cancelAnimationFrame(anim);
+            window.removeEventListener('resize', handleResize);
+        }
+    }, []);
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[9999]" />;
+}

@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard } from './types';
-import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText } from './services/geminiService';
@@ -16,6 +17,7 @@ function App() {
     // -- STATE --
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
     const [isDarkMode, setIsDarkMode] = useState(true);
+    const [isSnowing, setIsSnowing] = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(380);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showAboutModal, setShowAboutModal] = useState(false);
@@ -86,7 +88,10 @@ function App() {
 
     useEffect(() => {
         if (isDarkMode) document.body.classList.add('dark');
-        else document.body.classList.remove('dark');
+        else {
+            document.body.classList.remove('dark');
+            setIsSnowing(false); // Turn off snow when not in dark mode
+        }
         localStorage.setItem('iso_dark_mode', String(isDarkMode));
     }, [isDarkMode]);
     
@@ -254,6 +259,11 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 <div className="flex items-center gap-2">
                     <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
                     <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
+                    {isDarkMode && (
+                        <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all shadow-sm ${isSnowing ? 'text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`} title="Let it snow!">
+                            <Icon name="Snowflake" size={18}/>
+                        </button>
+                    )}
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
                     <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="Settings"><Icon name="Settings" size={18}/></button>
@@ -510,6 +520,8 @@ Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid
                     </div>
                 </div>
             </Modal>
+            
+            {isSnowing && <SnowOverlay />}
         </div>
     );
 }
