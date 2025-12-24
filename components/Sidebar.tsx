@@ -161,7 +161,21 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 const jsonStr = await generateMissingDescriptions(targets);
                 const descriptions = cleanAndParseJSON(jsonStr);
                 
-                if (descriptions) {
+                // Logic to handle Array response (from Schema) or fallback Object
+                if (Array.isArray(descriptions)) {
+                    const descMap = descriptions.reduce((acc: any, item: any) => {
+                        if(item.code && item.description) acc[item.code] = item.description;
+                        return acc;
+                    }, {});
+
+                    missingClauses.forEach(item => {
+                        if (descMap[item.code]) {
+                            item.ref.description = descMap[item.code];
+                            fixedIds.push(item.ref.id);
+                        }
+                    });
+                } else if (descriptions && typeof descriptions === 'object') {
+                    // Fallback for object format
                     missingClauses.forEach(item => {
                         if (descriptions[item.code]) {
                             item.ref.description = descriptions[item.code];

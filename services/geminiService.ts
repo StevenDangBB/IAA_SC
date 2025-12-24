@@ -99,15 +99,25 @@ export const generateJsonFromText = async (prompt: string, systemInstruction: st
 export const generateMissingDescriptions = async (clauses: { code: string, title: string }[]) => {
     const ai = getAiClient();
     const prompt = `You are an ISO Lead Auditor. Provide professional, concise (10-15 words) descriptions for these missing ISO clause descriptions:
-${JSON.stringify(clauses)}
-Output JSON format: { "clause_code": "description string", ... }`;
+${JSON.stringify(clauses)}`;
     
     const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
         contents: prompt,
         config: {
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        code: { type: Type.STRING },
+                        description: { type: Type.STRING }
+                    },
+                    required: ["code", "description"]
+                }
+            }
         }
     });
-    return response.text || "{}";
+    return response.text || "[]";
 };
