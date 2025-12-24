@@ -28,12 +28,17 @@
                     },
                     animation: {
                         'brain-wave': 'brainWave 3s ease infinite',
+                        'float': 'float 6s ease-in-out infinite',
                     },
                     keyframes: {
                         brainWave: {
                             '0%': { backgroundPosition: '0% 50%' },
                             '50%': { backgroundPosition: '100% 50%' },
                             '100%': { backgroundPosition: '0% 50%' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-6px)' },
                         }
                     }
                 }
@@ -90,7 +95,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-BNuZ8v6L.js"></script>
+  <script type="module" crossorigin src="./assets/index-Qi0tABiZ.js"></script>
 </head>
 <body class="bg-gray-100 text-slate-800 h-screen selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-200">
     <div id="root" class="h-full w-full"></div>
