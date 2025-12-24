@@ -1,7 +1,18 @@
+import { useState, useEffect } from 'react';
 import { Icon } from './UI';
 import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES } from '../constants';
 
 const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+    // Logic: Try to load 'author.png'. If it fails, strictly show the CSS Fallback.
+    const [imgError, setImgError] = useState(false);
+
+    // Reset state when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setImgError(false);
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const currentBuildTime = new Date().toISOString().substring(0, 19).replace('T', ' ');
@@ -24,26 +35,32 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                     <div className="relative px-8 py-8 flex items-center gap-8 z-10">
                         {/* Author Image with Glow Effect */}
                         <div className="relative flex-shrink-0">
+                            {/* Outer Glow Ring */}
                             <div className="absolute -inset-1 bg-gradient-to-br from-amber-300 via-orange-500 to-indigo-600 rounded-full opacity-70 blur-sm animate-pulse-slow"></div>
-                            <div className="relative w-24 h-24 rounded-full p-1 bg-slate-900 ring-1 ring-white/10">
-                                <img 
-                                    src="./author.png" 
-                                    alt="Trung DANGHOANG" 
-                                    className="w-full h-full rounded-full object-cover bg-slate-800"
-                                    onError={(e) => {
-                                        // Fallback if image not found
-                                        e.currentTarget.style.display = 'none';
-                                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                    }}
-                                />
-                                <div className="hidden w-full h-full rounded-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-slate-400">
-                                    <Icon name="User" size={32}/>
-                                </div>
+                            
+                            {/* Main Avatar Container - Ensures Round Shape */}
+                            <div className="relative w-24 h-24 rounded-full p-1 bg-slate-900 ring-1 ring-white/10 z-10">
+                                {!imgError ? (
+                                    <img 
+                                        src="./author.png"
+                                        alt="Trung DANGHOANG" 
+                                        className="w-full h-full rounded-full object-cover bg-slate-800 border-2 border-slate-800"
+                                        onError={() => setImgError(true)}
+                                    />
+                                ) : (
+                                    /* High-End CSS Fallback Avatar - No Square Edges */
+                                    <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-800 to-black flex flex-col items-center justify-center border-2 border-slate-700 shadow-inner">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-300 drop-shadow-sm">TD</span>
+                                            <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Author</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div className="absolute bottom-0 right-0 bg-blue-500 text-white p-1 rounded-full border-4 border-slate-900 shadow-sm" title="Verified Creator">
+                            
+                            {/* Verified Badge */}
+                            <div className="absolute bottom-0 right-0 z-20 bg-blue-500 text-white p-1 rounded-full border-4 border-slate-900 shadow-sm" title="Verified Creator">
                                 <Icon name="CheckLineart" size={12}/> 
-                                {/* Fallback icon since CheckLineart is component, using generic check */}
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
                         </div>
 
