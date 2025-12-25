@@ -153,7 +153,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
         <select 
             value={value} 
             onChange={onChange}
-            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
         >
             <option value="" disabled>{defaultText}</option>
             {options.map((opt: any) => (
@@ -176,7 +176,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
         />
     </div>
 );
@@ -200,13 +200,71 @@ export const Modal = ({ isOpen, title, onClose, children }: any) => {
     );
 };
 
-export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => (
-    <div className="flex items-center bg-gray-50 dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-gray-100 dark:border-slate-700">
-        <button onClick={() => adjustFontSize('decrease')} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-500 hover:text-indigo-600 transition-all"><Icon name="Minus" size={14}/></button>
-        <span className="text-[10px] font-bold w-8 text-center text-slate-700 dark:text-slate-300">{(fontSizeScale * 100).toFixed(0)}%</span>
-        <button onClick={() => adjustFontSize('increase')} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-500 hover:text-indigo-600 transition-all"><Icon name="Plus" size={14}/></button>
-    </div>
-);
+export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    // SNAPSHOT COORDINATES: Captured once when opened, never updated by re-renders.
+    const [pinnedPosition, setPinnedPosition] = useState<{ top: number, right: number } | null>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+
+    const handleToggle = (e: React.MouseEvent) => {
+        // Stop propagation to prevent immediate closing if using global click listener
+        e.stopPropagation();
+        
+        if (!isOpen && buttonRef.current) {
+            // CAPTURE CURRENT VIEWPORT POSITION
+            const rect = buttonRef.current.getBoundingClientRect();
+            // Calculate fixed position relative to viewport
+            // We align the right edge of the popup with the right edge of the button
+            const rightEdge = window.innerWidth - rect.right;
+            setPinnedPosition({
+                top: rect.bottom + 8,
+                right: rightEdge
+            });
+            setIsOpen(true);
+        } else {
+            setIsOpen(false);
+        }
+    };
+
+    return (
+        <>
+            <button 
+                ref={buttonRef}
+                onClick={handleToggle} 
+                className={`p-2 rounded-xl transition-all shadow-sm ${isOpen ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-700 dark:text-indigo-400' : 'bg-gray-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                title="Adjust Font Size"
+            >
+                <Icon name="TextSize" size={18}/>
+            </button>
+            
+            {/* FIXED PORTAL-LIKE OVERLAY */}
+            {isOpen && pinnedPosition && (
+                <>
+                    {/* Invisible Backdrop to handle click-outside */}
+                    <div 
+                        className="fixed inset-0 z-[99] cursor-default" 
+                        onClick={() => setIsOpen(false)}
+                    ></div>
+
+                    {/* THE STATIC CONTROL PANEL */}
+                    <div 
+                        className="fixed z-[100] flex items-center bg-white dark:bg-slate-900 rounded-full p-1.5 shadow-2xl border border-gray-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 min-w-[140px] justify-between"
+                        style={{
+                            top: `${pinnedPosition.top}px`,
+                            right: `${pinnedPosition.right}px`,
+                            // Ensure it stays "glued" to screen glass coordinates
+                        }}
+                        onClick={(e) => e.stopPropagation()} // Prevent backdrop click from closing when clicking inside
+                    >
+                         <button onClick={() => adjustFontSize('decrease')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all flex-shrink-0 active:scale-90"><Icon name="Minus" size={16}/></button>
+                         <span className="text-sm font-black text-slate-800 dark:text-white select-none px-2 w-12 text-center">{(fontSizeScale * 100).toFixed(0)}%</span>
+                         <button onClick={() => adjustFontSize('increase')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all flex-shrink-0 active:scale-90"><Icon name="Plus" size={16}/></button>
+                    </div>
+                </>
+            )}
+        </>
+    );
+};
 
 export const SparkleLoader = ({ className }: any) => (
     <div className={`flex items-center justify-center gap-1 ${className}`}>
@@ -216,27 +274,45 @@ export const SparkleLoader = ({ className }: any) => (
 );
 
 export const SnowOverlay = () => {
+    // Google AI Studio style: ~100 small particles, low opacity, full screen, slow drift.
+    // Increased Z-Index to 99999 to cover Sidebar and everything else.
+    const flakes = Array.from({ length: 100 }).map((_, i) => ({
+        left: Math.random() * 100,
+        // Slower duration for a "drifting" feel
+        duration: Math.random() * 20 + 10, 
+        delay: Math.random() * 20,
+        // Much smaller size: 2px to 5px
+        size: Math.random() * 3 + 2, 
+        opacity: Math.random() * 0.5 + 0.1,
+    }));
+
     return (
-        <div className="fixed inset-0 pointer-events-none z-[9999] overflow-hidden" aria-hidden="true">
-            {[...Array(20)].map((_, i) => (
-                <div 
+        <div className="fixed inset-0 pointer-events-none z-[99999] overflow-hidden select-none">
+            {flakes.map((f, i) => (
+                <div
                     key={i}
-                    className="absolute text-white/50"
+                    className="absolute bg-white rounded-full"
                     style={{
-                        left: `${Math.random() * 100}%`,
-                        top: `-10%`,
-                        animation: `fall ${Math.random() * 5 + 5}s linear infinite`,
-                        animationDelay: `${Math.random() * 5}s`,
-                        fontSize: `${Math.random() * 20 + 10}px`
+                        left: `${f.left}%`,
+                        top: -10,
+                        width: `${f.size}px`,
+                        height: `${f.size}px`,
+                        opacity: f.opacity,
+                        animation: `fall ${f.duration}s linear infinite`,
+                        animationDelay: `-${f.delay}s`,
+                        boxShadow: '0 0 2px rgba(255,255,255,0.8)'
                     }}
-                >
-                    ❄
-                </div>
+                />
             ))}
             <style>{`
                 @keyframes fall {
-                    0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-                    100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+                    0% { transform: translateY(-10vh) translateX(0px); opacity: 0; }
+                    10% { opacity: 1; }
+                    25% { transform: translateY(25vh) translateX(10px); }
+                    50% { transform: translateY(50vh) translateX(-10px); }
+                    75% { transform: translateY(75vh) translateX(10px); }
+                    90% { opacity: 1; }
+                    100% { transform: translateY(110vh) translateX(0px); opacity: 0; }
                 }
             `}</style>
         </div>

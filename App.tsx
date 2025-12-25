@@ -73,6 +73,8 @@ function App() {
     // Fluid Tab State
     const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0 });
     const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
+    const tabsContainerRef = useRef<HTMLDivElement>(null); // New Ref for container
+    
     const tabsList = [
         { id: 'evidence', label: '1. Evidence', icon: 'ScanText' }, 
         { id: 'findings', label: '2. Findings', icon: 'Wand2' }, 
@@ -86,7 +88,9 @@ function App() {
 
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
-    const isAnalyzeDisabled = isAnalyzeLoading || selectedClauses.length === 0;
+    
+    // NEW: Strict Readiness Check
+    const isReadyForAnalysis = !isAnalyzeLoading && selectedClauses.length > 0 && hasEvidence;
 
     // --- EFFECTS & PERSISTENCE ---
     useEffect(() => {
@@ -111,20 +115,48 @@ function App() {
         } else {
             setIsDarkMode(true); 
         }
+
+        // Mobile: Auto close sidebar on initial load if screen is small
+        if (window.innerWidth < 768) {
+            setIsSidebarOpen(false);
+        }
     }, []);
 
-    // Update Fluid Tab Position
+    // Update Fluid Tab Position - Enhanced Logic
     useEffect(() => {
-        const activeIndex = tabsList.findIndex(t => t.id === layoutMode);
-        const el = tabsRef.current[activeIndex];
-        if (el) {
-            setTabStyle({
-                left: el.offsetLeft,
-                width: el.offsetWidth,
-                opacity: 1
-            });
+        const updateTabs = () => {
+            const activeIndex = tabsList.findIndex(t => t.id === layoutMode);
+            const el = tabsRef.current[activeIndex];
+            if (el) {
+                setTabStyle({
+                    left: el.offsetLeft,
+                    width: el.offsetWidth,
+                    opacity: 1
+                });
+            }
+        };
+
+        // 1. Run immediately
+        updateTabs();
+
+        // 2. Run slightly delayed to catch font reflows
+        const t = setTimeout(updateTabs, 50);
+
+        // 3. ResizeObserver for robust layout tracking
+        // This detects when the tab container itself changes size (e.g. font scale up pushes width)
+        const observer = new ResizeObserver(() => {
+            updateTabs();
+        });
+        
+        if (tabsContainerRef.current) {
+            observer.observe(tabsContainerRef.current);
         }
-    }, [layoutMode, sidebarWidth]); // Recalc on sidebar resize too
+
+        return () => {
+            clearTimeout(t);
+            observer.disconnect();
+        };
+    }, [layoutMode, sidebarWidth, fontSizeScale]); // Added fontSizeScale explicitly
 
     const loadSessionData = () => {
         try {
@@ -617,8 +649,19 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         }
     };
 
+    // Tooltip Generator
+    const getAnalyzeTooltip = () => {
+        if (isAnalyzeLoading) return "AI is analyzing...";
+        const missing = [];
+        if (selectedClauses.length === 0) missing.push("Clauses");
+        if (!hasEvidence) missing.push("Evidence");
+        
+        if (missing.length > 0) return `Feature Unavailable. Missing: ${missing.join(" & ")}.`;
+        return "Ready! Click to Start AI Analysis.";
+    };
+
     return (
-        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200 relative">
             {/* Toast Notification */}
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
@@ -643,19 +686,19 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 </div>
             )}
 
-            <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-16">
-                <div className="flex items-center gap-6">
+            <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-16 relative">
+                <div className="flex items-center gap-4 md:gap-6">
                     {/* 
                         FIXED LOGO - INFINITY
                     */}
                     <div 
                         className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
-                        title="ISO Audit Pro"
+                        title="Toggle Sidebar"
                     >
-                        <div className="relative w-14 h-14 flex items-center justify-center">
+                        <div className="relative w-10 h-10 md:w-14 md:h-14 flex items-center justify-center">
                             {isSidebarOpen ? 
-                                <Icon name="TDLogo" size={42} className="relative z-10" /> 
+                                <Icon name="TDLogo" size={32} className="relative z-10 md:w-[42px] md:h-[42px]" /> 
                                 : 
                                 <div className="relative w-8 h-8">
                                     <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
@@ -666,56 +709,72 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     </div>
                     
                     <div className="flex flex-col">
-                        <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">ISO Audit <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-400">Pro</span></h1>
-                        <div className="flex items-center gap-2 mt-1">
+                        <h1 className="text-lg md:text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">ISO Audit <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-400">Pro</span></h1>
+                        <div className="hidden sm:flex items-center gap-2 mt-1">
                             <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border dark:border-slate-700">v{APP_VERSION}</span>
                             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}</span>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {isSnowing && <SnowOverlay />}
-                    <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl transition-all ${isSnowing ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`} title="Winter Mode"><Icon name="Snowflake" size={18}/></button>
+                <div className="flex items-center gap-1 md:gap-2">
+                    <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl transition-all hidden sm:block ${isSnowing ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`} title="Winter Mode"><Icon name="Snowflake" size={18}/></button>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm">
                         <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                     </button>
                     
                     <div className="h-6 w-px bg-gray-200 dark:bg-slate-800 mx-1"></div>
-                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
+                    <div className="hidden sm:block">
+                        <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
+                    </div>
                     
                     {/* API Key Status Indicator */}
                     <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${activeKeyId ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 animate-pulse'}`}>
                         <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                        <span className="text-xs font-bold hidden sm:block">{activeKeyId ? 'API Ready' : 'No Key'}</span>
+                        <span className="text-xs font-bold hidden md:block">{activeKeyId ? 'API Ready' : 'No Key'}</span>
                     </button>
                     
                     <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm"><Icon name="Settings" size={18}/></button>
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95"><Icon name="Info" size={18}/></button>
+                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95 hidden sm:block"><Icon name="Info" size={18}/></button>
                 </div>
             </div>
 
             <div className="flex-1 flex overflow-hidden relative">
-                <Sidebar 
-                    isOpen={isSidebarOpen} 
-                    width={sidebarWidth} 
-                    setWidth={setSidebarWidth} 
-                    standards={allStandards} 
-                    standardKey={standardKey} 
-                    setStandardKey={setStandardKey} 
-                    auditInfo={auditInfo} 
-                    setAuditInfo={setAuditInfo}
-                    selectedClauses={selectedClauses}
-                    setSelectedClauses={setSelectedClauses}
-                    onAddNewStandard={() => {
-                        const name = prompt("Enter new Standard Name (e.g. ISO 45001:2018):");
-                        if(name) setCustomStandards(prev => ({...prev, [name]: { name, description: "Custom Standard", groups: [] }}));
-                    }}
-                    onUpdateStandard={handleUpdateStandard}
-                    onResetStandard={handleResetStandard}
-                />
+                {/* 
+                    MOBILE RESPONSIVE SIDEBAR LOGIC:
+                    - On desktop (md+): Relative positioning, pushes content.
+                    - On mobile: Absolute overlay (z-[60]) to cover content, preserving layout integrity.
+                */}
+                <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} absolute inset-y-0 left-0 z-[60] md:relative md:translate-x-0 md:transform-none transition-transform duration-300 ease-in-out h-full`}>
+                    <Sidebar 
+                        isOpen={isSidebarOpen} 
+                        width={sidebarWidth} 
+                        setWidth={setSidebarWidth} 
+                        standards={allStandards} 
+                        standardKey={standardKey} 
+                        setStandardKey={setStandardKey} 
+                        auditInfo={auditInfo} 
+                        setAuditInfo={setAuditInfo}
+                        selectedClauses={selectedClauses}
+                        setSelectedClauses={setSelectedClauses}
+                        onAddNewStandard={() => {
+                            const name = prompt("Enter new Standard Name (e.g. ISO 45001:2018):");
+                            if(name) setCustomStandards(prev => ({...prev, [name]: { name, description: "Custom Standard", groups: [] }}));
+                        }}
+                        onUpdateStandard={handleUpdateStandard}
+                        onResetStandard={handleResetStandard}
+                    />
+                </div>
                 
-                <div className={`flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-slate-950 transition-all relative ${isDragging ? 'ring-4 ring-indigo-500/50 scale-[0.99]' : ''}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                {/* Mobile Backdrop for Sidebar */}
+                {isSidebarOpen && (
+                    <div 
+                        className="fixed inset-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity" 
+                        onClick={() => setIsSidebarOpen(false)}
+                    />
+                )}
+                
+                <div className={`flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-slate-950 transition-all relative w-full ${isDragging ? 'ring-4 ring-indigo-500/50 scale-[0.99]' : ''}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
                     {isDragging && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-500/10 backdrop-blur-sm rounded-3xl border-4 border-dashed border-indigo-500 m-4 pointer-events-none">
                             <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl flex flex-col items-center animate-bounce">
@@ -726,31 +785,36 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         </div>
                     )}
 
-                    {/* Toolbar */}
-                    <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center">
-                        <div className="relative flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
-                            {/* FLUID ACTIVE INDICATOR */}
-                            <div 
-                                className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
-                                style={{
-                                    left: tabStyle.left,
-                                    width: tabStyle.width,
-                                    opacity: tabStyle.opacity
-                                }}
-                            />
-                            
-                            {tabsList.map((tab, idx) => (
-                                <button 
-                                    key={tab.id} 
-                                    ref={el => { tabsRef.current[idx] = el; }}
-                                    onClick={() => setLayoutMode(tab.id as LayoutMode)} 
-                                    className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                                >
-                                    <Icon name={tab.icon} size={16}/> {tab.label}
-                                </button>
-                            ))}
+                    {/* Toolbar - REFACTORED FOR MOBILE SCROLLING FIX */}
+                    <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center">
+                        {/* Scrollable Tabs Area */}
+                        <div className="overflow-x-auto flex-1 min-w-0 no-scrollbar pr-2">
+                            <div ref={tabsContainerRef} className="relative flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-max">
+                                {/* FLUID ACTIVE INDICATOR */}
+                                <div 
+                                    className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
+                                    style={{
+                                        left: tabStyle.left,
+                                        width: tabStyle.width,
+                                        opacity: tabStyle.opacity
+                                    }}
+                                />
+                                
+                                {tabsList.map((tab, idx) => (
+                                    <button 
+                                        key={tab.id} 
+                                        ref={el => { tabsRef.current[idx] = el; }}
+                                        onClick={() => setLayoutMode(tab.id as LayoutMode)} 
+                                        className={`relative z-10 flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                    >
+                                        <Icon name={tab.icon} size={16}/> {tab.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex gap-2 items-center">
+
+                        {/* Fixed Actions Area */}
+                        <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
                             <button onClick={handleRecall} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all" title="Recall Session">
                                 <Icon name="History" size={18}/>
                             </button>
@@ -760,7 +824,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-hidden relative p-6">
+                    <div className="flex-1 overflow-hidden relative p-4 md:p-6">
                         {/* 1. EVIDENCE MODE */}
                         {layoutMode === 'evidence' && (
                             <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4">
@@ -823,9 +887,9 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     )}
                                 </div>
 
-                                <div className="flex justify-between items-center mt-2">
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all" title="Export Raw Text">
+                                <div className="flex flex-col md:flex-row justify-between items-center mt-2 gap-3 md:gap-0">
+                                    <div className="flex gap-2 w-full md:w-auto">
+                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="flex-1 md:flex-none justify-center px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all" title="Export Raw Text">
                                             {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
                                             <div className="lang-pill-container ml-1">
                                                 <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -835,11 +899,16 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     </div>
                                     <button 
                                         onClick={handleAnalyze} 
-                                        disabled={isAnalyzeDisabled} 
-                                        className="btn-brain-wave px-8 py-4 rounded-2xl text-white font-black text-sm uppercase tracking-wider shadow-xl shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                        disabled={!isReadyForAnalysis}
+                                        title={getAnalyzeTooltip()} 
+                                        className={`w-full md:w-auto px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-3 ${
+                                            isReadyForAnalysis 
+                                            ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" 
+                                            : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"
+                                        }`}
                                     >
                                         {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={20}/>}
-                                        {isAnalyzeLoading ? "AI Auditor Analyzing..." : "Run Compliance Analysis"}
+                                        {isAnalyzeLoading ? "AI Auditor Analyzing..." : "Compliance Analysis"}
                                     </button>
                                 </div>
                             </div>
@@ -883,7 +952,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     ))}
                                 </div>
                                 <div className="mt-4 flex justify-end">
-                                    <button onClick={handleGenerateReport} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform">
+                                    <button onClick={handleGenerateReport} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform w-full md:w-auto justify-center">
                                         Generate Full Report <Icon name="FileText" size={18}/>
                                     </button>
                                 </div>
@@ -915,7 +984,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         <span onClick={() => setExportLanguage('en')} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
                                         <span onClick={() => setExportLanguage('vi')} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
                                     </div>
-                                    <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all active:scale-95">
+                                    <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all active:scale-95 w-full md:w-auto justify-center">
                                         {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}
                                         Download Report
                                     </button>
@@ -1016,6 +1085,12 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     </div>
                 </div>
             </Modal>
+            
+            {/* 
+               MOVED: SnowOverlay is now the absolute last element in the root div.
+               This ensures it sits on top of everything else (Header, Sidebar, Content).
+            */}
+            {isSnowing && <SnowOverlay />}
         </div>
     );
 }

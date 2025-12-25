@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
@@ -29,6 +28,10 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
     const [showIntegrityModal, setShowIntegrityModal] = useState(false);
     
+    // UI State: Collapse Audit Info to save space
+    // Default: Collapsed on Mobile (<768px), Expanded on Desktop
+    const [isInfoExpanded, setIsInfoExpanded] = useState(window.innerWidth > 768);
+
     // Auto-repair states
     const [isRepairing, setIsRepairing] = useState(false);
     const [copiedClauseId, setCopiedClauseId] = useState<string | null>(null);
@@ -320,7 +323,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         <div className="flex items-start justify-between gap-1.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase shrink-0 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{c.code}</span>
-                                <span className="text-sm text-slate-900 dark:text-slate-100 font-extrabold tracking-tight leading-tight">{c.title}</span>
+                                <span className="text-sm text-slate-900 dark:text-slate-100 font-medium tracking-tight leading-tight">{c.title}</span>
                                 {isRepaired && <span className="text-[9px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-md animate-pulse">UPDATED</span>}
                             </div>
                             <div className="flex items-center gap-2">
@@ -405,43 +408,63 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     })();
 
     return (
-        <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-300 ease-in-out`} style={{ width: isOpen ? width : 0 }}>
-             {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle" onMouseDown={startResizing} />}
-            <div className="p-5 border-b border-gray-100 dark:border-slate-800 min-w-[360px] bg-white dark:bg-slate-900">
-                <div className="space-y-3">
-                    <div className="relative">
-                        <IconSelect 
-                            icon="Book" 
-                            iconColor={auditFieldIconColor} 
-                            value={standardKey} 
-                            onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} 
-                            options={standardOptions} 
-                            defaultText="Select ISO Standard" 
-                        />
-                        {standardKey && (
-                            <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
-                                <Icon name={health.isHealthy ? "CheckCircle2" : "AlertCircle"} size={14}/>
-                            </button>
-                        )}
-                    </div>
-                    <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
-                    <div className="grid grid-cols-2 gap-3">
-                        <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
-                        <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
-                    </div>
+        <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-300 ease-in-out h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
+             {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
+            <div className="p-5 border-b border-gray-100 dark:border-slate-800 w-full md:min-w-[360px] bg-white dark:bg-slate-900 flex flex-col gap-3">
+                
+                {/* 1. AUDIT DETAILS ACCORDION - MOVED TO TOP AS REQUESTED */}
+                <div className="border border-gray-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                    <button 
+                        onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+                        className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <Icon name="Info" size={12} className="text-indigo-500"/> Audit Details
+                        </span>
+                        <Icon name={isInfoExpanded ? "ChevronUp" : "ChevronDown"} size={12} className="text-slate-400"/>
+                    </button>
+                    
+                    {isInfoExpanded && (
+                        <div className="p-3 bg-white dark:bg-slate-900 space-y-3 animate-in slide-in-from-top-2 fade-in">
+                            <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
+                                <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
+                                <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
+                            </div>
+                            <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. STANDARD SELECTOR - MOVED BELOW DETAILS */}
+                <div className="relative">
+                    <IconSelect 
+                        icon="Book" 
+                        iconColor={auditFieldIconColor} 
+                        value={standardKey} 
+                        onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} 
+                        options={standardOptions} 
+                        defaultText="Select ISO Standard" 
+                    />
+                    {standardKey && (
+                        <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
+                            <Icon name={health.isHealthy ? "CheckCircle2" : "AlertCircle"} size={14}/>
+                        </button>
+                    )}
                 </div>
             </div>
-            <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 min-w-[360px]">
-                <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10">
-                    <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} className="mb-3"/>
+
+            {/* 3. STICKY SEARCH & ACTIONS - Cleaned Up */}
+            <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[360px]">
+                <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0">
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2">
                             <span className="text-blue-700 dark:text-blue-400 font-bold pl-1"><Icon name="Search" size={14}/></span>
-                            <input className="w-full bg-transparent py-2 px-1 text-xs outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
+                            <input className="w-full bg-transparent py-2 px-1 text-xs font-medium outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
                             
                             {/* Expand/Collapse All Button */}
                             <button 
@@ -466,6 +489,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         )}
                     </div>
                 </div>
+                {/* 4. SCROLLABLE CLAUSE LIST - Max Space Available */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3">{renderClauses()}</div>
             </div>
 
