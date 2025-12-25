@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
@@ -258,6 +259,27 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         setSelectedClauses(prev => allSelected ? prev.filter(id => !targetIds.includes(id)) : Array.from(new Set([...prev, ...targetIds])));
     };
 
+    const toggleGroupSelection = (group: Group) => {
+        const getAllIds = (list: Clause[]): string[] => {
+            let ids: string[] = [];
+            list.forEach(c => {
+                ids.push(c.id);
+                if (c.subClauses) ids.push(...getAllIds(c.subClauses));
+            });
+            return ids;
+        };
+        const groupIds = getAllIds(group.clauses);
+        const allSelected = groupIds.every(id => selectedClauses.includes(id));
+        
+        if (allSelected) {
+            // Deselect all
+            setSelectedClauses(prev => prev.filter(id => !groupIds.includes(id)));
+        } else {
+            // Select all
+            setSelectedClauses(prev => [...new Set([...prev, ...groupIds])]);
+        }
+    };
+
     // Expand/Collapse Logic
     const allGroupIds = standards[standardKey]?.groups.map(g => g.id) || [];
     const areAllGroupsExpanded = allGroupIds.length > 0 && expandedGroups.length === allGroupIds.length;
@@ -349,7 +371,11 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 <div key={g.id} className="mb-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div className="flex items-center justify-between p-3.5 bg-gray-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" onClick={() => toggleGroupExpand(g.id)}>
                         <div className="flex items-center gap-3">
-                            <button className={`p-2 rounded-xl shadow-lg text-white ${getGroupColorClass(g.title)}`}>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); toggleGroupSelection(g); }}
+                                className={`p-2 rounded-xl shadow-lg text-white ${getGroupColorClass(g.title)} hover:scale-110 active:scale-95 transition-transform`}
+                                title="Click to Select/Deselect All in Group"
+                            >
                                 <Icon name={g.icon} size={14}/>
                             </button>
                             <h4 className="text-xs font-black text-slate-950 dark:text-white uppercase tracking-widest">{g.title}</h4>
@@ -401,7 +427,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
                     <div className="grid grid-cols-2 gap-3">
                         <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="Audit ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />

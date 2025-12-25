@@ -1,8 +1,22 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 
 // --- Icons ---
 export const Icons: Record<string, React.ReactNode> = {
+    TDLogo: (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="tealNeonGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#00f2c3" stopOpacity="1" />
+                    <stop offset="100%" stopColor="#0098f0" stopOpacity="1" />
+                </linearGradient>
+            </defs>
+            <path d="M 20 20 H 65 L 55 30 H 30 V 65 L 20 75 V 20 Z" fill="url(#tealNeonGrad)"/>
+            <path fillRule="evenodd" clipRule="evenodd" 
+                  d="M 40 40 H 60 C 75 40, 85 50, 85 65 C 85 80, 75 90, 60 90 H 35 L 45 80 H 60 C 70 80, 75 75, 75 65 C 75 55, 70 50, 60 50 H 50 V 40 Z" 
+                  fill="url(#tealNeonGrad)"/>
+            <path d="M 30 65 L 60 35" stroke="white" strokeWidth="0.5" strokeOpacity="0.3"/>
+        </svg>
+    ),
     TDSolidLink: (
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
             <defs>
@@ -30,6 +44,38 @@ export const Icons: Record<string, React.ReactNode> = {
             />
         </svg>
     ),
+    
+    // --- 13 NEW DEMO ICONS FOR NEW SESSION ---
+    Session1_SparklePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M12 22v-4"/><path d="m19.07 19.07-2.83-2.83"/><path d="M22 12h-4"/><path d="m19.07 4.93-2.83 2.83"/></svg>, // Burst
+    Session2_PlayCircle: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
+    Session3_Rocket: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.1 4-1 4-1"/><path d="M12 15v5s3.03-.55 4-2c1.1-1.62 1-4 1-4"/></svg>,
+    Session4_FilePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
+    Session5_RefreshCircle: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>,
+    Session6_Zap: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    Session7_Compass: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>,
+    Session8_Flag: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>,
+    Session9_DoorOpen: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/></svg>,
+    Session10_Pulse: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+    Session11_GridAdd: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><path d="M3 17.5h7"/><path d="M6.5 14v7"/></svg>,
+    Session12_CleanSheet: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M3 9h18"/></svg>,
+    Session13_PowerBtn: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>,
+
+    // --- 13 NEW DEMO ICONS FOR UPLOAD ---
+    Demo1_MultiFiles: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M3 15h6"/><path d="M6 12v6"/><path d="M16 18l2-2 2 2"/><path d="M18 16v6"/></svg>,
+    Demo2_CloudAdd: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 17l-4-4-4 4"/></svg>,
+    Demo3_FolderUp: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 10v6"/><path d="m9 13 3-3 3 3"/></svg>,
+    Demo4_ImgStack: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><line x1="16" y1="5" x2="22" y2="5"/><line x1="19" y1="2" x2="19" y2="8"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>,
+    Demo5_Clip: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/><path d="M12 12h.01"/></svg>,
+    Demo6_BoxUp: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="12.01" x2="12" y2="22.08"/><polyline points="16 12 12 8 8 12"/></svg>,
+    Demo7_PlusCircle: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
+    Demo8_GridPlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 17h7"/><path d="M17.5 13.5v7"/></svg>,
+    Demo9_DocUp: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>,
+    Demo10_Layers: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="M12 8v4"/></svg>,
+    Demo11_Scan: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/><path d="M12 8v8"/></svg>,
+    Demo12_Attach: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 16.5 7-7"/><path d="m2 2 20 20"/><path d="m12 12 7-7"/><path d="M17 17v5"/><path d="M22 12h-5"/></svg>,
+    Demo13_Meteor: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m13 4 8.2 2.5a2 2 0 0 1 1.3 2.5L20 17.5"/><path d="m8.5 7.5 10 10"/><path d="M2 13.5V19a2 2 0 0 0 2 2h5.5"/><path d="m13.5 8.5-5 5"/><path d="M7 15c-1.5 1-2 2.5-2 2.5s1.5.5 2.5-2"/><path d="M12 4V2"/><path d="m16 6 2-2"/><path d="M8 6 6 4"/></svg>,
+    
+    // --- Existing Icons ---
     Sparkle: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-amber-400 drop-shadow-[0_0_4px_rgba(252,211,77,0.7)] animate-pulse-slow"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>,
     FilePlus2: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M3 15h6"/><path d="M6 12v6"/></svg>,
     History: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
@@ -77,226 +123,138 @@ export const Icons: Record<string, React.ReactNode> = {
     ScanText: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/><path d="M7 12h.01"/><path d="M10 12h4"/><path d="M17 12h.01"/><path d="M12 7v10"/></svg>,
     Building: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 18h.01"/></svg>,
     User: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-    Snowflake: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
+    Snowflake: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>,
+    // Missing icon added for ReleaseNotesModal
+    CheckLineart: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
 };
 
-export const Icon = ({ name, size = 16, className = "" }: { name: string; size?: number; className?: string }) => {
-    const svg = Icons[name];
-    if (!svg) return null;
-    return React.cloneElement(svg as React.ReactElement<any>, { width: size, height: size, className });
+// --- Functional Components ---
+
+export const Icon = ({ name, size = 18, className = "", onClick }: { name: string, size?: number, className?: string, onClick?: (e: any) => void }) => {
+    const iconNode = Icons[name] || Icons['AlertCircle']; // Fallback
+    
+    if (React.isValidElement(iconNode)) {
+        const element = iconNode as React.ReactElement<any>;
+         return React.cloneElement(element, {
+            width: size,
+            height: size,
+            className: `${className} ${element.props.className || ''}`,
+            onClick
+        });
+    }
+    return <span className={className} onClick={onClick}>{iconNode}</span>;
 };
 
-export const CheckLineart = ({ size = 20, className = '' }: { size?: number, className?: string }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
-);
-
-// --- Inputs ---
-export const IconInput = ({ icon, placeholder, value, onChange, iconColor = "text-gray-400", className = "" }: any) => (
-    <div className={`relative group ${className}`}>
-        <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none transition-colors ${iconColor} group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400`}>
-            <Icon name={icon} size={18} /> 
+export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultText }: any) => (
+    <div className="relative group">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200">
+            <div className={iconColor}><Icon name={icon} size={16} /></div>
         </div>
-        <input type="text" className="w-full pl-10 pr-3 py-2.5 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-indigo-100 dark:focus:border-indigo-900 rounded-xl text-sm transition-all text-slate-900 dark:text-slate-100 font-normal placeholder-gray-400 focus:bg-white dark:focus:bg-slate-900 shadow-sm hover:bg-white dark:hover:bg-slate-850" placeholder={placeholder} value={value} onChange={onChange}/>
-    </div>
-);
-
-export const IconSelect = ({ icon, value, onChange, options, defaultText, iconColor = "text-gray-400", className = "" }: any) => (
-    <div className={`relative group ${className}`}>
-         <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none transition-colors ${iconColor} group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400`}>
-            <Icon name={icon} size={18} />
-        </div>
-        <select className={`w-full pl-10 pr-8 py-2.5 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-indigo-100 dark:focus:border-indigo-900 rounded-xl text-sm appearance-none cursor-pointer transition-all shadow-sm hover:bg-white dark:hover:bg-slate-850 focus:bg-white dark:focus:bg-slate-900 font-normal ${value === "" ? "text-gray-400" : "text-slate-900 dark:text-slate-100"}`} value={value} onChange={onChange}>
+        <select 
+            value={value} 
+            onChange={onChange}
+            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+        >
             <option value="" disabled>{defaultText}</option>
-            {options.map((opt: any) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            {options.map((opt: any) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
         </select>
-        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-500"><Icon name="ChevronDown" size={14} /></div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-500 transition-colors">
+            <Icon name="ChevronDown" size={14} />
+        </div>
     </div>
 );
 
-// --- Modal ---
-export const Modal = ({ isOpen, title, onClose, children }: { isOpen: boolean; title: string; onClose: () => void; children?: React.ReactNode }) => {
+export const IconInput = ({ icon, iconColor, placeholder, value, onChange, className = "" }: any) => (
+    <div className={`relative group ${className}`}>
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200">
+            <div className={iconColor}><Icon name={icon} size={16} /></div>
+        </div>
+        <input 
+            type="text" 
+            placeholder={placeholder}
+            value={value}
+            onChange={onChange}
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+        />
+    </div>
+);
+
+export const Modal = ({ isOpen, title, onClose, children }: any) => {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4 fade-in backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-100 dark:border-slate-800 transform transition-all" onClick={e => e.stopPropagation()}>
-                <div className="p-5 border-b dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50 rounded-t-2xl">
-                    <h3 className="font-bold text-lg text-indigo-900 dark:text-indigo-400 flex items-center gap-2">{title}</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-red-500 p-1"><Icon name="X" size={20}/></button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all scale-100 animate-in zoom-in-95 duration-200 overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900">
+                    <h3 className="text-lg font-black text-slate-800 dark:text-white tracking-tight">{title}</h3>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-colors text-slate-400">
+                        <Icon name="X" size={20} />
+                    </button>
                 </div>
-                <div className="p-6 max-h-[80vh] overflow-y-auto custom-scrollbar">{children}</div>
+                <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    {children}
+                </div>
             </div>
         </div>
     );
 };
 
-// --- Loader ---
-export const SparkleLoader = ({ size = 20, className = "" }: { size?: number, className?: string }) => {
-    const colorClass = "text-indigo-600 dark:text-amber-400 drop-shadow-[0_0_8px_rgba(79,70,229,0.8)] dark:drop-shadow-[0_0_8px_rgba(252,211,77,0.8)]";
-    return (
-        <div className={`relative flex items-center justify-center ${className}`}>
-             <Icon name="Sparkle" size={size} className={`animate-sparkle-spin ${colorClass}`}/>
-        </div>
-    );
-};
+export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => (
+    <div className="flex items-center bg-gray-50 dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-gray-100 dark:border-slate-700">
+        <button onClick={() => adjustFontSize('decrease')} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-500 hover:text-indigo-600 transition-all"><Icon name="Minus" size={14}/></button>
+        <span className="text-[10px] font-bold w-8 text-center text-slate-700 dark:text-slate-300">{(fontSizeScale * 100).toFixed(0)}%</span>
+        <button onClick={() => adjustFontSize('increase')} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-500 hover:text-indigo-600 transition-all"><Icon name="Plus" size={14}/></button>
+    </div>
+);
 
-// --- NEW: VIVID NEURAL LOADER ---
-export const AINeuralLoader = ({ message }: { message?: string }) => {
-    const [status, setStatus] = useState(message || "Initializing AI...");
-    
-    // Auto-cycle status messages for effect
-    useEffect(() => {
-        if (!message) {
-            const steps = [
-                "Connecting neural nodes...", 
-                "Parsing visual data...", 
-                "Synthesizing logic patterns...", 
-                "Consulting ISO Standards...",
-                "Drafting insights..."
-            ];
-            let i = 0;
-            const timer = setInterval(() => {
-                i = (i + 1) % steps.length;
-                setStatus(steps[i]);
-            }, 1800);
-            return () => clearInterval(timer);
-        } else {
-            setStatus(message);
-        }
-    }, [message]);
-
-    return (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300 rounded-xl">
-            {/* The Neural Orb */}
-            <div className="relative w-24 h-24 mb-6">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 blur-xl opacity-60 animate-pulse-slow"></div>
-                <div className="absolute inset-0 rounded-full border-4 border-t-indigo-500 border-r-purple-500 border-b-cyan-500 border-l-transparent animate-spin"></div>
-                <div className="absolute inset-2 rounded-full border-4 border-t-transparent border-r-cyan-400 border-b-purple-400 border-l-indigo-400 animate-spin-reverse opacity-80"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <Icon name="Sparkle" size={32} className="text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] animate-bounce"/>
-                </div>
-            </div>
-            
-            {/* Status Text */}
-            <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-300 dark:to-cyan-300 uppercase tracking-widest animate-pulse">
-                Thinking
-            </h3>
-            <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-2 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-indigo-100 dark:border-slate-700 shadow-sm">
-                {status}
-            </p>
-        </div>
-    );
-};
-
-// --- Font Size Controller ---
-export const FontSizeController = ({ fontSizeScale, adjustFontSize }: { fontSizeScale: number, adjustFontSize: (dir: string) => void }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    
-    useEffect(() => {
-        if (!isOpen) return;
-        const handleClickOutside = (event: MouseEvent) => {
-            if (!(event.target as Element).closest('.font-controller-container')) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen]);
-
-    return (
-        <div className="relative font-controller-container">
-            <button onClick={() => setIsOpen(!isOpen)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm" title="Adjust Font Size">
-                <Icon name="TextSize" size={18}/> 
-            </button>
-            {isOpen && (
-                <div className="absolute right-0 mt-2 w-28 bg-white dark:bg-slate-900 rounded-xl shadow-lg ring-1 ring-black/5 dark:ring-slate-700 p-2 flex items-center justify-center gap-2 z-50 animate-in fade-in slide-in-from-top-1 border dark:border-slate-700">
-                    <button onClick={() => adjustFontSize('decrease')} className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:text-white dark:hover:border-indigo-500 transition-all">
-                        <Icon name="Minus" size={14} className="mx-auto" />
-                    </button>
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-8 text-center">
-                        {(fontSizeScale * 100).toFixed(0)}%
-                    </span>
-                    <button onClick={() => adjustFontSize('increase')} className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:text-white dark:hover:border-indigo-500 transition-all">
-                        <Icon name="Plus" size={14} className="mx-auto" />
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-};
+export const SparkleLoader = ({ className }: any) => (
+    <div className={`flex items-center justify-center gap-1 ${className}`}>
+         <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-indigo-400 opacity-75"></span>
+         <Icon name="Sparkle" size={16} className="animate-spin-slow text-yellow-300"/>
+    </div>
+);
 
 export const SnowOverlay = () => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        let w = canvas.width = window.innerWidth;
-        let h = canvas.height = window.innerHeight;
-        
-        const flakes: {x: number, y: number, r: number, d: number}[] = [];
-        const maxFlakes = 80;
-
-        for(let i = 0; i < maxFlakes; i++) {
-            flakes.push({
-                x: Math.random() * w,
-                y: Math.random() * h,
-                r: Math.random() * 2 + 0.5,
-                d: Math.random() * maxFlakes
-            })
-        }
-
-        const draw = () => {
-            ctx.clearRect(0, 0, w, h);
-            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-            ctx.beginPath();
-            for(let i = 0; i < maxFlakes; i++) {
-                const f = flakes[i];
-                ctx.moveTo(f.x, f.y);
-                ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2, true);
-            }
-            ctx.fill();
-            update();
-            requestAnimationFrame(draw);
-        }
-
-        let angle = 0;
-        const update = () => {
-            angle += 0.01;
-            for(let i = 0; i < maxFlakes; i++) {
-                const f = flakes[i];
-                f.y += Math.pow(f.d, 0.5) * 0.1 + 0.5; // Gravity
-                f.x += Math.sin(angle) * 0.5; // Wind
-
-                if(f.y > h) {
-                    flakes[i] = { x: Math.random() * w, y: 0, r: f.r, d: f.d };
+    return (
+        <div className="fixed inset-0 pointer-events-none z-[9999] overflow-hidden" aria-hidden="true">
+            {[...Array(20)].map((_, i) => (
+                <div 
+                    key={i}
+                    className="absolute text-white/50"
+                    style={{
+                        left: `${Math.random() * 100}%`,
+                        top: `-10%`,
+                        animation: `fall ${Math.random() * 5 + 5}s linear infinite`,
+                        animationDelay: `${Math.random() * 5}s`,
+                        fontSize: `${Math.random() * 20 + 10}px`
+                    }}
+                >
+                    ❄
+                </div>
+            ))}
+            <style>{`
+                @keyframes fall {
+                    0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+                    100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
                 }
-                if (f.x > w + 5 || f.x < -5) {
-                    if (Math.sin(angle) > 0) {
-                        flakes[i] = { x: -5, y: Math.random() * h, r: f.r, d: f.d };
-                    } else {
-                        flakes[i] = { x: w + 5, y: Math.random() * h, r: f.r, d: f.d };
-                    }
-                }
-            }
-        }
-        
-        const anim = requestAnimationFrame(draw);
-        
-        const handleResize = () => {
-            w = canvas.width = window.innerWidth;
-            h = canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', handleResize);
+            `}</style>
+        </div>
+    );
+};
 
-        return () => {
-            cancelAnimationFrame(anim);
-            window.removeEventListener('resize', handleResize);
-        }
-    }, []);
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[9999]" />;
-}
+export const AINeuralLoader = ({ message }: { message: string }) => (
+    <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
+        <div className="relative w-24 h-24 mb-6">
+            <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900 rounded-full"></div>
+            <div className="absolute inset-0 border-t-4 border-indigo-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-4 border-4 border-purple-100 dark:border-purple-900 rounded-full"></div>
+            <div className="absolute inset-4 border-r-4 border-purple-500 rounded-full animate-spin-reverse"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+                 <Icon name="Wand2" className="text-indigo-600 dark:text-indigo-400 animate-pulse" size={24}/>
+            </div>
+        </div>
+        <h3 className="text-lg font-black text-slate-800 dark:text-white mb-2 animate-pulse">{message}</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Gemini AI is processing context...</p>
+    </div>
+);

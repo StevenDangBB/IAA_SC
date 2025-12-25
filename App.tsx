@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
-import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay, IconInput, AINeuralLoader } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, Modal, SnowOverlay, IconInput, AINeuralLoader } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText, validateApiKey } from './services/geminiService';
@@ -12,6 +11,9 @@ declare var mammoth: any;
 
 type LayoutMode = 'evidence' | 'findings' | 'report' | 'split';
 type ExportLanguage = 'en' | 'vi';
+
+// Strictly Infinity Only
+type LogoEffect = 'infinity';
 
 function App() {
     // -- STATE --
@@ -33,6 +35,7 @@ function App() {
 
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
+    const [evidenceLanguage, setEvidenceLanguage] = useState<ExportLanguage>('en'); // New state for Evidence export
     const [isDragging, setIsDragging] = useState(false);
     
     const [reportTemplate, setReportTemplate] = useState<string>("");
@@ -56,14 +59,26 @@ function App() {
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
     const [isNotesExportLoading, setIsNotesExportLoading] = useState(false);
+    const [isEvidenceExportLoading, setIsEvidenceExportLoading] = useState(false); // Loading for Evidence Export
     
     const [aiError, setAiError] = useState<string | null>(null);
     
-    const [importText, setImportText] = useState("");
-    const [importStatus, setImportStatus] = useState("");
+    // Logo Animation State - Fixed to Infinity
+    const [logoKey, setLogoKey] = useState(0);
+    const logoEffect: LogoEffect = 'infinity';
     
+    // Fluid Tab State
+    const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0 });
+    const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
+    const tabsList = [
+        { id: 'evidence', label: '1. Evidence', icon: 'ScanText' }, 
+        { id: 'findings', label: '2. Findings', icon: 'Wand2' }, 
+        { id: 'report', label: '3. Report', icon: 'FileText' }
+    ];
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const templateInputRef = useRef<HTMLInputElement>(null);
+    const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
@@ -85,6 +100,19 @@ function App() {
             setIsDarkMode(true); 
         }
     }, []);
+
+    // Update Fluid Tab Position
+    useEffect(() => {
+        const activeIndex = tabsList.findIndex(t => t.id === layoutMode);
+        const el = tabsRef.current[activeIndex];
+        if (el) {
+            setTabStyle({
+                left: el.offsetLeft,
+                width: el.offsetWidth,
+                opacity: 1
+            });
+        }
+    }, [layoutMode, sidebarWidth]); // Recalc on sidebar resize too
 
     const loadSessionData = () => {
         try {
@@ -303,6 +331,10 @@ function App() {
         }
     };
 
+    const handleRemoveImage = (indexToRemove: number) => {
+        setPastedImages(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     // AI HANDLERS
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
@@ -347,10 +379,33 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         try {
             const promises = pastedImages.map(async (file) => {
                 const b64 = await fileToBase64(file);
-                return await generateOcrContent("Extract text accurately.", b64, file.type);
+                return await generateOcrContent("Extract text accurately. Output raw text only, no additional commentary.", b64, file.type);
             });
             const results = await Promise.all(promises);
-            setEvidence(prev => prev + "\n\n--- OCR EXTRACTED ---\n" + results.join('\n\n') + "\n---------------------\n");
+            const textToInsert = results.join('\n\n');
+            
+            // Insert at cursor position if possible
+            setEvidence(prev => {
+                const textarea = evidenceTextareaRef.current;
+                if (textarea) {
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    
+                    // Construct new value
+                    const newValue = prev.substring(0, start) + textToInsert + prev.substring(end);
+                    
+                    // Update cursor position after render
+                    setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
+                    }, 0);
+                    
+                    return newValue;
+                }
+                // Fallback: append
+                return prev + (prev ? "\n\n" : "") + textToInsert;
+            });
+            
             setPastedImages([]);
         } catch (e: any) { 
             setAiError(e.message || "OCR Processing Failed"); 
@@ -359,29 +414,65 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         }
     };
 
-    const handleExport = async (text: string, type: 'notes' | 'report', lang: ExportLanguage) => {
+    const handleExport = async (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
         if (!text) return;
-        const setLoading = type === 'notes' ? setIsNotesExportLoading : setIsExportLoading;
+        
+        let setLoading = setIsExportLoading;
+        if (type === 'notes') setLoading = setIsNotesExportLoading;
+        if (type === 'evidence') setLoading = setIsEvidenceExportLoading;
+        
         setLoading(true);
         setAiError(null);
 
         try {
             let contentToExport = text;
-            if (lang === 'vi') {
-               try {
-                   const prompt = `Translate to Vietnamese. Maintain formatting. Text: """${text}"""`;
-                   const trans = await generateTextReport(prompt, "Translator.");
-                   if (trans) contentToExport = trans;
-               } catch (aiErr) {
-                   console.warn("Translation failed, falling back to raw text", aiErr);
-                   setAiError("Translation failed (API Error). Exporting original text instead.");
-               }
+            const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
+
+            // Strict Translation Request
+            try {
+                // Enhanced prompt for better audit quality
+                const prompt = `Act as a professional Lead Auditor. Translate or Refine the following audit text to ${targetLangName}. 
+                1. If translating: Ensure strict adherence to ISO terminology (e.g., 'Nonconformity', 'Opportunity for Improvement').
+                2. If already in ${targetLangName}: Refine for professional tone, clarity, and conciseness suitable for an official audit report.
+                3. Maintain all original formatting (markdown, bullet points).
+                
+                Text to process:
+                """${text}"""`;
+                
+                const trans = await generateTextReport(prompt, "You are a professional ISO Audit Translator.");
+                if (trans) contentToExport = trans;
+            } catch (aiErr) {
+                console.warn("Translation failed, falling back to raw text", aiErr);
+                setAiError(`Translation to ${targetLangName} failed. Exporting original text.`);
             }
+
+            // Generate Filename Logic
+            // Rule: [Standard name(27k/9k/14k)]_[Audit type]_[Audit ID]_[Company name]_[department]_[auditor name]_Audit Note A7_[Export date]
+            let stdShort = "ISO";
+            if (standardKey.includes("27001")) stdShort = "27k";
+            else if (standardKey.includes("9001")) stdShort = "9k";
+            else if (standardKey.includes("14001")) stdShort = "14k";
+            else stdShort = cleanFileName(standardKey).substring(0, 10);
+
+            const typeSuffix = type === 'notes' ? 'Audit_Findings' : type === 'evidence' ? 'Audit_Evidence' : 'Audit_Report';
+
+            const fnParts = [
+                stdShort,
+                cleanFileName(auditInfo.type) || "Type",
+                cleanFileName(auditInfo.smo) || "ID",
+                cleanFileName(auditInfo.company) || "Company",
+                cleanFileName(auditInfo.department) || "Dept",
+                cleanFileName(auditInfo.auditor) || "Auditor",
+                typeSuffix,
+                new Date().toISOString().split('T')[0]
+            ];
+            
+            const fileName = fnParts.join('_');
 
             const blob = new Blob([contentToExport], {type: 'text/plain;charset=utf-8'});
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `${cleanFileName(auditInfo.company)}_${type}_${lang}_${new Date().toISOString().split('T')[0]}.txt`;
+            link.download = `${fileName}.txt`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -433,52 +524,59 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 </div>
             )}
 
-            <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-14">
-                <div className="flex items-center gap-5">
-                    {/* Floating Logo Container with Halo Effect */}
-                    <div className="relative group cursor-pointer animate-float" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                        <div className="absolute inset-0 bg-indigo-500/20 dark:bg-cyan-500/30 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className={`relative z-10 transition-transform duration-700 drop-shadow-lg ${isSidebarOpen ? 'rotate-[360deg]' : 'rotate-0'}`}>
-                             <Icon name="TDSolidLink" size={48}/>
+            <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-16">
+                <div className="flex items-center gap-6">
+                    {/* 
+                        FIXED LOGO - INFINITY
+                    */}
+                    <div 
+                        className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500`}
+                        onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
+                        title="ISO Audit Pro"
+                    >
+                        <div className="relative w-14 h-14 flex items-center justify-center">
+                            {isSidebarOpen ? 
+                                <Icon name="TDLogo" size={42} className="relative z-10" /> 
+                                : 
+                                <div className="relative w-8 h-8">
+                                    <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
+                                    <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse"></div>
+                                </div>
+                            }
                         </div>
                     </div>
                     
-                    {/* Enhanced Title Section */}
                     <div className="flex flex-col">
-                        <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-800 to-slate-900 dark:from-white dark:via-indigo-200 dark:to-indigo-400 filter drop-shadow-sm leading-none">
-                            ISO Audit Pro
-                        </h1>
+                        <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">ISO Audit <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-400">Pro</span></h1>
                         <div className="flex items-center gap-2 mt-1">
-                             <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-[10px] font-bold text-indigo-600 dark:text-indigo-300 uppercase tracking-widest shadow-sm">
-                                AI Assistant
-                            </span>
-                            <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500">v{APP_VERSION}</span>
+                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border dark:border-slate-700">v{APP_VERSION}</span>
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}</span>
                         </div>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
-                    <button onClick={handleNewSession} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="New Session"><Icon name="FilePlus2" size={18}/></button>
-                    <button onClick={handleRecall} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all shadow-sm" title="Recall Session"><Icon name="RefreshCw" size={18}/></button>
-                    {isDarkMode && (
-                        <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all shadow-sm ${isSnowing ? 'text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`} title="Let it snow!">
-                            <Icon name="Snowflake" size={18}/>
-                        </button>
-                    )}
-                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
-                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
-                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm relative" title="Settings">
-                        <Icon name="Settings" size={18}/>
-                        {apiKeys.some(k => k.status === 'quota_exceeded' || k.status === 'invalid') && (
-                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                        )}
+                    {isSnowing && <SnowOverlay />}
+                    <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl transition-all ${isSnowing ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`} title="Winter Mode"><Icon name="Snowflake" size={18}/></button>
+                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm">
+                        <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                     </button>
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
+                    
+                    <div className="h-6 w-px bg-gray-200 dark:bg-slate-800 mx-1"></div>
+                    <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
+                    
+                    {/* API Key Status Indicator */}
+                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${activeKeyId ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 animate-pulse'}`}>
+                        <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        <span className="text-xs font-bold hidden sm:block">{activeKeyId ? 'API Ready' : 'No Key'}</span>
+                    </button>
+                    
+                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm"><Icon name="Settings" size={18}/></button>
+                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95"><Icon name="Info" size={18}/></button>
                 </div>
             </div>
 
-            {/* ... [Main Content Body stays mostly same] ... */}
-            <div className="flex flex-1 min-h-0 w-full relative overflow-hidden bg-white dark:bg-slate-900">
+            <div className="flex-1 flex overflow-hidden relative">
                 <Sidebar 
                     isOpen={isSidebarOpen} 
                     width={sidebarWidth} 
@@ -487,311 +585,318 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     standardKey={standardKey} 
                     setStandardKey={setStandardKey} 
                     auditInfo={auditInfo} 
-                    setAuditInfo={setAuditInfo} 
-                    selectedClauses={selectedClauses} 
-                    setSelectedClauses={setSelectedClauses} 
-                    onAddNewStandard={() => setShowImportModal(true)} 
+                    setAuditInfo={setAuditInfo}
+                    selectedClauses={selectedClauses}
+                    setSelectedClauses={setSelectedClauses}
+                    onAddNewStandard={() => {
+                        const name = prompt("Enter new Standard Name (e.g. ISO 45001:2018):");
+                        if(name) setCustomStandards(prev => ({...prev, [name]: { name, description: "Custom Standard", groups: [] }}));
+                    }}
                     onUpdateStandard={handleUpdateStandard}
                     onResetStandard={handleResetStandard}
                 />
                 
-                <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
-                    
-                    {/* Block 1: Evidence */}
-                    <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl relative z-10 ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
-                        <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-20">
-                            <h3 className="font-bold text-lg text-indigo-950 dark:text-indigo-100 flex items-center gap-3">
-                                <span className="bg-indigo-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-indigo-500/20">
-                                    <Icon name="FileText" size={16}/>
-                                </span> 
-                                Evidence & Notes
-                            </h3>
-                            <div className="flex gap-3 items-center">
-                                <div className="flex items-center bg-indigo-50 dark:bg-slate-800 rounded-xl p-1 border border-indigo-100 dark:border-slate-700">
-                                    <button onClick={() => setNotesLanguage('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'en' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>EN</button>
-                                    <button onClick={() => setNotesLanguage('vi')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'vi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>VI</button>
-                                </div>
-                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} disabled={isNotesExportLoading} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Export Evidence">
-                                    {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-white"/> : <><Icon name="Download" size={16} className="text-white"/> Export</>}
+                <div className={`flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-slate-950 transition-all relative ${isDragging ? 'ring-4 ring-indigo-500/50 scale-[0.99]' : ''}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                    {isDragging && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-500/10 backdrop-blur-sm rounded-3xl border-4 border-dashed border-indigo-500 m-4 pointer-events-none">
+                            <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl flex flex-col items-center animate-bounce">
+                                <Icon name="UploadCloud" size={48} className="text-indigo-500 mb-4"/>
+                                <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400">Drop Evidence Here</h3>
+                                <p className="text-slate-500 font-medium">Images or Screenshots</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Toolbar */}
+                    <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center">
+                        <div className="relative flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
+                            {/* FLUID ACTIVE INDICATOR */}
+                            <div 
+                                className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
+                                style={{
+                                    left: tabStyle.left,
+                                    width: tabStyle.width,
+                                    opacity: tabStyle.opacity
+                                }}
+                            />
+                            
+                            {tabsList.map((tab, idx) => (
+                                <button 
+                                    key={tab.id} 
+                                    ref={el => { tabsRef.current[idx] = el; }}
+                                    onClick={() => setLayoutMode(tab.id as LayoutMode)} 
+                                    className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                >
+                                    <Icon name={tab.icon} size={16}/> {tab.label}
                                 </button>
-                                <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-9 h-9 rounded-xl text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
-                            </div>
+                            ))}
                         </div>
-                        <div 
-                            className="flex-1 p-5 flex flex-col min-h-0 relative bg-gray-50/10 dark:bg-slate-950/30"
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                        >
-                            {/* OCR LOADING OVERLAY */}
-                            {isOcrLoading && <AINeuralLoader message="Scanning Documents..." />}
+                        <div className="flex gap-2 items-center">
+                            <button onClick={handleRecall} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all" title="Recall Session">
+                                <Icon name="History" size={18}/>
+                            </button>
+                            <button onClick={handleNewSession} className="p-3 rounded-xl flex items-center justify-center transition-all shadow-sm bg-indigo-100 text-indigo-700 hover:bg-indigo-200 hover:scale-105 dark:bg-indigo-600 dark:text-white dark:hover:bg-indigo-500 dark:shadow-lg dark:shadow-indigo-500/30" title="Start New Session">
+                                <Icon name="Session4_FilePlus" size={18}/>
+                            </button>
+                        </div>
+                    </div>
 
-                            {isDragging && (
-                                <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm z-[60] flex items-center justify-center border-4 border-dashed border-indigo-500 rounded-xl pointer-events-none">
-                                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-3">
-                                        <Icon name="UploadCloud" size={48} className="text-indigo-500 animate-bounce" />
-                                        <p className="font-bold text-indigo-600">Drop files to upload as evidence</p>
+                    <div className="flex-1 overflow-hidden relative p-6">
+                        {/* 1. EVIDENCE MODE */}
+                        {layoutMode === 'evidence' && (
+                            <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4">
+                                <div className="flex-1 flex flex-col gap-4 min-h-0">
+                                    <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col relative group focus-within:ring-2 ring-indigo-500/20 transition-all">
+                                        <textarea 
+                                            ref={evidenceTextareaRef}
+                                            className="flex-1 w-full h-full p-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-mono text-sm leading-relaxed" 
+                                            placeholder="Paste audit evidence here or drag & drop screenshots..." 
+                                            value={evidence} 
+                                            onChange={(e) => setEvidence(e.target.value)}
+                                            onPaste={handlePaste}
+                                        />
+                                        {/* Action Bar Container */}
+                                        <div className="absolute bottom-4 right-4 flex gap-2">
+                                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={(e) => e.target.files && setPastedImages(prev => [...prev, ...Array.from(e.target.files!)])} />
+                                            <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="Upload Files">
+                                                <Icon name="Demo8_GridPlus" size={20}/>
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
 
-                             <div className={`mb-4 p-4 border-2 border-dashed rounded-xl flex items-center justify-between bg-white dark:bg-slate-900 group transition-all ${pastedImages.length ? 'border-emerald-400 bg-emerald-50/5' : 'border-slate-300 dark:border-slate-700'}`}>
-                                <div className="flex-1 flex gap-3 overflow-x-auto custom-scrollbar p-1">
-                                    {pastedImages.length > 0 ? pastedImages.map((f, i) => (
-                                        <div key={i} className="relative shrink-0 pt-2 pr-2">
-                                            <div className="h-14 w-14 rounded-lg bg-gray-100 dark:bg-slate-800 flex items-center justify-center border dark:border-slate-700 overflow-hidden shadow-sm">
-                                                {f.type.includes('image') ? <img src={URL.createObjectURL(f)} className="h-full w-full object-cover" alt="Evidence"/> : <Icon name="FileText" size={16}/>}
-                                            </div>
-                                            <button onClick={() => setPastedImages(p => p.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-lg border border-white hover:bg-red-700"><Icon name="X" size={10}/></button>
-                                        </div>
-                                    )) : (
-                                        <div className="flex flex-col">
-                                            <span className="text-adjustable-xs text-slate-400 font-medium uppercase tracking-tighter">Evidence Processing Queue</span>
-                                            <span className="text-[10px] text-slate-400 italic">Drag images/PDFs here or Ctrl+V to paste...</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex gap-2 ml-4">
-                                    <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => setPastedImages([...pastedImages, ...Array.from(e.target.files || [])])} className="hidden"/>
-                                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl bg-indigo-500 text-white shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all" title="Upload Evidence (Images/PDF)">
-                                        <Icon name="UploadCloud" size={20}/>
-                                    </button>
+                                    {/* PENDING FILES STAGING AREA */}
                                     {pastedImages.length > 0 && (
-                                        <button onClick={handleOcrUpload} disabled={isOcrLoading} className={`p-2.5 rounded-xl text-white shadow-xl hover:bg-emerald-600 animate-in fade-in slide-in-from-right-2 ${isOcrLoading ? 'bg-emerald-600 cursor-not-allowed' : 'bg-emerald-500'}`} title="Convert to Text (OCR)">
-                                            {isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/>}
-                                        </button>
+                                        <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl animate-in slide-in-from-bottom-5">
+                                            <div className="flex justify-between items-center mb-2 px-1">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Icon name="UploadCloud" size={14} className="text-indigo-500"/>
+                                                    Pending Extraction ({pastedImages.length})
+                                                </h4>
+                                                <button onClick={() => setPastedImages([])} className="text-xs text-red-500 hover:text-red-600 font-bold">Clear All</button>
+                                            </div>
+                                            <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
+                                                {pastedImages.map((file, idx) => (
+                                                    <div key={idx} className="relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+                                                        <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                            <button 
+                                                                onClick={() => handleRemoveImage(idx)} 
+                                                                className="bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transform scale-90 hover:scale-110 transition-all"
+                                                                title="Remove File"
+                                                            >
+                                                                <Icon name="X" size={14}/>
+                                                            </button>
+                                                        </div>
+                                                        <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-[8px] text-white truncate text-center">
+                                                            {file.name}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {/* Batch Action Card */}
+                                                <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
+                                                    <button onClick={handleOcrUpload} disabled={isOcrLoading} className="w-full h-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 flex flex-col items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
+                                                        {isOcrLoading ? <Icon name="Loader" className="animate-spin" size={24}/> : <Icon name="ScanText" size={24}/>}
+                                                        <span className="text-[10px] font-bold">Extract All</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
-                             </div>
-                             
-                             <div className="flex-1 relative pb-20 z-0">
-                                <textarea 
-                                    className="w-full h-full p-6 bg-white dark:bg-slate-950 caret-indigo-600 dark:caret-indigo-400 outline-none rounded-xl border-2 border-slate-200 dark:border-slate-800 font-sans text-adjustable-sm leading-relaxed text-slate-800 dark:text-slate-100 resize-none shadow-inner focus:border-indigo-300 dark:focus:border-indigo-900 transition-colors" 
-                                    placeholder="Paste interview notes, audit evidence or case descriptions here (Ctrl+V supported for images)..." 
-                                    value={evidence} 
-                                    onChange={e => setEvidence(e.target.value)}
-                                    onPaste={handlePaste}
-                                ></textarea>
 
-                                {hasEvidence && (layoutMode === 'evidence' || layoutMode === 'split') && (
-                                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[40]">
-                                        <button onClick={handleAnalyze} disabled={isAnalyzeDisabled} className={`w-16 h-16 rounded-full shadow-2xl btn-brain-wave text-white flex items-center justify-center transition-all ${isAnalyzeDisabled ? 'opacity-50 grayscale' : 'hover:scale-110 active:scale-90 ring-8 ring-indigo-50 dark:ring-indigo-900/10'}`} title="Start AI Analysis">
-                                            {isAnalyzeLoading ? <SparkleLoader size={28}/> : <Icon name="Wand2" size={28}/>}
-                                        </button>
-                                    </div>
-                                )}
-                             </div>
-                        </div>
-                    </div>
-                    {/* Block 2 & 3 */}
-                    <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-lg relative ${layoutMode === 'findings' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
-                        <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center z-10 justify-between">
-                            <h3 className="font-bold text-lg text-emerald-950 dark:text-emerald-100 flex items-center gap-3">
-                                <span className="bg-emerald-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-emerald-500/20"><Icon name="CheckCircle2" size={16}/></span> 
-                                Validated Findings
-                            </h3>
-                            <div className="flex gap-2">
-                                {analysisResult && <button onClick={handleGenerateReport} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Generate Final Report"><Icon name="Wand2" size={16}/> Generate Report</button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-9 h-9 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
-                            </div>
-                        </div>
-                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-100/30 dark:bg-slate-950/40 min-h-0 overflow-y-auto custom-scrollbar relative">
-                            {/* ANALYSIS LOADING OVERLAY */}
-                            {isAnalyzeLoading && <AINeuralLoader message="Analyzing Evidence..." />}
-
-                            {analysisResult ? analysisResult.map((res, i) => (
-                                <div key={i} className={`p-4 bg-white dark:bg-slate-900 rounded-xl border-2 transition-all ${selectedFindings[res.clauseId] ? 'border-indigo-200 dark:border-indigo-900/50 shadow-md' : 'border-transparent opacity-60'}`}>
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{res.clauseId}</span>
-                                                <select className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border-none cursor-pointer ${res.status === 'COMPLIANT' ? 'bg-green-100 text-green-700' : res.status === 'NC_MAJOR' ? 'bg-red-100 text-red-700' : res.status === 'NC_MINOR' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`} value={res.status} onChange={(e) => {
-                                                    const newArr = [...analysisResult]; newArr[i].status = e.target.value as any; setAnalysisResult(newArr);
-                                                }}>
-                                                    <option value="COMPLIANT">Compliant</option>
-                                                    <option value="NC_MAJOR">NC Major</option>
-                                                    <option value="NC_MINOR">NC Minor</option>
-                                                    <option value="OFI">OFI</option>
-                                                </select>
+                                <div className="flex justify-between items-center mt-2">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all" title="Export Raw Text">
+                                            {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                            <div className="lang-pill-container ml-1">
+                                                <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                                <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('vi');}} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
                                             </div>
-                                            <p className="text-[10px] text-slate-400 font-mono italic">AI Reason: {res.reason}</p>
-                                        </div>
-                                        <button onClick={() => setSelectedFindings(p => ({...p, [res.clauseId]: !p[res.clauseId]}))} className={`w-10 h-10 flex items-center justify-center rounded-xl ${selectedFindings[res.clauseId] ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'}`}>
-                                            <CheckLineart size={18} className="stroke-current"/>
                                         </button>
                                     </div>
-                                    <textarea className="w-full text-adjustable-xs p-4 bg-gray-50 dark:bg-slate-800/50 dark:text-slate-300 rounded-xl border border-transparent focus:border-indigo-200 outline-none resize-y min-h-[100px]" value={res.conclusion_report} onChange={e => {
-                                        const newArr = [...analysisResult]; newArr[i].conclusion_report = e.target.value; setAnalysisResult(newArr);
-                                    }}/>
-                                </div>
-                            )) : <div className="text-center text-gray-400 mt-10 italic">Analysis results will appear here...</div>}
-                        </div>
-                    </div>
-
-                    <div className={`flex flex-col bg-white dark:bg-slate-900 transition-all duration-500 relative ${layoutMode === 'report' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
-                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-10">
-                            <h3 className="font-bold text-lg text-blue-950 dark:text-blue-100 flex items-center gap-3">
-                                <span className="bg-blue-600 text-white w-8 h-8 flex items-center justify-center rounded-lg shadow-md shadow-blue-500/20"><Icon name="FileEdit" size={16}/></span> 
-                                Final Synthesis
-                            </h3>
-                            <div className="flex gap-2 items-center">
-                                <div className="flex items-center gap-2 mr-4">
-                                    <input ref={templateInputRef} type="file" accept=".docx,.txt" onChange={handleTemplateUpload} className="hidden" />
-                                    <button onClick={() => templateInputRef.current?.click()} className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-bold border-2 transition-all active:scale-95 ${templateFileName ? 'bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-white border-blue-200 text-blue-700 hover:border-blue-400 dark:bg-slate-800 dark:border-slate-600 dark:text-blue-400'}`} title="Load Report Template">
-                                        <Icon name="UploadCloud" size={14} className={templateFileName ? "text-emerald-500" : "text-blue-500"}/> {templateFileName ? `Template Loaded` : "Load Template"}
+                                    <button 
+                                        onClick={handleAnalyze} 
+                                        disabled={isAnalyzeDisabled} 
+                                        className="btn-brain-wave px-8 py-4 rounded-2xl text-white font-black text-sm uppercase tracking-wider shadow-xl shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                    >
+                                        {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={20}/>}
+                                        {isAnalyzeLoading ? "AI Auditor Analyzing..." : "Run Compliance Analysis"}
                                     </button>
                                 </div>
-                                <div className="flex items-center bg-blue-50 dark:bg-slate-800 rounded-xl p-1 border border-blue-100 dark:border-slate-700">
-                                    <button onClick={() => setExportLanguage('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${exportLanguage === 'en' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-blue-600'}`}>EN</button>
-                                    <button onClick={() => setExportLanguage('vi')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${exportLanguage === 'vi' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-blue-600'}`}>VI</button>
-                                </div>
-                                {finalReportText && <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 active:scale-95 transition-all" title="Download Report">{isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}</button>}
-                                <button onClick={() => setLayoutMode(layoutMode === 'report' ? 'split' : 'report')} className="w-9 h-9 text-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30 rounded-xl transition-all" title="Switch View"><Icon name={layoutMode === 'report' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
-                        </div>
-                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/10 dark:bg-slate-950/20 min-h-0 relative">
-                             {/* REPORT LOADING OVERLAY */}
-                             {isReportLoading && <AINeuralLoader message="Writing Final Report..." />}
-                             
-                             <textarea className="flex-1 w-full h-full p-8 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl text-adjustable-sm font-mono leading-relaxed outline-none dark:text-slate-200 shadow-inner custom-scrollbar" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Final synthesized content will appear here..."/>
-                        </div>
+                        )}
+
+                        {/* 2. FINDINGS MODE */}
+                        {layoutMode === 'findings' && analysisResult && (
+                             <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-4">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Icon name="List" size={24} className="text-indigo-500"/> Audit Findings</h3>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => {
+                                            const reportTxt = analysisResult.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n');
+                                            handleExport(reportTxt, 'notes', notesLanguage);
+                                        }} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
+                                            {isNotesExportLoading ? <Icon name="Loader"/> : <Icon name="Download"/>} 
+                                            Export Notes
+                                            <div className="lang-pill-container ml-2">
+                                                <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('en');}} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                                <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('vi');}} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2">
+                                    {analysisResult.map((result) => (
+                                        <div key={result.clauseId} className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all hover:shadow-md ${!selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : result.status === 'COMPLIANT' ? 'border-green-500' : result.status.includes('NC') ? 'border-red-500' : 'border-yellow-500'}`}>
+                                            <div className="flex justify-between items-start gap-4">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <input type="checkbox" checked={!!selectedFindings[result.clauseId]} onChange={() => setSelectedFindings(prev => ({...prev, [result.clauseId]: !prev[result.clauseId]}))} className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"/>
+                                                        <span className="font-black text-sm bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300">{result.clauseId}</span>
+                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${result.status === 'COMPLIANT' ? 'bg-green-100 text-green-700' : result.status.includes('NC') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{result.status.replace('_', ' ')}</span>
+                                                    </div>
+                                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">{result.reason}</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-gray-50 dark:bg-slate-950/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800">Evidence: {result.evidence}</p>
+                                                    {result.suggestion && <div className="mt-2 flex gap-2 items-start"><Icon name="Lightbulb" size={14} className="text-amber-500 mt-0.5"/><p className="text-xs text-slate-600 dark:text-slate-300">{result.suggestion}</p></div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-4 flex justify-end">
+                                    <button onClick={handleGenerateReport} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform">
+                                        Generate Full Report <Icon name="FileText" size={18}/>
+                                    </button>
+                                </div>
+                             </div>
+                        )}
+
+                        {/* 3. REPORT MODE */}
+                        {layoutMode === 'report' && finalReportText && (
+                            <div className="h-full flex flex-col animate-in fade-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                                    <div className="flex items-center gap-4">
+                                        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg text-indigo-600"><Icon name="FileText" size={24}/></div>
+                                        <div>
+                                            <h3 className="font-bold text-slate-800 dark:text-white">Final Report Ready</h3>
+                                            <p className="text-xs text-slate-500">Review and export your document.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowImportModal(true)} className="px-3 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">Change Template</button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-inner border border-gray-200 dark:border-slate-800 overflow-y-auto custom-scrollbar p-8">
+                                    <div className="prose prose-sm dark:prose-invert max-w-none font-serif whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-white [&_*]:dark:text-white">
+                                        {finalReportText}
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex justify-end gap-3">
+                                    <div className="lang-pill-container p-1.5 shadow-sm">
+                                        <span onClick={() => setExportLanguage('en')} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                        <span onClick={() => setExportLanguage('vi')} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                    </div>
+                                    <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all active:scale-95">
+                                        {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}
+                                        Download Report
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Empty States */}
+                        {layoutMode === 'findings' && !analysisResult && (
+                             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                                <Icon name="Wand2" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
+                                <p>No analysis data yet. Run analysis first.</p>
+                             </div>
+                        )}
+                        {layoutMode === 'report' && !finalReportText && (
+                             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                                <Icon name="FileText" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
+                                <p>No report generated. Go to Findings > Generate Report.</p>
+                             </div>
+                        )}
+
+                        {/* Loaders */}
+                        {isAnalyzeLoading && <AINeuralLoader message="Analyzing Compliance..." />}
+                        {isReportLoading && <AINeuralLoader message="Synthesizing Report..." />}
                     </div>
                 </div>
             </div>
 
+            {/* Modals */}
             <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
             
-            <Modal isOpen={showImportModal} title="Import ISO Standard" onClose={() => setShowImportModal(false)}>
-                 <div className="space-y-4">
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Paste content from PDF/Docx to extract structure:</p>
-                    <textarea className="w-full h-40 p-4 bg-white dark:bg-slate-800 dark:text-slate-200 border border-gray-200 dark:border-slate-700 rounded-2xl text-[10px] font-mono outline-none shadow-inner" placeholder="Paste clause data here..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
-                    <button onClick={async () => {
-                        setImportStatus("Extracting Structure...");
-                        try {
-                            const systemInst = `You are a professional ISO Document Architect. Convert the provided text into a structured JSON 'Standard' object.
-Structure: { name: string, description: string, groups: Array<{ id: string, title: string, icon: string, clauses: Array<{ id: string, code: string, title: string, description: string, subClauses: [] }> }> }
-Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid JSON only.`;
-                            const res = await generateJsonFromText(importText, systemInst);
-                            const parsed = cleanAndParseJSON(res || "");
-                            if (parsed) {
-                                setCustomStandards({...customStandards, [parsed.name]: parsed});
-                                setStandardKey(parsed.name);
-                                setShowImportModal(false);
-                            }
-                        } catch(e: any) { 
-                            console.error(e); 
-                            setAiError(e.message || "Failed to extract standard structure.");
-                        } finally { setImportStatus(""); }
-                    }} disabled={!!importStatus} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-xl text-sm uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3">
-                        {importStatus ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Cpu" />}
-                        {importStatus || "Extract & Load Standard"}
-                    </button>
-                 </div>
-            </Modal>
-
-            <Modal isOpen={showSettingsModal} title="API Key Management" onClose={() => setShowSettingsModal(false)}>
-                <div className="space-y-6">
-                    {/* Add New Key Section */}
-                    <div className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-3">
-                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Add New Key</h4>
-                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="sm:col-span-1">
-                                <IconInput icon="Tag" placeholder="Label (e.g. Project A)" value={newKeyLabel} onChange={(e: any) => setNewKeyLabel(e.target.value)} />
-                            </div>
-                            <div className="sm:col-span-2">
-                                <IconInput icon="Key" placeholder="Paste Google API Key here..." value={newKeyInput} onChange={(e: any) => setNewKeyInput(e.target.value)} />
-                            </div>
-                         </div>
-                         <button 
-                            onClick={handleAddKey} 
-                            disabled={!newKeyInput || isCheckingKey}
-                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                            {isCheckingKey ? <SparkleLoader size={16} className="text-white"/> : <Icon name="Plus" size={16}/>}
-                            {isCheckingKey ? "Validating..." : "Validate & Add Key"}
-                         </button>
+            <Modal isOpen={showImportModal} title="Report Template Settings" onClose={() => setShowImportModal(false)}>
+                <div className="space-y-4">
+                    <div className="p-4 border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer" onClick={() => templateInputRef.current?.click()}>
+                        <Icon name="UploadCloud" size={32} className="text-gray-400 mb-2"/>
+                        <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Click to Upload .docx / .txt Template</p>
+                        <p className="text-xs text-slate-400 mt-1">{templateFileName || "No file selected"}</p>
+                        <input type="file" ref={templateInputRef} className="hidden" accept=".docx,.txt" onChange={handleTemplateUpload}/>
                     </div>
-
-                    {/* Key List Section */}
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-end px-1">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Available Keys</h4>
-                            <span className="text-[10px] text-slate-400 italic">Select a key to activate it.</span>
-                        </div>
-                        
-                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                            {apiKeys.length === 0 ? (
-                                <div className="text-center p-6 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl">
-                                    <p className="text-sm text-slate-400">No API keys added yet.</p>
-                                </div>
-                            ) : (
-                                apiKeys.map(profile => (
-                                    <div 
-                                        key={profile.id} 
-                                        className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between gap-3 ${activeKeyId === profile.id ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900'}`}
-                                        onClick={() => setActiveKeyId(profile.id)}
-                                    >
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${activeKeyId === profile.id ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300 dark:border-slate-600'}`}>
-                                                {activeKeyId === profile.id && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                                            </div>
-                                            <div className="flex flex-col min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{profile.label}</span>
-                                                    {/* Status Badge */}
-                                                    {profile.status === 'checking' ? (
-                                                        <span className="text-[10px] text-indigo-500 animate-pulse">Checking...</span>
-                                                    ) : (
-                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide flex items-center gap-1 ${
-                                                            profile.status === 'valid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                                            profile.status === 'quota_exceeded' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                                                            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                        }`}>
-                                                            {profile.status === 'valid' ? 'Active' : profile.status === 'quota_exceeded' ? 'Quota Exceeded' : 'Invalid'}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
-                                                    <span>{profile.key.substring(0, 8)}...{profile.key.substring(profile.key.length - 4)}</span>
-                                                    {profile.latency > 0 && <span className="text-slate-300">• {profile.latency}ms</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-1">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleRefreshStatus(profile.id); }}
-                                                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-indigo-500 transition-colors"
-                                                title="Re-check Status"
-                                            >
-                                                <Icon name="RefreshCw" size={14}/>
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteKey(profile.id); }}
-                                                className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                                                title="Remove Key"
-                                            >
-                                                <Icon name="Trash2" size={14}/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-xl flex items-start gap-3">
-                         <Icon name="Info" className="text-blue-500 mt-0.5 shrink-0" size={16}/>
-                         <p className="text-[10px] text-blue-800 dark:text-blue-300 leading-snug">
-                             <strong>Note on Quota:</strong> Google does not provide a direct API to check remaining tokens. 
-                             The system performs a "Health Check" (sending a tiny request) to determine if the key is live or if the quota is exceeded (Error 429). 
-                             Latency is measured during this check.
-                         </p>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg flex gap-3 items-start">
+                        <Icon name="Info" className="text-blue-500 mt-0.5 shrink-0"/>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                            The AI will use the structure and tone of your uploaded document to generate the final report. 
+                            Supported formats: <strong>Word (.docx)</strong> or Text (.txt).
+                        </p>
                     </div>
                 </div>
             </Modal>
-            
-            {isSnowing && <SnowOverlay />}
+
+            <Modal isOpen={showSettingsModal} title="API Key Configuration" onClose={() => setShowSettingsModal(false)}>
+                <div className="space-y-6">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                        <h4 className="font-bold text-indigo-900 dark:text-indigo-300 text-sm mb-2">Why do I need this?</h4>
+                        <p className="text-xs text-indigo-700 dark:text-indigo-400 leading-relaxed">
+                            This app communicates directly with Google Gemini AI. Your key is stored locally in your browser and is never sent to our servers.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        {apiKeys.map(keyProfile => (
+                            <div key={keyProfile.id} className={`p-3 rounded-xl border flex justify-between items-center transition-all ${activeKeyId === keyProfile.id ? 'bg-white dark:bg-slate-800 border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 opacity-80 hover:opacity-100'}`}>
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div onClick={() => setActiveKeyId(keyProfile.id)} className={`w-5 h-5 rounded-full border-2 cursor-pointer flex items-center justify-center ${activeKeyId === keyProfile.id ? 'border-indigo-600' : 'border-gray-400'}`}>
+                                        {activeKeyId === keyProfile.id && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600"></div>}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{keyProfile.label}</p>
+                                            <span className={`text-[10px] px-1.5 rounded uppercase font-bold ${keyProfile.status === 'valid' ? 'bg-emerald-100 text-emerald-700' : keyProfile.status === 'checking' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                                                {keyProfile.status === 'checking' ? 'Checking...' : keyProfile.status}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-mono text-slate-500 truncate w-32">••••••••{keyProfile.key.slice(-4)}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => handleRefreshStatus(keyProfile.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Re-check"><Icon name="RefreshCw" size={14}/></button>
+                                    <button onClick={() => handleDeleteKey(keyProfile.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Icon name="Trash2" size={14}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100 dark:border-slate-800 space-y-3">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Add New Key</label>
+                        <div className="grid grid-cols-3 gap-3">
+                            <input type="text" placeholder="Label (e.g. Personal)" className="col-span-1 px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-indigo-500" value={newKeyLabel} onChange={e => setNewKeyLabel(e.target.value)} />
+                            <div className="col-span-2 flex gap-2">
+                                <input type="password" placeholder="Paste Gemini API Key here..." className="flex-1 px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-indigo-500" value={newKeyInput} onChange={e => setNewKeyInput(e.target.value)} />
+                                <button onClick={handleAddKey} disabled={!newKeyInput || isCheckingKey} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 transition-all">
+                                    {isCheckingKey ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Plus"/>}
+                                </button>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-center text-slate-400 mt-2">
+                            Get your key from <a href="https://aistudio.google.com/" target="_blank" className="text-indigo-500 hover:underline">Google AI Studio</a>.
+                        </p>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }
