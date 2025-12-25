@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
 import { useDebounce, copyToClipboard, cleanAndParseJSON } from '../utils';
@@ -29,8 +29,10 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const [showIntegrityModal, setShowIntegrityModal] = useState(false);
     
     // UI State: Collapse Audit Info to save space
-    // Default: Collapsed on Mobile (<768px), Expanded on Desktop
     const [isInfoExpanded, setIsInfoExpanded] = useState(window.innerWidth > 768);
+    
+    // UI State: Scroll-aware Header Visibility
+    const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 
     // Auto-repair states
     const [isRepairing, setIsRepairing] = useState(false);
@@ -51,7 +53,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         const stopResizing = () => setIsResizing(false);
         const resize = (e: MouseEvent) => {
             if (isResizing) {
-                const newWidth = Math.max(360, Math.min(e.clientX, 800));
+                // Layout Protection:
+                // 1. Min width 280px (allow narrower than before)
+                // 2. Max width 600px OR 50% of screen width (whichever is smaller)
+                // This prevents the sidebar from crushing the main content on smaller laptop screens.
+                const maxAllowedWidth = Math.min(600, window.innerWidth * 0.5);
+                const newWidth = Math.max(280, Math.min(e.clientX, maxAllowedWidth));
                 setWidth(newWidth);
             }
         };
@@ -64,6 +71,18 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             window.removeEventListener('mouseup', stopResizing);
         };
     }, [isResizing, setWidth]);
+
+    // Handle Scroll to Toggle Header Visibility
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const scrollTop = e.currentTarget.scrollTop;
+        // Logic: Show header only when at the very top (scrollTop < 10)
+        // Hide header immediately when scrolling down
+        if (scrollTop > 10 && isHeaderVisible) {
+            setIsHeaderVisible(false);
+        } else if (scrollTop <= 10 && !isHeaderVisible) {
+            setIsHeaderVisible(true);
+        }
+    };
 
     // --- STRICT HEALTH CHECK LOGIC ---
     const runHealthCheck = () => {
@@ -410,7 +429,9 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     return (
         <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-300 ease-in-out h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
-            <div className="p-5 border-b border-gray-100 dark:border-slate-800 w-full md:min-w-[360px] bg-white dark:bg-slate-900 flex flex-col gap-3">
+            
+            {/* COLLAPSIBLE HEADER CONTAINER - Slides up on scroll */}
+            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[360px] flex flex-col gap-3 transition-all duration-500 ease-in-out overflow-hidden ${isHeaderVisible ? 'max-h-[800px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
                 {/* 1. AUDIT DETAILS ACCORDION - MOVED TO TOP AS REQUESTED */}
                 <div className="border border-gray-100 dark:border-slate-800 rounded-xl overflow-hidden">
@@ -460,7 +481,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
             {/* 3. STICKY SEARCH & ACTIONS - Cleaned Up */}
             <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[360px]">
-                <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0">
+                <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0 transition-all duration-300">
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2">
                             <span className="text-blue-700 dark:text-blue-400 font-bold pl-1"><Icon name="Search" size={14}/></span>
@@ -489,8 +510,13 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         )}
                     </div>
                 </div>
-                {/* 4. SCROLLABLE CLAUSE LIST - Max Space Available */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-3">{renderClauses()}</div>
+                {/* 4. SCROLLABLE CLAUSE LIST - Max Space Available with Scroll Handler */}
+                <div 
+                    className="flex-1 overflow-y-auto custom-scrollbar p-3 scroll-smooth"
+                    onScroll={handleScroll}
+                >
+                    {renderClauses()}
+                </div>
             </div>
 
             <Modal isOpen={showIntegrityModal} title="Standard Health Index" onClose={() => setShowIntegrityModal(false)}>

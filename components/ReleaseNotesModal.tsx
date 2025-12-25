@@ -19,7 +19,7 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 fade-in backdrop-blur-md" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col h-[85vh] border border-gray-100 dark:border-slate-800 transform transition-all scale-100 overflow-hidden relative" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col h-[90vh] md:h-[85vh] border border-gray-100 dark:border-slate-800 transform transition-all scale-100 overflow-hidden relative" onClick={e => e.stopPropagation()}>
                 
                 {/* --- Author Header Section --- */}
                 <div className="flex-shrink-0 relative overflow-hidden group">
@@ -32,7 +32,7 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 
                     <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 p-2 bg-slate-800/50 rounded-full hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><Icon name="X" size={20}/></button>
 
-                    <div className="relative px-8 py-8 flex items-center gap-8 z-10">
+                    <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8 z-10">
                         {/* Author Image with Glow Effect */}
                         <div className="relative flex-shrink-0">
                             {/* Outer Glow Ring */}
@@ -65,8 +65,8 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                         </div>
 
                         {/* Author Info */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <div className="flex-1 min-w-0 text-center md:text-left">
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1">
                                 <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[0.6rem] font-bold text-amber-500 uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                                     Solution Architect
                                 </span>
@@ -74,13 +74,13 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                                     AI Core Lead
                                 </span>
                             </div>
-                            <h2 className="text-3xl font-black text-white tracking-tight leading-none mb-1 drop-shadow-md">
+                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2 drop-shadow-md">
                                 Trung DANGHOANG
                             </h2>
-                            <p className="text-slate-400 text-sm font-medium flex items-center gap-2">
+                            <p className="text-slate-400 text-sm font-medium flex items-center justify-center md:justify-start gap-2">
                                 Creator of <span className="text-white font-semibold">ISO Audit Pro</span>
                             </p>
-                            <p className="text-slate-500 text-xs mt-2 italic max-w-lg">
+                            <p className="text-slate-500 text-xs mt-2 italic max-w-lg mx-auto md:mx-0">
                                 "Pioneering the intersection of International Standards and Artificial Intelligence to empower the next generation of auditors."
                             </p>
                         </div>
@@ -88,7 +88,7 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                 </div>
                 
                 {/* --- Content Body --- */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-gray-50 dark:bg-slate-950">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 bg-gray-50 dark:bg-slate-950">
                     
                     <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">

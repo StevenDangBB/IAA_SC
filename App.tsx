@@ -76,9 +76,9 @@ function App() {
     const tabsContainerRef = useRef<HTMLDivElement>(null); // New Ref for container
     
     const tabsList = [
-        { id: 'evidence', label: '1. Evidence', icon: 'ScanText' }, 
-        { id: 'findings', label: '2. Findings', icon: 'Wand2' }, 
-        { id: 'report', label: '3. Report', icon: 'FileText' }
+        { id: 'evidence', label: 'Evidence', icon: 'ScanText' }, 
+        { id: 'findings', label: 'Findings', icon: 'Wand2' }, 
+        { id: 'report', label: 'Report', icon: 'FileText' }
     ];
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -686,7 +686,8 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 </div>
             )}
 
-            <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-16 relative">
+            {/* HEADER - Sticky on Mobile, Z-Index 70 to sit ABOVE sidebar */}
+            <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative">
                 <div className="flex items-center gap-4 md:gap-6">
                     {/* 
                         FIXED LOGO - INFINITY
@@ -735,17 +736,18 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     </button>
                     
                     <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all shadow-sm"><Icon name="Settings" size={18}/></button>
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95 hidden sm:block"><Icon name="Info" size={18}/></button>
+                    {/* Fixed Info Button: Remove hidden sm:block to show on mobile */}
+                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95"><Icon name="Info" size={18}/></button>
                 </div>
             </div>
 
             <div className="flex-1 flex overflow-hidden relative">
                 {/* 
-                    MOBILE RESPONSIVE SIDEBAR LOGIC:
-                    - On desktop (md+): Relative positioning, pushes content.
-                    - On mobile: Absolute overlay (z-[60]) to cover content, preserving layout integrity.
+                    MOBILE RESPONSIVE SIDEBAR LOGIC UPDATED:
+                    - Sidebar container is now Fixed on Mobile, starting at Top-16 (below header)
+                    - This ensures the Header (Z-70) is always visible and clickable above the Sidebar (Z-60)
                 */}
-                <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} absolute inset-y-0 left-0 z-[60] md:relative md:translate-x-0 md:transform-none transition-transform duration-300 ease-in-out h-full`}>
+                <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 bottom-0 left-0 z-[60] md:absolute md:inset-y-0 md:relative md:top-0 md:translate-x-0 md:transform-none transition-transform duration-300 ease-in-out h-[calc(100%-4rem)] md:h-full`}>
                     <Sidebar 
                         isOpen={isSidebarOpen} 
                         width={sidebarWidth} 
@@ -766,10 +768,10 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     />
                 </div>
                 
-                {/* Mobile Backdrop for Sidebar */}
+                {/* Mobile Backdrop for Sidebar - Starts below header */}
                 {isSidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity" 
+                        className="fixed top-16 bottom-0 inset-x-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity" 
                         onClick={() => setIsSidebarOpen(false)}
                     />
                 )}
@@ -785,11 +787,11 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         </div>
                     )}
 
-                    {/* Toolbar - REFACTORED FOR MOBILE SCROLLING FIX */}
-                    <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center">
-                        {/* Scrollable Tabs Area */}
-                        <div className="overflow-x-auto flex-1 min-w-0 no-scrollbar pr-2">
-                            <div ref={tabsContainerRef} className="relative flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-max">
+                    {/* Toolbar - FIXED FOR MOBILE: COMPACT TABS */}
+                    <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center gap-3">
+                        {/* Compact Tabs Area - Flex Grow to take space, Hide text on mobile */}
+                        <div className="flex-1 min-w-0">
+                            <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-full">
                                 {/* FLUID ACTIVE INDICATOR */}
                                 <div 
                                     className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
@@ -805,20 +807,27 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         key={tab.id} 
                                         ref={el => { tabsRef.current[idx] = el; }}
                                         onClick={() => setLayoutMode(tab.id as LayoutMode)} 
-                                        className={`relative z-10 flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                        className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                        title={tab.label}
                                     >
-                                        <Icon name={tab.icon} size={16}/> {tab.label}
+                                        <Icon name={tab.icon} size={16}/> 
+                                        {/* Adaptive Label Visibility:
+                                            - If sidebar is OPEN: Hide text on screens smaller than XL (Laptop) to prevent squeeze.
+                                            - If sidebar is CLOSED: Show text on Tablet (MD) and up.
+                                        */}
+                                        <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Fixed Actions Area */}
+                        {/* Fixed Actions Area - UNIFIED STYLES */}
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
                             <button onClick={handleRecall} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all" title="Recall Session">
                                 <Icon name="History" size={18}/>
                             </button>
-                            <button onClick={handleNewSession} className="p-3 rounded-xl flex items-center justify-center transition-all shadow-sm bg-indigo-100 text-indigo-700 hover:bg-indigo-200 hover:scale-105 dark:bg-indigo-600 dark:text-white dark:hover:bg-indigo-500 dark:shadow-lg dark:shadow-indigo-500/30" title="Start New Session">
+                            {/* Unified Style: New Session now uses same Ghost style as Recall to reduce clutter */}
+                            <button onClick={handleNewSession} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all shadow-sm hover:text-indigo-600 dark:hover:text-indigo-400" title="Start New Session">
                                 <Icon name="Session4_FilePlus" size={18}/>
                             </button>
                         </div>
@@ -901,7 +910,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         onClick={handleAnalyze} 
                                         disabled={!isReadyForAnalysis}
                                         title={getAnalyzeTooltip()} 
-                                        className={`w-full md:w-auto px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-3 ${
+                                        className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-3 ${
                                             isReadyForAnalysis 
                                             ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" 
                                             : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"
