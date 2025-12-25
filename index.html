@@ -101,6 +101,26 @@
             background: linear-gradient(270deg, #4f46e5, #8b5cf6, #ec4899, #4f46e5);
             background-size: 300% 300%; animation: brainWave 3s ease infinite; z-index: 1;
         }
+
+        /* SHRIMP EFFECT: High energy shimmer for Ready State */
+        .btn-shrimp {
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, #f472b6 50%, #8b5cf6 75%, #6366f1 100%);
+            background-size: 200% auto;
+            animation: shrimpMove 2s linear infinite, shrimpPulse 2s ease-in-out infinite;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 10;
+        }
+        
+        @keyframes shrimpMove {
+            0% { background-position: 200% 0; }
+            100% { background-position: 0% 0; }
+        }
+
+        @keyframes shrimpPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); transform: scale(1); }
+            50% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.7); transform: scale(1.02); }
+        }
         
         .block-grow { flex-grow: 1 !important; height: auto !important; min-height: 56px !important; }
         .block-shrink { flex-grow: 0 !important; height: 56px !important; min-height: 56px !important; overflow: hidden !important; }
@@ -167,7 +187,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-D3LI2PqX.js"></script>
+  <script type="module" crossorigin src="./assets/index-CSTXf7_O.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
