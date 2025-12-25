@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
-import { Icon, FontSizeController, SparkleLoader, Modal, SnowOverlay, IconInput, AINeuralLoader } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, Modal, SnowOverlay, IconInput, AINeuralLoader, Toast } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText, validateApiKey } from './services/geminiService';
@@ -32,6 +32,9 @@ function App() {
     const [newKeyInput, setNewKeyInput] = useState("");
     const [newKeyLabel, setNewKeyLabel] = useState("");
     const [isCheckingKey, setIsCheckingKey] = useState(false);
+
+    // Toast State
+    const [toastMsg, setToastMsg] = useState<string | null>(null);
 
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
@@ -79,6 +82,7 @@ function App() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const templateInputRef = useRef<HTMLInputElement>(null);
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const hasStartupChecked = useRef(false);
 
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
@@ -91,7 +95,15 @@ function App() {
         if (storedScale) setFontSizeScale(parseFloat(storedScale));
         
         loadSessionData(); // Load all saved data
-        loadKeyData(); // Load API Keys
+        
+        // Initial Key Load
+        const loadedKeys = loadKeyData(); // Now returns keys for immediate use
+        
+        // Auto Precheck API Key on Startup
+        if (!hasStartupChecked.current && loadedKeys.length > 0) {
+            hasStartupChecked.current = true;
+            checkAllKeys(loadedKeys);
+        }
 
         const savedDarkMode = localStorage.getItem('iso_dark_mode');
         if (savedDarkMode !== null) {
@@ -134,7 +146,7 @@ function App() {
         }
     };
 
-    const loadKeyData = () => {
+    const loadKeyData = (): ApiKeyProfile[] => {
         try {
             const savedKeys = localStorage.getItem("iso_api_keys");
             const savedActiveId = localStorage.getItem("iso_active_key_id");
@@ -166,7 +178,11 @@ function App() {
             } else if (loadedKeys.length > 0) {
                 setActiveKeyId(loadedKeys[0].id);
             }
-        } catch (e) { console.error("Failed to load keys", e); }
+            return loadedKeys;
+        } catch (e) { 
+            console.error("Failed to load keys", e); 
+            return [];
+        }
     };
 
     // Real-time Saving
@@ -208,6 +224,39 @@ function App() {
     }, [apiKeys, activeKeyId]);
 
     // --- API KEY HANDLERS ---
+
+    const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
+        // Set all to checking state visually
+        setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
+
+        const checkedKeys = await Promise.all(initialKeys.map(async (profile) => {
+            const result = await validateApiKey(profile.key);
+            return {
+                ...profile,
+                status: result.isValid ? 'valid' : (result.errorType || 'invalid'),
+                latency: result.latency,
+                lastChecked: new Date().toISOString()
+            } as ApiKeyProfile;
+        }));
+
+        setApiKeys(checkedKeys);
+
+        // Auto-switch logic: 
+        // 1. Is the current active key valid?
+        const currentActive = checkedKeys.find(k => k.id === localStorage.getItem("iso_active_key_id"));
+        
+        if (!currentActive || currentActive.status !== 'valid') {
+            // Find the best valid key (lowest latency)
+            const bestKey = checkedKeys
+                .filter(k => k.status === 'valid')
+                .sort((a, b) => a.latency - b.latency)[0];
+
+            if (bestKey) {
+                setActiveKeyId(bestKey.id);
+                setToastMsg(`Switched to active key: ${bestKey.label}`);
+            }
+        }
+    };
     
     const checkKeyStatus = async (id: string, keyStr: string) => {
         setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
@@ -261,6 +310,51 @@ function App() {
         const keyProfile = apiKeys.find(k => k.id === id);
         if (keyProfile) {
             await checkKeyStatus(id, keyProfile.key);
+        }
+    };
+
+    // --- EXECUTION WITH FAILOVER ---
+    
+    // Generic wrapper to execute AI function with auto-key-switching on failure
+    const executeWithApiKeyFailover = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
+        // 1. Determine which key to start with (Active one)
+        let currentKeyProfile = apiKeys.find(k => k.id === activeKeyId);
+        if (!currentKeyProfile && apiKeys.length > 0) currentKeyProfile = apiKeys[0];
+        
+        if (!currentKeyProfile) {
+            throw new Error("No API Configuration found. Please add a valid key in Settings.");
+        }
+
+        try {
+            // Attempt 1
+            return await operation(currentKeyProfile.key);
+        } catch (error: any) {
+            console.warn(`Execution failed with key [${currentKeyProfile.label}]. Checking failover...`, error);
+            
+            // Check if error is related to API Key (403, 429, quota)
+            const msg = error.message?.toLowerCase() || "";
+            const isApiError = msg.includes("403") || msg.includes("429") || msg.includes("quota") || msg.includes("key") || msg.includes("permission");
+
+            if (isApiError) {
+                // Mark current key as invalid/quota in state
+                setApiKeys(prev => prev.map(k => k.id === currentKeyProfile!.id ? { ...k, status: 'invalid' } : k));
+
+                // Find a backup key
+                const backupKeys = apiKeys.filter(k => k.id !== currentKeyProfile!.id && k.status === 'valid');
+                
+                if (backupKeys.length > 0) {
+                    const nextKey = backupKeys[0];
+                    console.log(`Failing over to: ${nextKey.label}`);
+                    
+                    // Switch State
+                    setActiveKeyId(nextKey.id);
+                    setToastMsg(`API Error. Switched to backup key: ${nextKey.label}`);
+                    
+                    // Attempt 2 (Recursive could be better, but simple retry for now)
+                    return await operation(nextKey.key);
+                }
+            }
+            throw error;
         }
     };
 
@@ -347,7 +441,12 @@ ${clausesTxt}
 CONTEXT: ${auditInfo.type} for ${auditInfo.company}.
 RAW EVIDENCE: """ ${evidence} """
 Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report.`;
-            const resultStr = await generateAnalysis(prompt, `Output JSON array only.`);
+            
+            // Use Failover Wrapper
+            const resultStr = await executeWithApiKeyFailover(async (key) => {
+                return await generateAnalysis(prompt, `Output JSON array only.`, key);
+            });
+
             const result = cleanAndParseJSON(resultStr || "");
             if (result) { 
                 setAnalysisResult(result); 
@@ -367,7 +466,12 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         try {
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
              const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
-             const text = await generateTextReport(prompt, "Expert ISO Report Compiler.");
+             
+             // Use Failover Wrapper
+             const text = await executeWithApiKeyFailover(async (key) => {
+                 return await generateTextReport(prompt, "Expert ISO Report Compiler.", key);
+             });
+
              setFinalReportText(text || "");
         } catch (e: any) { setAiError(e.message || "Report Generation Failed"); } finally { setIsReportLoading(false); }
     };
@@ -377,9 +481,17 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         setIsOcrLoading(true); 
         setAiError(null);
         try {
+            // Processing multiple files - logic is complex to wrap individually.
+            // We will wrap the execution of EACH file or the whole block.
+            // Let's wrap each call to robustly handle partial failures or switch mid-stream.
+            
             const promises = pastedImages.map(async (file) => {
                 const b64 = await fileToBase64(file);
-                return await generateOcrContent("Extract text accurately. Output raw text only, no additional commentary.", b64, file.type);
+                
+                // Use Failover Wrapper for each file
+                return await executeWithApiKeyFailover(async (key) => {
+                    return await generateOcrContent("Extract text accurately. Output raw text only, no additional commentary.", b64, file.type, key);
+                });
             });
             const results = await Promise.all(promises);
             const textToInsert = results.join('\n\n');
@@ -439,7 +551,11 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 Text to process:
                 """${text}"""`;
                 
-                const trans = await generateTextReport(prompt, "You are a professional ISO Audit Translator.");
+                // Use Failover Wrapper
+                const trans = await executeWithApiKeyFailover(async (key) => {
+                     return await generateTextReport(prompt, "You are a professional ISO Audit Translator.", key);
+                });
+
                 if (trans) contentToExport = trans;
             } catch (aiErr) {
                 console.warn("Translation failed, falling back to raw text", aiErr);
@@ -503,6 +619,9 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
 
     return (
         <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+            {/* Toast Notification */}
+            {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
+
             {aiError && (
                 <div className="fixed top-20 right-5 z-[9999] max-w-sm w-full bg-white dark:bg-slate-800 border-l-4 border-red-500 shadow-2xl rounded-r-xl p-4 animate-in slide-in-from-right-10 flex flex-col gap-2">
                     <div className="flex justify-between items-start">

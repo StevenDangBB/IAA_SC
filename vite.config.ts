@@ -18,7 +18,29 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
-      sourcemap: false
+      sourcemap: false,
+      // Increase the warning limit slightly to avoid warnings for reasonably sized chunks
+      chunkSizeWarningLimit: 800,
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            // Split heavy libraries into separate chunks
+            if (id.includes('node_modules')) {
+              if (id.includes('@google/genai')) {
+                return 'vendor-genai'; // Google AI SDK is large, give it its own chunk
+              }
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'vendor-react'; // React core
+              }
+              if (id.includes('mammoth')) {
+                return 'vendor-utils'; // Document processing
+              }
+              // All other node_modules go to a generic vendor chunk
+              return 'vendor';
+            }
+          }
+        }
+      }
     }
   }
 });

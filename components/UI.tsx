@@ -258,3 +258,27 @@ export const AINeuralLoader = ({ message }: { message: string }) => (
         <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Gemini AI is processing context...</p>
     </div>
 );
+
+export const Toast = ({ message, onClose }: { message: string, onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 4000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+            <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
+                <div className="p-1 bg-green-500 rounded-full text-white">
+                    <Icon name="CheckLineart" size={14}/>
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-xs font-black uppercase tracking-wider opacity-70">Auto-Switch API</span>
+                    <span className="text-sm font-bold">{message}</span>
+                </div>
+                <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900">
+                    <Icon name="X" size={16}/>
+                </button>
+            </div>
+        </div>
+    );
+};

@@ -46,8 +46,8 @@ export const validateApiKey = async (key: string): Promise<{ isValid: boolean, l
     }
 };
 
-export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string) => {
-    const ai = getAiClient();
+export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string, apiKey?: string) => {
+    const ai = getAiClient(apiKey);
     
     const response = await ai.models.generateContent({
         model: DEFAULT_VISION_MODEL,
@@ -66,8 +66,8 @@ export const generateOcrContent = async (textPrompt: string, base64Image: string
     return response.text || "";
 };
 
-export const generateAnalysis = async (prompt: string, systemInstruction: string) => {
-    const ai = getAiClient();
+export const generateAnalysis = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+    const ai = getAiClient(apiKey);
 
     const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
@@ -95,8 +95,8 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
     return response.text || "";
 };
 
-export const generateTextReport = async (prompt: string, systemInstruction: string) => {
-    const ai = getAiClient();
+export const generateTextReport = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+    const ai = getAiClient(apiKey);
 
     const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
@@ -108,8 +108,8 @@ export const generateTextReport = async (prompt: string, systemInstruction: stri
     return response.text || "";
 };
 
-export const generateJsonFromText = async (prompt: string, systemInstruction: string) => {
-    const ai = getAiClient();
+export const generateJsonFromText = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+    const ai = getAiClient(apiKey);
 
      const response = await ai.models.generateContent({
         model: DEFAULT_GEMINI_MODEL,
@@ -122,8 +122,8 @@ export const generateJsonFromText = async (prompt: string, systemInstruction: st
     return response.text || "";
 }
 
-export const generateMissingDescriptions = async (clauses: { code: string, title: string }[]) => {
-    const ai = getAiClient();
+export const generateMissingDescriptions = async (clauses: { code: string, title: string }[], apiKey?: string) => {
+    const ai = getAiClient(apiKey);
     const prompt = `You are an ISO Lead Auditor. Provide professional, concise (10-15 words) descriptions for these missing ISO clause descriptions:
 ${JSON.stringify(clauses)}`;
     
