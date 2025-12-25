@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
 
@@ -14,10 +15,35 @@ const getApiKey = () => {
     return localStorage.getItem("iso_api_key") || envKey || "";
 };
 
-const getAiClient = () => {
-    const apiKey = getApiKey();
+const getAiClient = (overrideKey?: string) => {
+    const apiKey = overrideKey || getApiKey();
     if (!apiKey) throw new Error("API Key is missing. Please set it in Settings or configure .env file.");
     return new GoogleGenAI({ apiKey });
+};
+
+export const validateApiKey = async (key: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
+    const start = performance.now();
+    try {
+        const ai = new GoogleGenAI({ apiKey: key });
+        // Perform a lightweight operation to check validity
+        await ai.models.countTokens({
+            model: DEFAULT_GEMINI_MODEL,
+            contents: [{ parts: [{ text: "ping" }] }]
+        });
+        const end = performance.now();
+        return { isValid: true, latency: Math.round(end - start) };
+    } catch (error: any) {
+        let errorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
+        const msg = error.message?.toLowerCase() || "";
+        
+        if (msg.includes("403") || msg.includes("api key not valid")) {
+            errorType = 'invalid';
+        } else if (msg.includes("429") || msg.includes("quota")) {
+            errorType = 'quota_exceeded';
+        }
+
+        return { isValid: false, latency: 0, errorType };
+    }
 };
 
 export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string) => {

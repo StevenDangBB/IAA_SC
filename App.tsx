@@ -1,12 +1,11 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard } from './types';
-import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay } from './components/UI';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
+import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay, IconInput } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
-import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText } from './services/geminiService';
+import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText, validateApiKey } from './services/geminiService';
 import { cleanAndParseJSON, fileToBase64, cleanFileName } from './utils';
 
 declare var mammoth: any;
@@ -24,7 +23,14 @@ function App() {
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [userApiKey, setUserApiKey] = useState("");
+    
+    // API Key Management State
+    const [apiKeys, setApiKeys] = useState<ApiKeyProfile[]>([]);
+    const [activeKeyId, setActiveKeyId] = useState<string>("");
+    const [newKeyInput, setNewKeyInput] = useState("");
+    const [newKeyLabel, setNewKeyLabel] = useState("");
+    const [isCheckingKey, setIsCheckingKey] = useState(false);
+
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
     const [isDragging, setIsDragging] = useState(false);
@@ -44,11 +50,13 @@ function App() {
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
     const [layoutMode, setLayoutMode] = useState('evidence' as LayoutMode);
     
+    // Loading States
     const [isOcrLoading, setIsOcrLoading] = useState(false);
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
     const [isNotesExportLoading, setIsNotesExportLoading] = useState(false);
+    
     const [aiError, setAiError] = useState<string | null>(null);
     
     const [importText, setImportText] = useState("");
@@ -61,42 +69,88 @@ function App() {
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
     const isAnalyzeDisabled = isAnalyzeLoading || selectedClauses.length === 0;
 
-    // --- EFFECTS ---
+    // --- EFFECTS & PERSISTENCE ---
     useEffect(() => {
+        // Init load
         const storedScale = localStorage.getItem('iso_font_scale');
         if (storedScale) setFontSizeScale(parseFloat(storedScale));
         
-        const savedAuditInfo = localStorage.getItem("iso_audit_info");
-        const savedEvidence = localStorage.getItem("iso_evidence");
-        const savedDarkMode = localStorage.getItem('iso_dark_mode');
-        const savedTemplate = localStorage.getItem('iso_report_template');
-        const savedTemplateName = localStorage.getItem('iso_report_template_name');
-        const savedApiKey = localStorage.getItem('iso_api_key');
+        loadSessionData(); // Load all saved data
+        loadKeyData(); // Load API Keys
 
-        if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
-        if (savedEvidence && savedEvidence.trim() !== '') setEvidence(savedEvidence);
-        
+        const savedDarkMode = localStorage.getItem('iso_dark_mode');
         if (savedDarkMode !== null) {
             setIsDarkMode(savedDarkMode === 'true');
         } else {
             setIsDarkMode(true); 
         }
-        
-        if (savedTemplate) setReportTemplate(savedTemplate);
-        if (savedTemplateName) setTemplateFileName(savedTemplateName);
-        if (savedApiKey) setUserApiKey(savedApiKey);
     }, []);
 
+    const loadSessionData = () => {
+        try {
+            const savedAuditInfo = localStorage.getItem("iso_audit_info");
+            const savedEvidence = localStorage.getItem("iso_evidence");
+            const savedStandardKey = localStorage.getItem("iso_standard_key");
+            const savedSelectedClauses = localStorage.getItem("iso_selected_clauses");
+            const savedTemplate = localStorage.getItem('iso_report_template');
+            const savedTemplateName = localStorage.getItem('iso_report_template_name');
+
+            if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
+            if (savedEvidence && savedEvidence.trim() !== '') setEvidence(savedEvidence);
+            if (savedStandardKey) setStandardKey(savedStandardKey);
+            if (savedSelectedClauses) setSelectedClauses(JSON.parse(savedSelectedClauses));
+            if (savedTemplate) setReportTemplate(savedTemplate);
+            if (savedTemplateName) setTemplateFileName(savedTemplateName);
+        } catch (e) {
+            console.error("Failed to load session data", e);
+        }
+    };
+
+    const loadKeyData = () => {
+        try {
+            const savedKeys = localStorage.getItem("iso_api_keys");
+            const savedActiveId = localStorage.getItem("iso_active_key_id");
+            // Migration for legacy single key
+            const legacyKey = localStorage.getItem("iso_api_key");
+            
+            let loadedKeys: ApiKeyProfile[] = [];
+            
+            if (savedKeys) {
+                loadedKeys = JSON.parse(savedKeys);
+            } else if (legacyKey) {
+                // Migrate legacy key to new structure
+                const newId = Date.now().toString();
+                loadedKeys = [{
+                    id: newId,
+                    label: "Default Key",
+                    key: legacyKey,
+                    status: 'unknown',
+                    latency: 0,
+                    lastChecked: new Date().toISOString()
+                }];
+                setActiveKeyId(newId);
+                localStorage.setItem("iso_active_key_id", newId);
+            }
+
+            setApiKeys(loadedKeys);
+            if (savedActiveId) {
+                setActiveKeyId(savedActiveId);
+            } else if (loadedKeys.length > 0) {
+                setActiveKeyId(loadedKeys[0].id);
+            }
+        } catch (e) { console.error("Failed to load keys", e); }
+    };
+
+    // Real-time Saving
     useEffect(() => {
         if (isDarkMode) document.body.classList.add('dark');
         else {
             document.body.classList.remove('dark');
-            setIsSnowing(false); // Turn off snow when not in dark mode
+            setIsSnowing(false); 
         }
         localStorage.setItem('iso_dark_mode', String(isDarkMode));
     }, [isDarkMode]);
     
-    // Apply Font Scale Global
     useEffect(() => {
         document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString());
         localStorage.setItem('iso_font_scale', fontSizeScale.toString());
@@ -104,10 +158,85 @@ function App() {
 
     useEffect(() => { localStorage.setItem("iso_audit_info", JSON.stringify(auditInfo)); }, [auditInfo]);
     useEffect(() => { localStorage.setItem("iso_evidence", evidence); }, [evidence]);
+    useEffect(() => { localStorage.setItem("iso_standard_key", standardKey); }, [standardKey]);
+    useEffect(() => { localStorage.setItem("iso_selected_clauses", JSON.stringify(selectedClauses)); }, [selectedClauses]);
+    
     useEffect(() => {
         localStorage.setItem('iso_report_template', reportTemplate);
         localStorage.setItem('iso_report_template_name', templateFileName);
     }, [reportTemplate, templateFileName]);
+
+    // Save Keys and update the 'legacy' key slot for geminiService usage
+    useEffect(() => {
+        localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
+        localStorage.setItem("iso_active_key_id", activeKeyId);
+        
+        const activeProfile = apiKeys.find(k => k.id === activeKeyId);
+        if (activeProfile) {
+            localStorage.setItem("iso_api_key", activeProfile.key);
+        } else {
+            localStorage.removeItem("iso_api_key");
+        }
+    }, [apiKeys, activeKeyId]);
+
+    // --- API KEY HANDLERS ---
+    
+    const checkKeyStatus = async (id: string, keyStr: string) => {
+        setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
+        const result = await validateApiKey(keyStr);
+        setApiKeys(prev => prev.map(k => k.id === id ? { 
+            ...k, 
+            status: result.isValid ? 'valid' : (result.errorType || 'invalid'),
+            latency: result.latency,
+            lastChecked: new Date().toISOString()
+        } : k));
+        return result.isValid;
+    };
+
+    const handleAddKey = async () => {
+        if (!newKeyInput.trim()) return;
+        setIsCheckingKey(true);
+        const tempId = Date.now().toString();
+        
+        // Validate before adding
+        const validation = await validateApiKey(newKeyInput);
+        
+        const newProfile: ApiKeyProfile = {
+            id: tempId,
+            label: newKeyLabel || `API Key ${apiKeys.length + 1}`,
+            key: newKeyInput,
+            status: validation.isValid ? 'valid' : (validation.errorType || 'invalid'),
+            latency: validation.latency,
+            lastChecked: new Date().toISOString()
+        };
+
+        setApiKeys(prev => [...prev, newProfile]);
+        // If it's the first key, make it active
+        if (apiKeys.length === 0) setActiveKeyId(tempId);
+        
+        setNewKeyInput("");
+        setNewKeyLabel("");
+        setIsCheckingKey(false);
+    };
+
+    const handleDeleteKey = (id: string) => {
+        const remaining = apiKeys.filter(k => k.id !== id);
+        setApiKeys(remaining);
+        if (activeKeyId === id && remaining.length > 0) {
+            setActiveKeyId(remaining[0].id);
+        } else if (remaining.length === 0) {
+            setActiveKeyId("");
+        }
+    };
+
+    const handleRefreshStatus = async (id: string) => {
+        const keyProfile = apiKeys.find(k => k.id === id);
+        if (keyProfile) {
+            await checkKeyStatus(id, keyProfile.key);
+        }
+    };
+
+    // --- MAIN HANDLERS ---
 
     const handleNewSession = () => {
         if (window.confirm("Start new session? Current work will be cleared.")) {
@@ -124,16 +253,12 @@ function App() {
     };
 
     const handleRecall = () => {
-        const savedAuditInfo = localStorage.getItem("iso_audit_info");
-        const savedEvidence = localStorage.getItem("iso_evidence");
-        if (savedAuditInfo) setAuditInfo(JSON.parse(savedAuditInfo));
-        if (savedEvidence) setEvidence(savedEvidence);
-        alert("Previous session recalled successfully.");
-    };
-
-    const handleSaveApiKey = () => {
-        localStorage.setItem("iso_api_key", userApiKey);
-        setShowSettingsModal(false);
+        loadSessionData();
+        const notification = document.createElement("div");
+        notification.textContent = "Session Recalled Successfully";
+        notification.className = "fixed bottom-5 right-5 bg-emerald-500 text-white px-4 py-2 rounded-xl shadow-xl z-[9999] animate-in slide-in-from-bottom-5";
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 2000);
     };
 
     const handleUpdateStandard = (updated: Standard) => {
@@ -164,6 +289,21 @@ function App() {
         }
     };
 
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData.items;
+        const newImages: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf("image") !== -1) {
+                const blob = items[i].getAsFile();
+                if (blob) newImages.push(blob);
+            }
+        }
+        if (newImages.length > 0) {
+            setPastedImages(prev => [...prev, ...newImages]);
+        }
+    };
+
+    // AI HANDLERS
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
         setIsAnalyzeLoading(true); setAiError(null);
@@ -183,48 +323,73 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 result.forEach((r: any) => initialSelection[r.clauseId] = true);
                 setSelectedFindings(initialSelection);
                 setLayoutMode('findings'); 
+            } else {
+                throw new Error("Empty response from AI analysis.");
             }
-        } catch (e: any) { setAiError(e.message); } finally { setIsAnalyzeLoading(false); }
+        } catch (e: any) { setAiError(e.message || "Analysis Failed"); } finally { setIsAnalyzeLoading(false); }
     };
 
     const handleGenerateReport = async () => {
         if (!analysisResult) return;
-        setIsReportLoading(true); setLayoutMode('report');
+        setIsReportLoading(true); setLayoutMode('report'); setAiError(null);
         try {
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
              const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
              const text = await generateTextReport(prompt, "Expert ISO Report Compiler.");
              setFinalReportText(text || "");
-        } catch (e: any) { setAiError(e.message); } finally { setIsReportLoading(false); }
+        } catch (e: any) { setAiError(e.message || "Report Generation Failed"); } finally { setIsReportLoading(false); }
     };
 
     const handleOcrUpload = async () => {
         if (pastedImages.length === 0) return;
-        setIsOcrLoading(true);
+        setIsOcrLoading(true); 
+        setAiError(null);
         try {
             const promises = pastedImages.map(async (file) => {
                 const b64 = await fileToBase64(file);
                 return await generateOcrContent("Extract text accurately.", b64, file.type);
             });
             const results = await Promise.all(promises);
-            setEvidence(prev => prev + "\n\n" + results.join('\n\n---\n\n'));
+            setEvidence(prev => prev + "\n\n--- OCR EXTRACTED ---\n" + results.join('\n\n') + "\n---------------------\n");
             setPastedImages([]);
-        } catch (e: any) { setAiError(e.message); } finally { setIsOcrLoading(false); }
+        } catch (e: any) { 
+            setAiError(e.message || "OCR Processing Failed"); 
+        } finally { 
+            setIsOcrLoading(false);
+        }
     };
 
     const handleExport = async (text: string, type: 'notes' | 'report', lang: ExportLanguage) => {
         if (!text) return;
-        if (type === 'notes') setIsNotesExportLoading(true); else setIsExportLoading(true);
+        const setLoading = type === 'notes' ? setIsNotesExportLoading : setIsExportLoading;
+        setLoading(true);
+        setAiError(null);
+
         try {
-            const targetLang = lang === 'vi' ? 'Vietnamese' : 'English';
-            const prompt = `Translate to ${targetLang}. Maintain formatting. Text: """${text}"""`;
-            const trans = await generateTextReport(prompt, "Translator.");
-            const blob = new Blob([trans || ""], {type: 'text/plain;charset=utf-8'});
+            let contentToExport = text;
+            if (lang === 'vi') {
+               try {
+                   const prompt = `Translate to Vietnamese. Maintain formatting. Text: """${text}"""`;
+                   const trans = await generateTextReport(prompt, "Translator.");
+                   if (trans) contentToExport = trans;
+               } catch (aiErr) {
+                   console.warn("Translation failed, falling back to raw text", aiErr);
+                   setAiError("Translation failed (API Error). Exporting original text instead.");
+               }
+            }
+
+            const blob = new Blob([contentToExport], {type: 'text/plain;charset=utf-8'});
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `${cleanFileName(auditInfo.company)}_${type}_${lang}.txt`;
+            link.download = `${cleanFileName(auditInfo.company)}_${type}_${lang}_${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(link);
             link.click();
-        } catch (e: any) { console.error(e); } finally { setIsNotesExportLoading(false); setIsExportLoading(false); }
+            document.body.removeChild(link);
+        } catch (e: any) { 
+            setAiError(e.message || "Export Failed"); 
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -247,6 +412,27 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
 
     return (
         <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+            {aiError && (
+                <div className="fixed top-20 right-5 z-[9999] max-w-sm w-full bg-white dark:bg-slate-800 border-l-4 border-red-500 shadow-2xl rounded-r-xl p-4 animate-in slide-in-from-right-10 flex flex-col gap-2">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
+                            <Icon name="AlertCircle" size={20}/>
+                            <span>System Alert</span>
+                        </div>
+                        <button 
+                            onClick={() => setAiError(null)} 
+                            className="text-gray-400 hover:text-slate-800 dark:hover:text-white transition-colors p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700"
+                        >
+                            <Icon name="X" size={18}/>
+                        </button>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{aiError}</p>
+                    <div className="flex justify-end">
+                        <button onClick={() => setAiError(null)} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white underline">Dismiss</button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-50 flex justify-between items-center h-14">
                 <div className="flex items-center gap-5">
                     {/* Floating Logo Container with Halo Effect */}
@@ -281,11 +467,17 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     )}
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition-all shadow-sm"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(1.6, prev + 0.05) : Math.max(0.8, prev - 0.05))} />
-                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm" title="Settings"><Icon name="Settings" size={18}/></button>
+                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all shadow-sm relative" title="Settings">
+                        <Icon name="Settings" size={18}/>
+                        {apiKeys.some(k => k.status === 'quota_exceeded' || k.status === 'invalid') && (
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        )}
+                    </button>
                     <button onClick={() => setShowAboutModal(true)} className="p-2 px-3 rounded-xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-semibold text-xs flex items-center gap-2 border border-indigo-100 dark:border-slate-700"><Icon name="Info" size={18}/> INFO</button>
                 </div>
             </div>
 
+            {/* ... [Main Content Body stays mostly same] ... */}
             <div className="flex flex-1 min-h-0 w-full relative overflow-hidden bg-white dark:bg-slate-900">
                 <Sidebar 
                     isOpen={isSidebarOpen} 
@@ -304,17 +496,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 />
                 
                 <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
-                    {/* Error Banner */}
-                    {aiError && (
-                        <div className="absolute top-4 left-4 right-4 z-[100] bg-red-100 dark:bg-red-900/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-3 rounded-xl flex items-center justify-between shadow-lg animate-in slide-in-from-top-2">
-                            <div className="flex items-center gap-2">
-                                <Icon name="AlertCircle" size={20}/>
-                                <span className="text-sm font-bold">{aiError}</span>
-                            </div>
-                            <button onClick={() => setAiError(null)}><Icon name="X" size={18}/></button>
-                        </div>
-                    )}
-
+                    
                     {/* Block 1: Evidence */}
                     <div className={`flex flex-col bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-xl relative z-10 ${layoutMode === 'evidence' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-20">
@@ -329,7 +511,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     <button onClick={() => setNotesLanguage('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'en' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>EN</button>
                                     <button onClick={() => setNotesLanguage('vi')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${notesLanguage === 'vi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'}`}>VI</button>
                                 </div>
-                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Export Evidence">
+                                <button onClick={() => handleExport(evidence, 'notes', notesLanguage)} disabled={isNotesExportLoading} className="h-9 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-500/20" title="Export Evidence">
                                     {isNotesExportLoading ? <Icon name="Loader" className="animate-spin text-white"/> : <><Icon name="Download" size={16} className="text-white"/> Export</>}
                                 </button>
                                 <button onClick={() => setLayoutMode(layoutMode === 'evidence' ? 'split' : 'evidence')} className="w-9 h-9 rounded-xl text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'evidence' ? "CollapsePanel" : "ExpandPanel"}/></button>
@@ -362,7 +544,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     )) : (
                                         <div className="flex flex-col">
                                             <span className="text-adjustable-xs text-slate-400 font-medium uppercase tracking-tighter">Evidence Processing Queue</span>
-                                            <span className="text-[10px] text-slate-400 italic">Drag images/PDFs here or use the upload button...</span>
+                                            <span className="text-[10px] text-slate-400 italic">Drag images/PDFs here or Ctrl+V to paste...</span>
                                         </div>
                                     )}
                                 </div>
@@ -372,7 +554,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         <Icon name="UploadCloud" size={20}/>
                                     </button>
                                     {pastedImages.length > 0 && (
-                                        <button onClick={handleOcrUpload} disabled={isOcrLoading} className="p-2.5 rounded-xl bg-emerald-500 text-white shadow-xl hover:bg-emerald-600 animate-in fade-in slide-in-from-right-2" title="Convert to Text (OCR)">
+                                        <button onClick={handleOcrUpload} disabled={isOcrLoading} className={`p-2.5 rounded-xl text-white shadow-xl hover:bg-emerald-600 animate-in fade-in slide-in-from-right-2 ${isOcrLoading ? 'bg-emerald-600 cursor-not-allowed' : 'bg-emerald-500'}`} title="Convert to Text (OCR)">
                                             {isOcrLoading ? <SparkleLoader/> : <Icon name="ScanText" size={20}/>}
                                         </button>
                                     )}
@@ -382,9 +564,10 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                              <div className="flex-1 relative pb-20 z-0">
                                 <textarea 
                                     className="w-full h-full p-6 bg-white dark:bg-slate-950 caret-indigo-600 dark:caret-indigo-400 outline-none rounded-xl border-2 border-slate-200 dark:border-slate-800 font-sans text-adjustable-sm leading-relaxed text-slate-800 dark:text-slate-100 resize-none shadow-inner focus:border-indigo-300 dark:focus:border-indigo-900 transition-colors" 
-                                    placeholder="Paste interview notes, audit evidence or case descriptions here..." 
+                                    placeholder="Paste interview notes, audit evidence or case descriptions here (Ctrl+V supported for images)..." 
                                     value={evidence} 
                                     onChange={e => setEvidence(e.target.value)}
+                                    onPaste={handlePaste}
                                 ></textarea>
 
                                 {hasEvidence && (layoutMode === 'evidence' || layoutMode === 'split') && (
@@ -397,8 +580,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                              </div>
                         </div>
                     </div>
-
-                    {/* Block 2: Findings */}
+                    {/* Block 2 & 3 */}
                     <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 transition-all duration-500 shadow-lg relative ${layoutMode === 'findings' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                         <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center z-10 justify-between">
                             <h3 className="font-bold text-lg text-emerald-950 dark:text-emerald-100 flex items-center gap-3">
@@ -440,7 +622,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         </div>
                     </div>
 
-                    {/* Block 3: Final Synthesis */}
                     <div className={`flex flex-col bg-white dark:bg-slate-900 transition-all duration-500 relative ${layoutMode === 'report' || layoutMode === 'split' ? 'block-grow' : 'block-shrink'}`}>
                          <div className="px-6 py-3 border-b dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center z-10">
                             <h3 className="font-bold text-lg text-blue-950 dark:text-blue-100 flex items-center gap-3">
@@ -506,32 +687,104 @@ Use icons like: Lock, FileShield, Cpu, Users, Building, LayoutList. Output valid
                  </div>
             </Modal>
 
-            <Modal isOpen={showSettingsModal} title="Settings" onClose={() => setShowSettingsModal(false)}>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Gemini API Key</label>
-                        <div className="relative">
-                            <input 
-                                type="password" 
-                                className="w-full pl-10 pr-3 py-2.5 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-indigo-100 dark:focus:border-indigo-900 rounded-xl text-sm transition-all text-slate-900 dark:text-slate-100 font-normal placeholder-gray-400 focus:bg-white dark:focus:bg-slate-900 shadow-sm"
-                                placeholder="Enter your Google Gemini API Key..."
-                                value={userApiKey}
-                                onChange={(e) => setUserApiKey(e.target.value)}
-                            />
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                                <Icon name="Key" size={18} />
+            <Modal isOpen={showSettingsModal} title="API Key Management" onClose={() => setShowSettingsModal(false)}>
+                <div className="space-y-6">
+                    {/* Add New Key Section */}
+                    <div className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-3">
+                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Add New Key</h4>
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="sm:col-span-1">
+                                <IconInput icon="Tag" placeholder="Label (e.g. Project A)" value={newKeyLabel} onChange={(e: any) => setNewKeyLabel(e.target.value)} />
                             </div>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-2">
-                            The key is stored locally in your browser. Leave empty to use the environment variable (if configured).
-                            <br/>
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">Get a key from AI Studio</a>
-                        </p>
+                            <div className="sm:col-span-2">
+                                <IconInput icon="Key" placeholder="Paste Google API Key here..." value={newKeyInput} onChange={(e: any) => setNewKeyInput(e.target.value)} />
+                            </div>
+                         </div>
+                         <button 
+                            onClick={handleAddKey} 
+                            disabled={!newKeyInput || isCheckingKey}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            {isCheckingKey ? <SparkleLoader size={16} className="text-white"/> : <Icon name="Plus" size={16}/>}
+                            {isCheckingKey ? "Validating..." : "Validate & Add Key"}
+                         </button>
                     </div>
-                    <div className="flex justify-end pt-2">
-                        <button onClick={handleSaveApiKey} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">
-                            Save Settings
-                        </button>
+
+                    {/* Key List Section */}
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-end px-1">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Available Keys</h4>
+                            <span className="text-[10px] text-slate-400 italic">Select a key to activate it.</span>
+                        </div>
+                        
+                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                            {apiKeys.length === 0 ? (
+                                <div className="text-center p-6 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl">
+                                    <p className="text-sm text-slate-400">No API keys added yet.</p>
+                                </div>
+                            ) : (
+                                apiKeys.map(profile => (
+                                    <div 
+                                        key={profile.id} 
+                                        className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between gap-3 ${activeKeyId === profile.id ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900'}`}
+                                        onClick={() => setActiveKeyId(profile.id)}
+                                    >
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${activeKeyId === profile.id ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300 dark:border-slate-600'}`}>
+                                                {activeKeyId === profile.id && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                                            </div>
+                                            <div className="flex flex-col min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{profile.label}</span>
+                                                    {/* Status Badge */}
+                                                    {profile.status === 'checking' ? (
+                                                        <span className="text-[10px] text-indigo-500 animate-pulse">Checking...</span>
+                                                    ) : (
+                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide flex items-center gap-1 ${
+                                                            profile.status === 'valid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                            profile.status === 'quota_exceeded' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                                                            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                        }`}>
+                                                            {profile.status === 'valid' ? 'Active' : profile.status === 'quota_exceeded' ? 'Quota Exceeded' : 'Invalid'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                                                    <span>{profile.key.substring(0, 8)}...{profile.key.substring(profile.key.length - 4)}</span>
+                                                    {profile.latency > 0 && <span className="text-slate-300">• {profile.latency}ms</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-1">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleRefreshStatus(profile.id); }}
+                                                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-indigo-500 transition-colors"
+                                                title="Re-check Status"
+                                            >
+                                                <Icon name="RefreshCw" size={14}/>
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteKey(profile.id); }}
+                                                className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                                title="Remove Key"
+                                            >
+                                                <Icon name="Trash2" size={14}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-xl flex items-start gap-3">
+                         <Icon name="Info" className="text-blue-500 mt-0.5 shrink-0" size={16}/>
+                         <p className="text-[10px] text-blue-800 dark:text-blue-300 leading-snug">
+                             <strong>Note on Quota:</strong> Google does not provide a direct API to check remaining tokens. 
+                             The system performs a "Health Check" (sending a tiny request) to determine if the key is live or if the quota is exceeded (Error 429). 
+                             Latency is measured during this check.
+                         </p>
                     </div>
                 </div>
             </Modal>

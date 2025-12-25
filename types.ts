@@ -1,3 +1,4 @@
+
 export interface Clause {
     id: string;
     code: string;
@@ -45,4 +46,13 @@ export interface AnalysisResult {
 
 export interface FindingDetail {
     classification: 'N_A' | 'OFI' | 'NC_Minor' | 'NC_Major';
+}
+
+export interface ApiKeyProfile {
+    id: string;
+    label: string;
+    key: string;
+    status: 'valid' | 'invalid' | 'quota_exceeded' | 'checking' | 'unknown';
+    latency: number; // in ms
+    lastChecked: string;
 }
