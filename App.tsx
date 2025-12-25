@@ -814,7 +814,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         {layoutMode === 'report' && !finalReportText && (
                              <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
                                 <Icon name="FileText" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
-                                <p>No report generated. Go to Findings > Generate Report.</p>
+                                <p>No report generated. Go to Findings &gt; Generate Report.</p>
                              </div>
                         )}
 
