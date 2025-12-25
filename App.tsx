@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
@@ -26,6 +27,9 @@ function App() {
     const [showImportModal, setShowImportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     
+    // New: Track Window Width for responsive calculations in JS
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
     // API Key Management State
     const [apiKeys, setApiKeys] = useState<ApiKeyProfile[]>([]);
     const [activeKeyId, setActiveKeyId] = useState<string>("");
@@ -120,6 +124,11 @@ function App() {
         if (window.innerWidth < 768) {
             setIsSidebarOpen(false);
         }
+
+        // Window resize listener to track full width
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     // Update Fluid Tab Position - Enhanced Logic
@@ -660,6 +669,12 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         return "Ready! Click to Start AI Analysis.";
     };
 
+    // Responsive Calculation for Main Content Layout
+    // Calculate the actual available width for the main content area
+    const mainContentWidth = isSidebarOpen ? (windowWidth - sidebarWidth) : windowWidth;
+    // Threshold to switch to "Mobile Stacked" layout (500px is a reasonable breakpoint for buttons)
+    const isCompactLayout = mainContentWidth < 500;
+
     return (
         <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-200 relative">
             {/* Toast Notification */}
@@ -896,9 +911,19 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     )}
                                 </div>
 
-                                <div className="flex flex-col md:flex-row justify-between items-center mt-2 gap-3 md:gap-0">
-                                    <div className="flex gap-2 w-full md:w-auto">
-                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="flex-1 md:flex-none justify-center px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all" title="Export Raw Text">
+                                {/* 
+                                    RESPONSIVE BUTTON LAYOUT LOGIC:
+                                    - If isCompactLayout is TRUE: Switch to flex-col (Vertical Stack).
+                                    - Order: First child (Export container) is on top, Second child (Analyze) is on bottom.
+                                    - Widths: In compact mode, buttons become w-full for easier touch targets.
+                                */}
+                                <div className={`flex ${isCompactLayout ? 'flex-col gap-3' : 'flex-row justify-between items-center gap-3 md:gap-0'} mt-2`}>
+                                    <div className={`flex gap-2 ${isCompactLayout ? 'w-full' : 'w-full md:w-auto'}`}>
+                                        <button 
+                                            onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} 
+                                            className={`${isCompactLayout ? 'w-full justify-center' : 'flex-1 md:flex-none'} px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all`} 
+                                            title="Export Raw Text"
+                                        >
                                             {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
                                             <div className="lang-pill-container ml-1">
                                                 <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -910,7 +935,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         onClick={handleAnalyze} 
                                         disabled={!isReadyForAnalysis}
                                         title={getAnalyzeTooltip()} 
-                                        className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-3 ${
+                                        className={`${isCompactLayout ? 'w-full' : 'w-full md:w-auto'} px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-3 ${
                                             isReadyForAnalysis 
                                             ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" 
                                             : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"

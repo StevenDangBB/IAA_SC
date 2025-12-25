@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
@@ -53,12 +54,17 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         const stopResizing = () => setIsResizing(false);
         const resize = (e: MouseEvent) => {
             if (isResizing) {
-                // Layout Protection:
-                // 1. Min width 280px (allow narrower than before)
-                // 2. Max width 600px OR 50% of screen width (whichever is smaller)
-                // This prevents the sidebar from crushing the main content on smaller laptop screens.
-                const maxAllowedWidth = Math.min(600, window.innerWidth * 0.5);
-                const newWidth = Math.max(280, Math.min(e.clientX, maxAllowedWidth));
+                // Constants for resizing constraints
+                const MIN_SIDEBAR_WIDTH = 360; // Standard Mobile Interface Width
+                const MIN_MAIN_CONTENT_WIDTH = 375; // Minimum preserved width for the main content area
+                const MAX_SIDEBAR_LIMIT = 800;
+
+                // Calculate the maximum allowed width for the sidebar
+                // taking into account the window width and the reserved space for main content
+                const maxSidebarWidth = Math.min(MAX_SIDEBAR_LIMIT, window.innerWidth - MIN_MAIN_CONTENT_WIDTH);
+
+                // Apply constraints
+                const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(e.clientX, maxSidebarWidth));
                 setWidth(newWidth);
             }
         };
