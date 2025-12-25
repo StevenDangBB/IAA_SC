@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
-import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay, IconInput } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, CheckLineart, Modal, SnowOverlay, IconInput, AINeuralLoader } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText, validateApiKey } from './services/geminiService';
@@ -523,6 +523,9 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
                         >
+                            {/* OCR LOADING OVERLAY */}
+                            {isOcrLoading && <AINeuralLoader message="Scanning Documents..." />}
+
                             {isDragging && (
                                 <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm z-[60] flex items-center justify-center border-4 border-dashed border-indigo-500 rounded-xl pointer-events-none">
                                     <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-3">
@@ -592,7 +595,10 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                 <button onClick={() => setLayoutMode(layoutMode === 'findings' ? 'split' : 'findings')} className="w-9 h-9 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all" title="Switch View"><Icon name={layoutMode === 'findings' ? "CollapsePanel" : "ExpandPanel"}/></button>
                             </div>
                         </div>
-                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-100/30 dark:bg-slate-950/40 min-h-0 overflow-y-auto custom-scrollbar">
+                        <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-100/30 dark:bg-slate-950/40 min-h-0 overflow-y-auto custom-scrollbar relative">
+                            {/* ANALYSIS LOADING OVERLAY */}
+                            {isAnalyzeLoading && <AINeuralLoader message="Analyzing Evidence..." />}
+
                             {analysisResult ? analysisResult.map((res, i) => (
                                 <div key={i} className={`p-4 bg-white dark:bg-slate-900 rounded-xl border-2 transition-all ${selectedFindings[res.clauseId] ? 'border-indigo-200 dark:border-indigo-900/50 shadow-md' : 'border-transparent opacity-60'}`}>
                                     <div className="flex justify-between items-start mb-3">
@@ -644,14 +650,10 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                             </div>
                         </div>
                         <div className="flex-1 p-6 flex flex-col gap-4 bg-gray-50/10 dark:bg-slate-950/20 min-h-0 relative">
-                             {isReportLoading ? (
-                                <div className="flex flex-col items-center justify-center h-full">
-                                    <SparkleLoader size={64} className="mb-6"/>
-                                    <p className="text-indigo-600 dark:text-indigo-400 font-bold text-lg animate-pulse uppercase tracking-widest">Assembling Final Report...</p>
-                                </div>
-                             ) : (
-                                <textarea className="flex-1 w-full h-full p-8 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl text-adjustable-sm font-mono leading-relaxed outline-none dark:text-slate-200 shadow-inner custom-scrollbar" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Final synthesized content will appear here..."/>
-                             )}
+                             {/* REPORT LOADING OVERLAY */}
+                             {isReportLoading && <AINeuralLoader message="Writing Final Report..." />}
+                             
+                             <textarea className="flex-1 w-full h-full p-8 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl text-adjustable-sm font-mono leading-relaxed outline-none dark:text-slate-200 shadow-inner custom-scrollbar" value={finalReportText || ""} onChange={e => setFinalReportText(e.target.value)} placeholder="Final synthesized content will appear here..."/>
                         </div>
                     </div>
                 </div>

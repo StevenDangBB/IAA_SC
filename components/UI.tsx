@@ -141,6 +141,54 @@ export const SparkleLoader = ({ size = 20, className = "" }: { size?: number, cl
     );
 };
 
+// --- NEW: VIVID NEURAL LOADER ---
+export const AINeuralLoader = ({ message }: { message?: string }) => {
+    const [status, setStatus] = useState(message || "Initializing AI...");
+    
+    // Auto-cycle status messages for effect
+    useEffect(() => {
+        if (!message) {
+            const steps = [
+                "Connecting neural nodes...", 
+                "Parsing visual data...", 
+                "Synthesizing logic patterns...", 
+                "Consulting ISO Standards...",
+                "Drafting insights..."
+            ];
+            let i = 0;
+            const timer = setInterval(() => {
+                i = (i + 1) % steps.length;
+                setStatus(steps[i]);
+            }, 1800);
+            return () => clearInterval(timer);
+        } else {
+            setStatus(message);
+        }
+    }, [message]);
+
+    return (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300 rounded-xl">
+            {/* The Neural Orb */}
+            <div className="relative w-24 h-24 mb-6">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 blur-xl opacity-60 animate-pulse-slow"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-t-indigo-500 border-r-purple-500 border-b-cyan-500 border-l-transparent animate-spin"></div>
+                <div className="absolute inset-2 rounded-full border-4 border-t-transparent border-r-cyan-400 border-b-purple-400 border-l-indigo-400 animate-spin-reverse opacity-80"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <Icon name="Sparkle" size={32} className="text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] animate-bounce"/>
+                </div>
+            </div>
+            
+            {/* Status Text */}
+            <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-300 dark:to-cyan-300 uppercase tracking-widest animate-pulse">
+                Thinking
+            </h3>
+            <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-2 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-indigo-100 dark:border-slate-700 shadow-sm">
+                {status}
+            </p>
+        </div>
+    );
+};
+
 // --- Font Size Controller ---
 export const FontSizeController = ({ fontSizeScale, adjustFontSize }: { fontSizeScale: number, adjustFontSize: (dir: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
