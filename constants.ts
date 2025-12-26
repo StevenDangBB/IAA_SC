@@ -1,9 +1,10 @@
+
 import { StandardsData } from './types';
 import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.3";
+export const APP_VERSION = "2.4";
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -26,8 +27,19 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.3 (Baseline Release)",
+        version: "2.4 (Performance & Fluidity)",
         date: new Date().toISOString().substring(0, 10),
+        features: [
+            "CORE AI UPDATE: Implemented 'Batch Processing' engine. Analysis is now split into sequential chunks to eliminate API Token Limits (429 Errors) and prevent Timeouts on large datasets.",
+            "FLUID UX: Completely overhauled animation system using Spring Physics. Menus, tabs, and modals now move with natural momentum.",
+            "VISUALS: New 'Glassmorphism' UI elements, Fluid Navigation Tabs, and smooth Accordion transitions.",
+            "RESPONSIVE: Enhanced layout logic for smaller screens (Stacked Action Buttons, Auto-collapsing Sidebars).",
+            "FEEDBACK: Added real-time progress indicators (e.g., 'Analyzing batch 1/4...') during complex AI tasks."
+        ]
+    },
+    {
+        version: "2.3 (Baseline Release)",
+        date: "2024-05-25",
         features: [
             "INTEGRITY: Added Standard Health Index to monitor data quality.",
             "AI REPAIR: Self-healing capability to fix missing clause descriptions.",

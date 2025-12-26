@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- Icons ---
+// --- Icons (Content unchanged for brevity, only UI components enhanced) ---
 export const Icons: Record<string, React.ReactNode> = {
     TDLogo: (
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -33,7 +34,6 @@ export const Icons: Record<string, React.ReactNode> = {
                     </feMerge>
                 </filter>
             </defs>
-            {/* The Monogram: T bar connected to D loop */}
             <path 
                 d="M5 6H11V18H14C17.866 18 21 15.3137 21 12C21 8.68629 17.866 6 14 6H11" 
                 stroke="url(#future_td_grad)" 
@@ -44,9 +44,8 @@ export const Icons: Record<string, React.ReactNode> = {
             />
         </svg>
     ),
-    
-    // --- 13 NEW DEMO ICONS FOR NEW SESSION ---
-    Session1_SparklePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M12 22v-4"/><path d="m19.07 19.07-2.83-2.83"/><path d="M22 12h-4"/><path d="m19.07 4.93-2.83 2.83"/></svg>, // Burst
+    // ... (Keep all existing icons)
+    Session1_SparklePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M12 22v-4"/><path d="m19.07 19.07-2.83-2.83"/><path d="M22 12h-4"/><path d="m19.07 4.93-2.83 2.83"/></svg>,
     Session2_PlayCircle: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
     Session3_Rocket: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.1 4-1 4-1"/><path d="M12 15v5s3.03-.55 4-2c1.1-1.62 1-4 1-4"/></svg>,
     Session4_FilePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
@@ -59,8 +58,6 @@ export const Icons: Record<string, React.ReactNode> = {
     Session11_GridAdd: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><path d="M3 17.5h7"/><path d="M6.5 14v7"/></svg>,
     Session12_CleanSheet: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M3 9h18"/></svg>,
     Session13_PowerBtn: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>,
-
-    // --- 13 NEW DEMO ICONS FOR UPLOAD ---
     Demo1_MultiFiles: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M3 15h6"/><path d="M6 12v6"/><path d="M16 18l2-2 2 2"/><path d="M18 16v6"/></svg>,
     Demo2_CloudAdd: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 17l-4-4-4 4"/></svg>,
     Demo3_FolderUp: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 10v6"/><path d="m9 13 3-3 3 3"/></svg>,
@@ -74,8 +71,6 @@ export const Icons: Record<string, React.ReactNode> = {
     Demo11_Scan: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/><path d="M12 8v8"/></svg>,
     Demo12_Attach: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 16.5 7-7"/><path d="m2 2 20 20"/><path d="m12 12 7-7"/><path d="M17 17v5"/><path d="M22 12h-5"/></svg>,
     Demo13_Meteor: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m13 4 8.2 2.5a2 2 0 0 1 1.3 2.5L20 17.5"/><path d="m8.5 7.5 10 10"/><path d="M2 13.5V19a2 2 0 0 0 2 2h5.5"/><path d="m13.5 8.5-5 5"/><path d="M7 15c-1.5 1-2 2.5-2 2.5s1.5.5 2.5-2"/><path d="M12 4V2"/><path d="m16 6 2-2"/><path d="M8 6 6 4"/></svg>,
-    
-    // --- Existing Icons ---
     Sparkle: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-amber-400 drop-shadow-[0_0_4px_rgba(252,211,77,0.7)] animate-pulse-slow"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>,
     FilePlus2: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M3 15h6"/><path d="M6 12v6"/></svg>,
     History: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
@@ -124,7 +119,6 @@ export const Icons: Record<string, React.ReactNode> = {
     Building: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 18h.01"/></svg>,
     User: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
     Snowflake: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>,
-    // Missing icon added for ReleaseNotesModal
     CheckLineart: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
 };
 
@@ -147,20 +141,20 @@ export const Icon = ({ name, size = 18, className = "", onClick }: { name: strin
 
 export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultText }: any) => (
     <div className="relative group">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300">
             <div className={iconColor}><Icon name={icon} size={16} /></div>
         </div>
         <select 
             value={value} 
             onChange={onChange}
-            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
         >
             <option value="" disabled>{defaultText}</option>
             {options.map((opt: any) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-500 transition-colors">
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-500 transition-colors duration-300">
             <Icon name="ChevronDown" size={14} />
         </div>
     </div>
@@ -168,7 +162,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
 
 export const IconInput = ({ icon, iconColor, placeholder, value, onChange, className = "" }: any) => (
     <div className={`relative group ${className}`}>
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300">
             <div className={iconColor}><Icon name={icon} size={16} /></div>
         </div>
         <input 
@@ -176,7 +170,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
         />
     </div>
 );
@@ -184,11 +178,11 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
 export const Modal = ({ isOpen, title, onClose, children }: any) => {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all scale-100 animate-in zoom-in-95 duration-200 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-400 overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900">
                     <h3 className="text-lg font-black text-slate-800 dark:text-white tracking-tight">{title}</h3>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-colors text-slate-400">
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-all duration-300 text-slate-400 hover:rotate-90">
                         <Icon name="X" size={20} />
                     </button>
                 </div>
@@ -231,7 +225,7 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => {
             <button 
                 ref={buttonRef}
                 onClick={handleToggle} 
-                className={`p-2 rounded-xl transition-all shadow-sm ${isOpen ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-700 dark:text-indigo-400' : 'bg-gray-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                className={`p-2 rounded-xl transition-all duration-300 shadow-sm ${isOpen ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-700 dark:text-indigo-400 scale-105' : 'bg-gray-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
                 title="Adjust Font Size"
             >
                 <Icon name="TextSize" size={18}/>
@@ -248,7 +242,7 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => {
 
                     {/* THE STATIC CONTROL PANEL */}
                     <div 
-                        className="fixed z-[100] flex items-center bg-white dark:bg-slate-900 rounded-full p-1.5 shadow-2xl border border-gray-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 min-w-[140px] justify-between"
+                        className="fixed z-[100] flex items-center bg-white dark:bg-slate-900 rounded-full p-1.5 shadow-2xl border border-gray-200 dark:border-slate-700 animate-zoom-in-spring min-w-[140px] justify-between"
                         style={{
                             top: `${pinnedPosition.top}px`,
                             right: `${pinnedPosition.right}px`,
@@ -256,9 +250,9 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => {
                         }}
                         onClick={(e) => e.stopPropagation()} // Prevent backdrop click from closing when clicking inside
                     >
-                         <button onClick={() => adjustFontSize('decrease')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all flex-shrink-0 active:scale-90"><Icon name="Minus" size={16}/></button>
+                         <button onClick={() => adjustFontSize('decrease')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all duration-200 flex-shrink-0 active:scale-90"><Icon name="Minus" size={16}/></button>
                          <span className="text-sm font-black text-slate-800 dark:text-white select-none px-2 w-12 text-center">{(fontSizeScale * 100).toFixed(0)}%</span>
-                         <button onClick={() => adjustFontSize('increase')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all flex-shrink-0 active:scale-90"><Icon name="Plus" size={16}/></button>
+                         <button onClick={() => adjustFontSize('increase')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-600 transition-all duration-200 flex-shrink-0 active:scale-90"><Icon name="Plus" size={16}/></button>
                     </div>
                 </>
             )}
@@ -274,16 +268,12 @@ export const SparkleLoader = ({ className }: any) => (
 );
 
 export const SnowOverlay = () => {
-    // Google AI Studio style: ~100 small particles, low opacity, full screen, slow drift.
-    // Increased Z-Index to 99999 to cover Sidebar and everything else.
-    const flakes = Array.from({ length: 100 }).map((_, i) => ({
+    const flakes = Array.from({ length: 50 }).map((_, i) => ({
         left: Math.random() * 100,
-        // Slower duration for a "drifting" feel
-        duration: Math.random() * 20 + 10, 
-        delay: Math.random() * 20,
-        // Much smaller size: 2px to 5px
-        size: Math.random() * 3 + 2, 
-        opacity: Math.random() * 0.5 + 0.1,
+        duration: Math.random() * 10 + 10, 
+        delay: Math.random() * 10,
+        size: Math.random() * 4 + 2, 
+        opacity: Math.random() * 0.4 + 0.1,
     }));
 
     return (
@@ -291,7 +281,7 @@ export const SnowOverlay = () => {
             {flakes.map((f, i) => (
                 <div
                     key={i}
-                    className="absolute bg-white rounded-full"
+                    className="absolute bg-white rounded-full blur-[1px]"
                     style={{
                         left: `${f.left}%`,
                         top: -10,
@@ -300,7 +290,6 @@ export const SnowOverlay = () => {
                         opacity: f.opacity,
                         animation: `fall ${f.duration}s linear infinite`,
                         animationDelay: `-${f.delay}s`,
-                        boxShadow: '0 0 2px rgba(255,255,255,0.8)'
                     }}
                 />
             ))}
@@ -308,11 +297,8 @@ export const SnowOverlay = () => {
                 @keyframes fall {
                     0% { transform: translateY(-10vh) translateX(0px); opacity: 0; }
                     10% { opacity: 1; }
-                    25% { transform: translateY(25vh) translateX(10px); }
-                    50% { transform: translateY(50vh) translateX(-10px); }
-                    75% { transform: translateY(75vh) translateX(10px); }
-                    90% { opacity: 1; }
-                    100% { transform: translateY(110vh) translateX(0px); opacity: 0; }
+                    50% { transform: translateY(50vh) translateX(20px); }
+                    100% { transform: translateY(110vh) translateX(-20px); opacity: 0; }
                 }
             `}</style>
         </div>
@@ -320,18 +306,25 @@ export const SnowOverlay = () => {
 };
 
 export const AINeuralLoader = ({ message }: { message: string }) => (
-    <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
-        <div className="relative w-24 h-24 mb-6">
-            <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900 rounded-full"></div>
+    <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center animate-in fade-in duration-500">
+        <div className="relative w-28 h-28 mb-8">
+            <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900 rounded-full opacity-50"></div>
             <div className="absolute inset-0 border-t-4 border-indigo-600 rounded-full animate-spin"></div>
-            <div className="absolute inset-4 border-4 border-purple-100 dark:border-purple-900 rounded-full"></div>
+            <div className="absolute inset-4 border-4 border-purple-100 dark:border-purple-900 rounded-full opacity-50"></div>
             <div className="absolute inset-4 border-r-4 border-purple-500 rounded-full animate-spin-reverse"></div>
             <div className="absolute inset-0 flex items-center justify-center">
-                 <Icon name="Wand2" className="text-indigo-600 dark:text-indigo-400 animate-pulse" size={24}/>
+                 <div className="bg-gradient-to-tr from-indigo-500 to-purple-500 p-4 rounded-full shadow-lg shadow-indigo-500/50 animate-pulse">
+                     <Icon name="Wand2" className="text-white" size={28}/>
+                 </div>
             </div>
+            {/* Orbiting particles */}
+            <div className="absolute top-0 left-1/2 w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] animate-ping"></div>
         </div>
-        <h3 className="text-lg font-black text-slate-800 dark:text-white mb-2 animate-pulse">{message}</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Gemini AI is processing context...</p>
+        <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 animate-pulse">{message}</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 font-mono flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            Gemini AI Processing...
+        </p>
     </div>
 );
 
@@ -342,16 +335,16 @@ export const Toast = ({ message, onClose }: { message: string, onClose: () => vo
     }, [onClose]);
 
     return (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-500 ease-spring">
             <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
                 <div className="p-1 bg-green-500 rounded-full text-white">
                     <Icon name="CheckLineart" size={14}/>
                 </div>
                 <div className="flex flex-col">
-                    <span className="text-xs font-black uppercase tracking-wider opacity-70">Auto-Switch API</span>
+                    <span className="text-xs font-black uppercase tracking-wider opacity-70">Notification</span>
                     <span className="text-sm font-bold">{message}</span>
                 </div>
-                <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900">
+                <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900 transition-colors">
                     <Icon name="X" size={16}/>
                 </button>
             </div>

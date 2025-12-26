@@ -81,8 +81,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     // Handle Scroll to Toggle Header Visibility
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const scrollTop = e.currentTarget.scrollTop;
-        // Logic: Show header only when at the very top (scrollTop < 10)
-        // Hide header immediately when scrolling down
         if (scrollTop > 10 && isHeaderVisible) {
             setIsHeaderVisible(false);
         } else if (scrollTop <= 10 && !isHeaderVisible) {
@@ -108,7 +106,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         const flatList = flatten(allClauses);
 
         // 1. INTEGRITY CHECKS (Data Quality)
-        // Check A: Content Quality (Empty descriptions)
         const missingDesc = flatList.filter(c => !c.description || c.description.trim().length < 2).length;
         integrity.push({ 
             label: 'Content Quality', 
@@ -116,7 +113,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             detail: missingDesc === 0 ? 'Descriptions OK' : `${missingDesc} incomplete` 
         });
         
-        // Check B: Duplicates
         const uniqueCodes = new Set(flatList.map(c => c.code));
         const duplicateCount = flatList.length - uniqueCodes.size;
         integrity.push({ 
@@ -125,8 +121,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             detail: duplicateCount === 0 ? 'Clean' : `${duplicateCount} Duplicates` 
         });
 
-        // 2. COMPLETENESS CHECKS (Standard Compliance)
-        // These MUST pass for the Icon to be Green.
+        // 2. COMPLETENESS CHECKS
         if (standardKey.includes("9001")) {
             const crucial = ['8.4', '8.6', '8.7', '7.1.4'];
             crucial.forEach(code => {
@@ -141,7 +136,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         
         if (standardKey.includes("27001")) {
             const annexItems = flatList.filter(c => c.code.startsWith("A."));
-            // Strict check: Needs a substantial number of controls to be considered a valid audit set
             const isFullSet = annexItems.length >= 90; 
             completeness.push({ 
                 label: 'Annex A Controls', 
@@ -150,8 +144,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             });
         }
 
-        // Calculate Scores & Final Health
-        // STRICT RULE: ALL integrity AND ALL completeness checks must pass.
         const integrityPass = integrity.every(i => i.status === 'pass');
         const completenessPass = completeness.every(i => i.status === 'pass');
         const isHealthy = integrityPass && completenessPass;
@@ -173,7 +165,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             const fixedIds: string[] = [];
             let duplicateRemovedCount = 0;
 
-            // 1. Recursive finder for missing descriptions
             const findMissing = (list: Clause[]) => {
                 list.forEach(c => {
                     if (!c.description || c.description.trim().length < 2) {
@@ -184,13 +175,11 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             };
             currentStandard.groups.forEach((g: Group) => findMissing(g.clauses));
 
-            // 2. Fix Descriptions via AI (Supplement)
             if (missingClauses.length > 0) {
                 const targets = missingClauses.map(i => ({ code: i.code, title: i.title }));
                 const jsonStr = await generateMissingDescriptions(targets);
                 const descriptions = cleanAndParseJSON(jsonStr);
                 
-                // Logic to handle Array response (from Schema) or fallback Object
                 if (Array.isArray(descriptions)) {
                     const descMap = descriptions.reduce((acc: any, item: any) => {
                         if(item.code && item.description) acc[item.code] = item.description;
@@ -204,7 +193,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         }
                     });
                 } else if (descriptions && typeof descriptions === 'object') {
-                    // Fallback for object format
                     missingClauses.forEach(item => {
                         if (descriptions[item.code]) {
                             item.ref.description = descriptions[item.code];
@@ -214,7 +202,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 }
             }
 
-            // 3. Deep Deduplication (Replace/Clean)
             const cleanClauses = (clauses: Clause[]): Clause[] => {
                 const seenCodes = new Set<string>();
                 const unique: Clause[] = [];
@@ -236,7 +223,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 g.clauses = cleanClauses(g.clauses);
             });
 
-            // 4. Update state cleanly
             onUpdateStandard(currentStandard);
             setRepairedIds(fixedIds);
             setRepairStats({ fixed: fixedIds.length, cleaned: duplicateRemovedCount });
@@ -300,15 +286,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         const allSelected = groupIds.every(id => selectedClauses.includes(id));
         
         if (allSelected) {
-            // Deselect all
             setSelectedClauses(prev => prev.filter(id => !groupIds.includes(id)));
         } else {
-            // Select all
             setSelectedClauses(prev => [...new Set([...prev, ...groupIds])]);
         }
     };
 
-    // Expand/Collapse Logic
     const allGroupIds = standards[standardKey]?.groups.map(g => g.id) || [];
     const areAllGroupsExpanded = allGroupIds.length > 0 && expandedGroups.length === allGroupIds.length;
 
@@ -339,27 +322,27 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         const isRepaired = repairedIds.includes(c.id);
 
         return (
-            <div key={c.id} className={`flex flex-col ${level > 0 ? 'ml-4 border-l-2 dark:border-slate-800' : ''}`}>
-                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/20' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50'}`}>
-                    <button onClick={(e) => { e.stopPropagation(); toggleClauseSelection(c); }} className={`mt-1 flex-shrink-0 transition-colors ${selection.some ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-300 dark:text-slate-600 hover:text-gray-400'}`}>
+            <div key={c.id} className={`flex flex-col transition-all duration-300 ${level > 0 ? 'ml-4 border-l-2 dark:border-slate-800' : ''}`}>
+                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all duration-200 cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/20 translate-x-1' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50 hover:translate-x-1'}`}>
+                    <button onClick={(e) => { e.stopPropagation(); toggleClauseSelection(c); }} className={`mt-1 flex-shrink-0 transition-colors duration-200 ${selection.some ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-300 dark:text-slate-600 hover:text-gray-400'}`}>
                         {selection.all ? <Icon name="CheckSquare" size={16}/> : selection.some ? <div className="w-4 h-4 bg-indigo-500 rounded flex items-center justify-center"><div className="w-2.5 h-0.5 bg-white"></div></div> : <Icon name="Square" size={16}/>}
                     </button>
                     <div className="flex-1 min-w-0" onClick={() => hasSubs ? toggleClauseExpand(c.id) : toggleClauseSelection(c)}>
                         <div className="flex items-start justify-between gap-1.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase shrink-0 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{c.code}</span>
-                                <span className="text-sm text-slate-900 dark:text-slate-100 font-medium tracking-tight leading-tight">{c.title}</span>
+                                <span className="text-sm text-slate-900 dark:text-slate-100 font-medium tracking-tight leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{c.title}</span>
                                 {isRepaired && <span className="text-[9px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-md animate-pulse">UPDATED</span>}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={(e) => handleSingleClauseCopy(e, c)}
-                                    className={`p-1 transition-all transform ${isCopied ? 'text-emerald-600 scale-110 opacity-100' : 'opacity-0 group-hover:opacity-100 text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110'}`}
+                                    className={`p-1 transition-all transform duration-300 ${isCopied ? 'text-emerald-600 scale-125 opacity-100' : 'opacity-0 group-hover:opacity-100 text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110'}`}
                                     title={isCopied ? "Copied!" : "Copy Clause"}
                                 >
                                     <Icon name={isCopied ? "CheckThick" : "Copy"} size={isCopied ? 20 : 14} />
                                 </button>
-                                {hasSubs && <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={12} className="text-gray-400 mt-0.5 shrink-0"/>}
+                                {hasSubs && <Icon name="ChevronDown" size={12} className={`text-gray-400 mt-0.5 shrink-0 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}/>}
                             </div>
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400 italic mt-1.5 leading-relaxed block w-full whitespace-normal border-t border-gray-100 dark:border-slate-800 pt-1">
@@ -367,7 +350,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         </div>
                     </div>
                 </div>
-                {hasSubs && isExpanded && <div className="mt-1 flex flex-col">{c.subClauses!.map(sub => renderClauseItem(sub, level + 1))}</div>}
+                {/* Smooth Accordion Animation using Grid */}
+                <div className={`grid transition-all duration-300 ease-in-out ${hasSubs && isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden">
+                        {hasSubs && <div className="mt-1 flex flex-col">{c.subClauses!.map(sub => renderClauseItem(sub, level + 1))}</div>}
+                    </div>
+                </div>
             </div>
         );
     };
@@ -396,21 +384,26 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             if (filteredClauses.length === 0) return null;
 
             return (
-                <div key={g.id} className="mb-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div key={g.id} className="mb-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
                     <div className="flex items-center justify-between p-3.5 bg-gray-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" onClick={() => toggleGroupExpand(g.id)}>
                         <div className="flex items-center gap-3">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); toggleGroupSelection(g); }}
-                                className={`p-2 rounded-xl shadow-lg text-white ${getGroupColorClass(g.title)} hover:scale-110 active:scale-95 transition-transform`}
+                                className={`p-2 rounded-xl shadow-lg text-white ${getGroupColorClass(g.title)} hover:scale-110 active:scale-95 transition-transform duration-300`}
                                 title="Click to Select/Deselect All in Group"
                             >
                                 <Icon name={g.icon} size={14}/>
                             </button>
                             <h4 className="text-xs font-black text-slate-950 dark:text-white uppercase tracking-widest">{g.title}</h4>
                         </div>
-                        <Icon name={isGroupExpanded ? "ChevronUp" : "ChevronDown"} size={12} className="text-slate-400"/>
+                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isGroupExpanded ? 'rotate-180' : ''}`}/>
                     </div>
-                    {isGroupExpanded && <div className="p-2 space-y-1 bg-white dark:bg-slate-900">{filteredClauses.map(c => renderClauseItem(c))}</div>}
+                    {/* Smooth Accordion Animation for Groups */}
+                    <div className={`grid transition-all duration-300 ease-in-out ${isGroupExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                        <div className="overflow-hidden bg-white dark:bg-slate-900">
+                             <div className="p-2 space-y-1">{filteredClauses.map(c => renderClauseItem(c))}</div>
+                        </div>
+                    </div>
                 </div>
             );
         });
@@ -420,7 +413,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const health = runHealthCheck();
     const isCustomStandard = !STANDARDS_DATA[standardKey] || (standards[standardKey] && standards[standardKey] !== STANDARDS_DATA[standardKey]);
 
-    // Distinct Options Logic
     const standardOptions = (() => {
         const rawOptions = Object.keys(standards).map(k => ({ value: k, label: standards[k].name }));
         const seen = new Set();
@@ -433,14 +425,13 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     })();
 
     return (
-        <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-300 ease-in-out h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
+        <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-500 ease-fluid-spring h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
-            {/* COLLAPSIBLE HEADER CONTAINER - Slides up on scroll */}
             <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[360px] flex flex-col gap-3 transition-all duration-500 ease-in-out overflow-hidden ${isHeaderVisible ? 'max-h-[800px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
-                {/* 1. AUDIT DETAILS ACCORDION - MOVED TO TOP AS REQUESTED */}
-                <div className="border border-gray-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                {/* 1. AUDIT DETAILS ACCORDION - SMOOTH */}
+                <div className="border border-gray-100 dark:border-slate-800 rounded-xl overflow-hidden transition-all duration-300 hover:border-indigo-200 dark:hover:border-slate-700">
                     <button 
                         onClick={() => setIsInfoExpanded(!isInfoExpanded)}
                         className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
@@ -448,26 +439,28 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                             <Icon name="Info" size={12} className="text-indigo-500"/> Audit Details
                         </span>
-                        <Icon name={isInfoExpanded ? "ChevronUp" : "ChevronDown"} size={12} className="text-slate-400"/>
+                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isInfoExpanded ? 'rotate-180' : ''}`}/>
                     </button>
                     
-                    {isInfoExpanded && (
-                        <div className="p-3 bg-white dark:bg-slate-900 space-y-3 animate-in slide-in-from-top-2 fade-in">
-                            <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                                <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                    <div className={`grid transition-all duration-300 ease-in-out ${isInfoExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                        <div className="overflow-hidden">
+                             <div className="p-3 bg-white dark:bg-slate-900 space-y-3">
+                                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
+                                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
+                                    <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
+                                </div>
+                                <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
-                                <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
-                            </div>
-                            <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
                         </div>
-                    )}
+                    </div>
                 </div>
 
-                {/* 2. STANDARD SELECTOR - MOVED BELOW DETAILS */}
+                {/* 2. STANDARD SELECTOR */}
                 <div className="relative">
                     <IconSelect 
                         icon="Book" 
@@ -478,22 +471,21 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         defaultText="Select ISO Standard" 
                     />
                     {standardKey && (
-                        <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
+                        <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
                             <Icon name={health.isHealthy ? "CheckCircle2" : "AlertCircle"} size={14}/>
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* 3. STICKY SEARCH & ACTIONS - Cleaned Up */}
+            {/* 3. STICKY SEARCH & ACTIONS */}
             <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[360px]">
                 <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0 transition-all duration-300">
                     <div className="flex items-center gap-2">
-                        <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2">
+                        <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20">
                             <span className="text-blue-700 dark:text-blue-400 font-bold pl-1"><Icon name="Search" size={14}/></span>
                             <input className="w-full bg-transparent py-2 px-1 text-xs font-medium outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
                             
-                            {/* Expand/Collapse All Button */}
                             <button 
                                 onClick={toggleExpandAll} 
                                 className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
@@ -504,19 +496,19 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         </div>
 
                         {selectedClauses.length > 0 && (
-                            <div className="flex gap-2">
-                                <button onClick={handleCopySelectedClauses} className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 hover:bg-indigo-100 transition-colors relative shadow-sm border border-indigo-100 dark:border-indigo-900/30" title="Copy Selected Clauses">
+                            <div className="flex gap-2 animate-in fade-in slide-in-from-right-5 duration-300">
+                                <button onClick={handleCopySelectedClauses} className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 hover:bg-indigo-100 transition-colors relative shadow-sm border border-indigo-100 dark:border-indigo-900/30 hover:scale-105" title="Copy Selected Clauses">
                                     <Icon name="Copy" size={16} />
                                 </button>
-                                <button onClick={() => setSelectedClauses([])} className="p-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-colors relative shadow-sm border border-red-100 dark:border-red-900/30" title="Clear All">
+                                <button onClick={() => setSelectedClauses([])} className="p-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-colors relative shadow-sm border border-red-100 dark:border-red-900/30 hover:scale-105" title="Clear All">
                                     <Icon name="Trash2" size={16} />
-                                    <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-sm">{selectedClauses.length}</div>
+                                    <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-sm animate-bounce">{selectedClauses.length}</div>
                                 </button>
                             </div>
                         )}
                     </div>
                 </div>
-                {/* 4. SCROLLABLE CLAUSE LIST - Max Space Available with Scroll Handler */}
+                {/* 4. SCROLLABLE CLAUSE LIST */}
                 <div 
                     className="flex-1 overflow-y-auto custom-scrollbar p-3 scroll-smooth"
                     onScroll={handleScroll}
@@ -526,6 +518,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             </div>
 
             <Modal isOpen={showIntegrityModal} title="Standard Health Index" onClose={() => setShowIntegrityModal(false)}>
+                {/* Content kept same, Modal itself handles animation in UI.tsx */}
                  <div className="space-y-6">
                     <div className="flex items-center gap-5 p-5 rounded-3xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-inner">
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-black shadow-xl ring-4 ring-white dark:ring-slate-700 ${health.isHealthy ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
@@ -536,6 +529,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">{health.isHealthy ? 'Excellent! Data is accurate, clean, and complete for professional use.' : 'Standard data is incomplete or contains errors. Please review.'}</p>
                         </div>
                     </div>
+                    {/* ... (rest of modal content) ... */}
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Data Integrity (Cleanliness)</h5>
@@ -593,7 +587,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         </button>
                      )}
                      
-                     {/* Dynamic Repair Button / Report */}
                      {repairStats ? (
                          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-5">
                             <div className="text-right">
