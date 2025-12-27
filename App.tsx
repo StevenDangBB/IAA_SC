@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile } from './types';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause } from './types';
 import { Icon, FontSizeController, SparkleLoader, Modal, SnowOverlay, IconInput, AINeuralLoader, Toast } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
-import { generateOcrContent, generateAnalysis, generateTextReport, generateJsonFromText, validateApiKey } from './services/geminiService';
+import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey } from './services/geminiService';
 import { cleanAndParseJSON, fileToBase64, cleanFileName } from './utils';
 
 declare var mammoth: any;
@@ -63,11 +63,12 @@ function App() {
     // Loading States
     const [isOcrLoading, setIsOcrLoading] = useState(false);
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
-    const [loadingMessage, setLoadingMessage] = useState<string>(""); // New dynamic loading message
+    const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState<string>(""); // Track specifically which clause is processing
+    const [loadingMessage, setLoadingMessage] = useState<string>(""); 
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
     const [isNotesExportLoading, setIsNotesExportLoading] = useState(false);
-    const [isEvidenceExportLoading, setIsEvidenceExportLoading] = useState(false); // Loading for Evidence Export
+    const [isEvidenceExportLoading, setIsEvidenceExportLoading] = useState(false); 
     
     const [aiError, setAiError] = useState<string | null>(null);
     
@@ -78,7 +79,7 @@ function App() {
     // Fluid Tab State
     const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0 });
     const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
-    const tabsContainerRef = useRef<HTMLDivElement>(null); // New Ref for container
+    const tabsContainerRef = useRef<HTMLDivElement>(null); 
     
     const tabsList = [
         { id: 'evidence', label: 'Evidence', icon: 'ScanText' }, 
@@ -90,6 +91,7 @@ function App() {
     const templateInputRef = useRef<HTMLInputElement>(null);
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
     const hasStartupChecked = useRef(false);
+    const findingsContainerRef = useRef<HTMLDivElement>(null);
 
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
@@ -153,7 +155,6 @@ function App() {
         const t = setTimeout(updateTabs, 50);
 
         // 3. ResizeObserver for robust layout tracking
-        // This detects when the tab container itself changes size (e.g. font scale up pushes width)
         const observer = new ResizeObserver(() => {
             updateTabs();
         });
@@ -166,7 +167,14 @@ function App() {
             clearTimeout(t);
             observer.disconnect();
         };
-    }, [layoutMode, sidebarWidth, fontSizeScale]); // Added fontSizeScale explicitly
+    }, [layoutMode, sidebarWidth, fontSizeScale]); 
+
+    // Auto-scroll findings
+    useEffect(() => {
+        if (layoutMode === 'findings' && findingsContainerRef.current) {
+            findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight;
+        }
+    }, [analysisResult]);
 
     const loadSessionData = () => {
         try {
@@ -355,47 +363,57 @@ function App() {
         }
     };
 
-    // --- EXECUTION WITH FAILOVER ---
+    // --- RECURSIVE EXECUTION WITH SMART FAILOVER ---
     
-    // Generic wrapper to execute AI function with auto-key-switching on failure
-    const executeWithApiKeyFailover = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
-        // 1. Determine which key to start with (Active one)
-        let currentKeyProfile = apiKeys.find(k => k.id === activeKeyId);
-        if (!currentKeyProfile && apiKeys.length > 0) currentKeyProfile = apiKeys[0];
-        
-        if (!currentKeyProfile) {
-            throw new Error("No API Configuration found. Please add a valid key in Settings.");
+    const executeWithApiKeyFailover = async <T,>(
+        operation: (apiKey: string) => Promise<T>, 
+        attemptedKeys: string[] = []
+    ): Promise<T> => {
+        // 1. Get current pool of usable keys (excluding ones we already failed on this specific call)
+        const availableKeys = apiKeys.filter(k => 
+            k.status !== 'invalid' && // Don't use known bad keys
+            k.status !== 'quota_exceeded' && // Don't use exhausted keys
+            !attemptedKeys.includes(k.id) // Don't reuse keys we tried in this recursive chain
+        );
+
+        // Sort by latency (lowest first) to prioritize fast keys
+        availableKeys.sort((a, b) => a.latency - b.latency);
+
+        // 2. Identify candidate key
+        // Prefer the currently active key if it's in the available list, otherwise take the best one
+        let candidateKey = availableKeys.find(k => k.id === activeKeyId);
+        if (!candidateKey && availableKeys.length > 0) {
+            candidateKey = availableKeys[0];
+        }
+
+        if (!candidateKey) {
+            // No keys left to try
+            throw new Error("ALL_KEYS_EXHAUSTED");
+        }
+
+        // Switch active key state if we had to failover to a new one
+        if (candidateKey.id !== activeKeyId) {
+            setActiveKeyId(candidateKey.id);
+            setToastMsg(`Switching to backup key: ${candidateKey.label}...`);
         }
 
         try {
-            // Attempt 1
-            return await operation(currentKeyProfile.key);
+            // 3. Attempt Execution
+            return await operation(candidateKey.key);
         } catch (error: any) {
-            console.warn(`Execution failed with key [${currentKeyProfile.label}]. Checking failover...`, error);
+            console.warn(`Key [${candidateKey.label}] failed. Error:`, error);
             
-            // Check if error is related to API Key (403, 429, quota)
             const msg = error.message?.toLowerCase() || "";
-            const isApiError = msg.includes("403") || msg.includes("429") || msg.includes("quota") || msg.includes("key") || msg.includes("permission");
+            const isApiError = msg.includes("403") || msg.includes("429") || msg.includes("quota") || msg.includes("key") || msg.includes("permission") || msg.includes("resource exhausted");
 
             if (isApiError) {
-                // Mark current key as invalid/quota in state
-                setApiKeys(prev => prev.map(k => k.id === currentKeyProfile!.id ? { ...k, status: 'invalid' } : k));
-
-                // Find a backup key
-                const backupKeys = apiKeys.filter(k => k.id !== currentKeyProfile!.id && k.status === 'valid');
+                // 4. Mark failure in global state so other clauses don't waste time on this key
+                setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, status: 'quota_exceeded' } : k));
                 
-                if (backupKeys.length > 0) {
-                    const nextKey = backupKeys[0];
-                    console.log(`Failing over to: ${nextKey.label}`);
-                    
-                    // Switch State
-                    setActiveKeyId(nextKey.id);
-                    setToastMsg(`API Error. Switched to backup key: ${nextKey.label}`);
-                    
-                    // Attempt 2 (Recursive could be better, but simple retry for now)
-                    return await operation(nextKey.key);
-                }
+                // 5. Recursive Retry with the next key
+                return await executeWithApiKeyFailover(operation, [...attemptedKeys, candidateKey.id]);
             }
+            // Non-API error (e.g. parsing, network disconnect) - rethrow
             throw error;
         }
     };
@@ -471,75 +489,81 @@ function App() {
         setPastedImages(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    // AI HANDLERS
+    // --- SEQUENTIAL AI ANALYSIS HANDLER ---
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
         
+        // 1. Setup UI for Stream Mode
         setIsAnalyzeLoading(true); 
         setAiError(null);
-        setLoadingMessage("Preparing Analysis Batch...");
+        setAnalysisResult([]); // Clear previous
+        setLayoutMode('findings'); // Force switch to findings tab to show real-time progress
+        setLoadingMessage("Initializing AI Auditor...");
 
         try {
-            // 1. Prepare Data
+            // Get Clause Details
             const scopeClauses = allStandards[standardKey].groups.flatMap(g => g.clauses).filter(c => selectedClauses.includes(c.id));
             
-            // 2. Batch Processing Logic
-            // Chunk size of 5 is safe for most API tiers to avoid "Too Many Requests" and timeouts
-            const BATCH_SIZE = 5; 
-            const chunks = [];
-            for (let i = 0; i < scopeClauses.length; i += BATCH_SIZE) {
-                chunks.push(scopeClauses.slice(i, i + BATCH_SIZE));
-            }
+            // 2. Sequential Loop (One-by-One)
+            for (let i = 0; i < scopeClauses.length; i++) {
+                const clause = scopeClauses[i];
+                setCurrentAnalyzingClause(clause.code); // For UI Feedback
+                setLoadingMessage(`Analyzing Clause ${clause.code}...`);
 
-            let combinedResults: any[] = [];
+                // 2a. Build Single Prompt
+                const prompt = `Act as an ISO Lead Auditor. Evaluate compliance for this SINGLE clause:
+                [${clause.code}] ${clause.title}: ${clause.description}
 
-            // 3. Sequential Execution
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                // Update UI
-                setLoadingMessage(`Analyzing batch ${i + 1}/${chunks.length} (${Math.round(((i) / chunks.length) * 100)}%)...`);
+                CONTEXT: ${auditInfo.type} for ${auditInfo.company}.
+                RAW EVIDENCE: """ ${evidence} """
 
-                const clausesTxt = chunk.map(c => `- ${c.code} ${c.title}: ${c.description}`).join('\n');
-                
-                // Prompt optimized for token usage - removed request for full report in analysis phase
-                const prompt = `Act as an ISO Lead Auditor. Evaluate compliance for these specific clauses:
-${clausesTxt}
+                Return a JSON Array with exactly ONE object containing: clauseId (must be "${clause.id}"), status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report (concise).`;
 
-CONTEXT: ${auditInfo.type} for ${auditInfo.company}.
-RAW EVIDENCE: """ ${evidence} """
+                try {
+                    // 2b. Execute with Failover
+                    const resultStr = await executeWithApiKeyFailover(async (key) => {
+                        return await generateAnalysis(prompt, `Output JSON array only.`, key);
+                    });
 
-Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report. Keep 'conclusion_report' concise (1-2 sentences).`;
-
-                // Execute with specific key
-                const resultStr = await executeWithApiKeyFailover(async (key) => {
-                    return await generateAnalysis(prompt, `Output JSON array only.`, key);
-                });
-
-                const chunkResult = cleanAndParseJSON(resultStr || "");
-                if (chunkResult && Array.isArray(chunkResult)) {
-                    combinedResults = [...combinedResults, ...chunkResult];
+                    // 2c. Parse & Update State Immediately
+                    const chunkResult = cleanAndParseJSON(resultStr || "");
+                    if (chunkResult && Array.isArray(chunkResult) && chunkResult.length > 0) {
+                        const resultItem = chunkResult[0];
+                        // Force ID match to be safe
+                        resultItem.clauseId = clause.id;
+                        
+                        setAnalysisResult(prev => {
+                            const prevSafe = prev || [];
+                            // Avoid duplicates just in case
+                            if (prevSafe.find(r => r.clauseId === resultItem.clauseId)) return prevSafe;
+                            
+                            // Update selection state for the new item
+                            setSelectedFindings(sel => ({...sel, [resultItem.clauseId]: true}));
+                            return [...prevSafe, resultItem];
+                        });
+                    }
+                } catch (innerError: any) {
+                    if (innerError.message === "ALL_KEYS_EXHAUSTED") {
+                        throw innerError; // Stop the loop entirely
+                    }
+                    console.error(`Failed to analyze clause ${clause.code}`, innerError);
+                    // Optionally push a "Failed" result so the user knows it was skipped
                 }
 
-                // Add a small delay between batches to respect Rate Limits (TPM/RPM)
-                if (i < chunks.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 800)); 
-                }
-            }
-
-            if (combinedResults.length > 0) { 
-                setAnalysisResult(combinedResults); 
-                const initialSelection: Record<string, boolean> = {};
-                combinedResults.forEach((r: any) => initialSelection[r.clauseId] = true);
-                setSelectedFindings(initialSelection);
-                setLayoutMode('findings'); 
-            } else {
-                throw new Error("Analysis completed but returned no valid results.");
+                // Small delay to let the UI breathe and prevent super-rapid 429s even with key switching
+                await new Promise(r => setTimeout(r, 200));
             }
 
         } catch (e: any) { 
-            setAiError(e.message || "Analysis Failed"); 
+            if (e.message === "ALL_KEYS_EXHAUSTED") {
+                setAiError("All API Keys have been exhausted (Quota Limit). Please add a new valid key in Settings to continue.");
+                setShowSettingsModal(true); // Auto open settings
+            } else {
+                setAiError(e.message || "Analysis Failed");
+            }
         } finally { 
             setIsAnalyzeLoading(false); 
+            setCurrentAnalyzingClause("");
             setLoadingMessage("");
         }
     };
@@ -547,7 +571,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
     const handleGenerateReport = async () => {
         if (!analysisResult) return;
         setIsReportLoading(true); setLayoutMode('report'); setAiError(null);
-        setLoadingMessage("Synthesizing Final Report..."); // Use shared loader state
+        setLoadingMessage("Synthesizing Final Report..."); 
         try {
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
              const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
@@ -558,7 +582,14 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
              });
 
              setFinalReportText(text || "");
-        } catch (e: any) { setAiError(e.message || "Report Generation Failed"); } finally { setIsReportLoading(false); setLoadingMessage(""); }
+        } catch (e: any) { 
+            if (e.message === "ALL_KEYS_EXHAUSTED") {
+                setAiError("API Quota Exceeded during report generation. Please check Settings.");
+                setShowSettingsModal(true);
+            } else {
+                setAiError(e.message || "Report Generation Failed"); 
+            }
+        } finally { setIsReportLoading(false); setLoadingMessage(""); }
     };
 
     const handleOcrUpload = async () => {
@@ -566,40 +597,27 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         setIsOcrLoading(true); 
         setAiError(null);
         try {
-            // Processing multiple files - logic is complex to wrap individually.
-            // We will wrap the execution of EACH file or the whole block.
-            // Let's wrap each call to robustly handle partial failures or switch mid-stream.
-            
             const promises = pastedImages.map(async (file) => {
                 const b64 = await fileToBase64(file);
-                
-                // Use Failover Wrapper for each file
                 return await executeWithApiKeyFailover(async (key) => {
-                    return await generateOcrContent("Extract text accurately. Output raw text only, no additional commentary.", b64, file.type, key);
+                    return await generateOcrContent("Extract text accurately. Output raw text only.", b64, file.type, key);
                 });
             });
             const results = await Promise.all(promises);
             const textToInsert = results.join('\n\n');
             
-            // Insert at cursor position if possible
             setEvidence(prev => {
                 const textarea = evidenceTextareaRef.current;
                 if (textarea) {
                     const start = textarea.selectionStart;
                     const end = textarea.selectionEnd;
-                    
-                    // Construct new value
                     const newValue = prev.substring(0, start) + textToInsert + prev.substring(end);
-                    
-                    // Update cursor position after render
                     setTimeout(() => {
                         textarea.focus();
                         textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
                     }, 0);
-                    
                     return newValue;
                 }
-                // Fallback: append
                 return prev + (prev ? "\n\n" : "") + textToInsert;
             });
             
@@ -613,11 +631,9 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
 
     const handleExport = async (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
         if (!text) return;
-        
         let setLoading = setIsExportLoading;
         if (type === 'notes') setLoading = setIsNotesExportLoading;
         if (type === 'evidence') setLoading = setIsEvidenceExportLoading;
-        
         setLoading(true);
         setAiError(null);
 
@@ -625,18 +641,12 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
             let contentToExport = text;
             const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
 
-            // Strict Translation Request
             try {
-                // Enhanced prompt for better audit quality
                 const prompt = `Act as a professional Lead Auditor. Translate or Refine the following audit text to ${targetLangName}. 
-                1. If translating: Ensure strict adherence to ISO terminology (e.g., 'Nonconformity', 'Opportunity for Improvement').
-                2. If already in ${targetLangName}: Refine for professional tone, clarity, and conciseness suitable for an official audit report.
-                3. Maintain all original formatting (markdown, bullet points).
+                1. If translating: Ensure strict adherence to ISO terminology.
+                2. If already in ${targetLangName}: Refine for professional tone.
+                Text to process: """${text}"""`;
                 
-                Text to process:
-                """${text}"""`;
-                
-                // Use Failover Wrapper
                 const trans = await executeWithApiKeyFailover(async (key) => {
                      return await generateTextReport(prompt, "You are a professional ISO Audit Translator.", key);
                 });
@@ -647,8 +657,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                 setAiError(`Translation to ${targetLangName} failed. Exporting original text.`);
             }
 
-            // Generate Filename Logic
-            // Rule: [Standard name(27k/9k/14k)]_[Audit type]_[Audit ID]_[Company name]_[department]_[auditor name]_Audit Note A7_[Export date]
             let stdShort = "ISO";
             if (standardKey.includes("27001")) stdShort = "27k";
             else if (standardKey.includes("9001")) stdShort = "9k";
@@ -702,21 +710,16 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
         }
     };
 
-    // Tooltip Generator
     const getAnalyzeTooltip = () => {
         if (isAnalyzeLoading) return "AI is analyzing...";
         const missing = [];
         if (selectedClauses.length === 0) missing.push("Clauses");
         if (!hasEvidence) missing.push("Evidence");
-        
         if (missing.length > 0) return `Feature Unavailable. Missing: ${missing.join(" & ")}.`;
         return "Ready! Click to Start AI Analysis.";
     };
 
-    // Responsive Calculation for Main Content Layout
-    // Calculate the actual available width for the main content area
     const mainContentWidth = isSidebarOpen ? (windowWidth - sidebarWidth) : windowWidth;
-    // Threshold to switch to "Mobile Stacked" layout (500px is a reasonable breakpoint for buttons)
     const isCompactLayout = mainContentWidth < 500;
 
     return (
@@ -748,9 +751,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
             {/* HEADER - Sticky on Mobile, Z-Index 70 to sit ABOVE sidebar */}
             <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
                 <div className="flex items-center gap-4 md:gap-6">
-                    {/* 
-                        FIXED LOGO - INFINITY
-                    */}
                     <div 
                         className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:scale-105 active:scale-95`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
@@ -788,24 +788,17 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
                     
-                    {/* API Key Status Indicator */}
                     <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${activeKeyId ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 animate-pulse'}`}>
                         <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                         <span className="text-xs font-bold hidden md:block">{activeKeyId ? 'API Ready' : 'No Key'}</span>
                     </button>
                     
                     <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all duration-300 hover:scale-110 active:scale-95 shadow-sm"><Icon name="Settings" size={18}/></button>
-                    {/* Fixed Info Button: Remove hidden sm:block to show on mobile */}
                     <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all duration-300 hover:scale-110 active:scale-95"><Icon name="Info" size={18}/></button>
                 </div>
             </div>
 
             <div className="flex-1 flex overflow-hidden relative">
-                {/* 
-                    MOBILE RESPONSIVE SIDEBAR LOGIC UPDATED:
-                    - Sidebar container is now Fixed on Mobile, starting at Top-16 (below header)
-                    - This ensures the Header (Z-70) is always visible and clickable above the Sidebar (Z-60)
-                */}
                 <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 bottom-0 left-0 z-[60] md:absolute md:inset-y-0 md:relative md:top-0 md:translate-x-0 md:transform-none transition-transform duration-500 ease-fluid-spring h-[calc(100%-4rem)] md:h-full`}>
                     <Sidebar 
                         isOpen={isSidebarOpen} 
@@ -827,7 +820,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                     />
                 </div>
                 
-                {/* Mobile Backdrop for Sidebar - Starts below header */}
                 {isSidebarOpen && (
                     <div 
                         className="fixed top-16 bottom-0 inset-x-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity duration-300 animate-in fade-in" 
@@ -846,12 +838,10 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                         </div>
                     )}
 
-                    {/* Toolbar - FIXED FOR MOBILE: COMPACT TABS */}
+                    {/* Toolbar */}
                     <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center gap-3">
-                        {/* Compact Tabs Area - Flex Grow to take space, Hide text on mobile */}
                         <div className="flex-1 min-w-0">
                             <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-full">
-                                {/* FLUID ACTIVE INDICATOR */}
                                 <div 
                                     className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
                                     style={{
@@ -870,19 +860,16 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         title={tab.label}
                                     >
                                         <Icon name={tab.icon} size={16}/> 
-                                        {/* Adaptive Label Visibility */}
                                         <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Fixed Actions Area - UNIFIED STYLES */}
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
                             <button onClick={handleRecall} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95" title="Recall Session">
                                 <Icon name="History" size={18}/>
                             </button>
-                            {/* Unified Style: New Session now uses same Ghost style as Recall to reduce clutter */}
                             <button onClick={handleNewSession} className="p-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center transition-all shadow-sm hover:text-indigo-600 dark:hover:text-indigo-400 duration-300 hover:scale-105 active:scale-95" title="Start New Session">
                                 <Icon name="Session4_FilePlus" size={18}/>
                             </button>
@@ -903,7 +890,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                             onChange={(e) => setEvidence(e.target.value)}
                                             onPaste={handlePaste}
                                         />
-                                        {/* Action Bar Container */}
                                         <div className="absolute bottom-4 right-4 flex gap-2">
                                             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={(e) => e.target.files && setPastedImages(prev => [...prev, ...Array.from(e.target.files!)])} />
                                             <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all duration-300 hover:scale-110 active:scale-95 shadow-sm" title="Upload Files">
@@ -912,7 +898,6 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         </div>
                                     </div>
 
-                                    {/* PENDING FILES STAGING AREA */}
                                     {pastedImages.length > 0 && (
                                         <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl animate-in slide-in-from-bottom-5 duration-300">
                                             <div className="flex justify-between items-center mb-2 px-1">
@@ -927,20 +912,11 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                                     <div key={idx} className="relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden transition-transform duration-300 hover:scale-105">
                                                         <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                                                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <button 
-                                                                onClick={() => handleRemoveImage(idx)} 
-                                                                className="bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transform scale-90 hover:scale-110 transition-all duration-200"
-                                                                title="Remove File"
-                                                            >
-                                                                <Icon name="X" size={14}/>
-                                                            </button>
+                                                            <button onClick={() => handleRemoveImage(idx)} className="bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transform scale-90 hover:scale-110 transition-all duration-200" title="Remove File"><Icon name="X" size={14}/></button>
                                                         </div>
-                                                        <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-[8px] text-white truncate text-center">
-                                                            {file.name}
-                                                        </div>
+                                                        <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-[8px] text-white truncate text-center">{file.name}</div>
                                                     </div>
                                                 ))}
-                                                {/* Batch Action Card */}
                                                 <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
                                                     <button onClick={handleOcrUpload} disabled={isOcrLoading} className="w-full h-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 flex flex-col items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 hover:scale-105 duration-300">
                                                         {isOcrLoading ? <Icon name="Loader" className="animate-spin" size={24}/> : <Icon name="ScanText" size={24}/>}
@@ -952,19 +928,9 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                     )}
                                 </div>
 
-                                {/* 
-                                    RESPONSIVE BUTTON LAYOUT LOGIC:
-                                    - If isCompactLayout is TRUE: Switch to flex-col (Vertical Stack).
-                                    - Order: First child (Export container) is on top, Second child (Analyze) is on bottom.
-                                    - Widths: In compact mode, buttons become w-full for easier touch targets.
-                                */}
                                 <div className={`flex ${isCompactLayout ? 'flex-col gap-3' : 'flex-row justify-between items-center gap-3 md:gap-0'} mt-2`}>
                                     <div className={`flex gap-2 ${isCompactLayout ? 'w-full' : 'w-full md:w-auto'}`}>
-                                        <button 
-                                            onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} 
-                                            className={`${isCompactLayout ? 'w-full justify-center' : 'flex-1 md:flex-none'} px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95`} 
-                                            title="Export Raw Text"
-                                        >
+                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className={`${isCompactLayout ? 'w-full justify-center' : 'flex-1 md:flex-none'} px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95`} title="Export Raw Text">
                                             {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
                                             <div className="lang-pill-container ml-1">
                                                 <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -972,33 +938,24 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                             </div>
                                         </button>
                                     </div>
-                                    <button 
-                                        onClick={handleAnalyze} 
-                                        disabled={!isReadyForAnalysis}
-                                        title={getAnalyzeTooltip()} 
-                                        className={`${isCompactLayout ? 'w-full' : 'w-full md:w-auto'} px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-3 ${
-                                            isReadyForAnalysis 
-                                            ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" 
-                                            : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"
-                                        }`}
-                                    >
+                                    <button onClick={handleAnalyze} disabled={!isReadyForAnalysis} title={getAnalyzeTooltip()} className={`${isCompactLayout ? 'w-full' : 'w-full md:w-auto'} px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-3 ${isReadyForAnalysis ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"}`}>
                                         {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={20}/>}
-                                        {isAnalyzeLoading ? "AI Auditor Analyzing..." : "Compliance Analysis"}
+                                        {isAnalyzeLoading ? "Streaming Analysis..." : "Compliance Analysis"}
                                     </button>
                                 </div>
                             </div>
                         )}
 
                         {/* 2. FINDINGS MODE */}
-                        {layoutMode === 'findings' && analysisResult && (
+                        {layoutMode === 'findings' && (
                              <div className="h-full flex flex-col animate-fade-in-up">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Icon name="List" size={24} className="text-indigo-500"/> Audit Findings</h3>
                                     <div className="flex gap-2">
                                         <button onClick={() => {
-                                            const reportTxt = analysisResult.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n');
+                                            const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
                                             handleExport(reportTxt, 'notes', notesLanguage);
-                                        }} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95">
+                                        }} disabled={!analysisResult || analysisResult.length === 0} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50">
                                             {isNotesExportLoading ? <Icon name="Loader"/> : <Icon name="Download"/>} 
                                             Export Notes
                                             <div className="lang-pill-container ml-2">
@@ -1008,9 +965,19 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2">
-                                    {analysisResult.map((result) => (
-                                        <div key={result.clauseId} className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all duration-300 hover:shadow-md hover:translate-x-1 ${!selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : result.status === 'COMPLIANT' ? 'border-green-500' : result.status.includes('NC') ? 'border-red-500' : 'border-yellow-500'}`}>
+                                
+                                <div ref={findingsContainerRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 pb-4">
+                                    {/* Empty State when just started */}
+                                    {(!analysisResult || analysisResult.length === 0) && !isAnalyzeLoading && (
+                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 animate-in zoom-in-95 duration-500">
+                                            <Icon name="Wand2" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
+                                            <p>No analysis data yet. Run analysis first.</p>
+                                        </div>
+                                    )}
+
+                                    {/* Render Findings */}
+                                    {analysisResult?.map((result, idx) => (
+                                        <div key={result.clauseId} className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all duration-500 hover:shadow-md hover:translate-x-1 animate-in slide-in-from-bottom-5 fade-in ${!selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : result.status === 'COMPLIANT' ? 'border-green-500' : result.status.includes('NC') ? 'border-red-500' : 'border-yellow-500'}`} style={{animationDelay: `${idx * 0.05}s`}}>
                                             <div className="flex justify-between items-start gap-4">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3 mb-2">
@@ -1025,9 +992,29 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                                             </div>
                                         </div>
                                     ))}
+
+                                    {/* Streaming/Processing Placeholder Card */}
+                                    {isAnalyzeLoading && (
+                                        <div className="p-5 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-dashed border-indigo-200 dark:border-indigo-800 animate-pulse flex flex-col gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-5 h-5 rounded bg-gray-200 dark:bg-slate-700 animate-pulse"></div>
+                                                <div className="h-5 w-24 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                                <div className="h-5 w-16 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="h-4 w-3/4 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                                <div className="h-4 w-1/2 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-indigo-500 text-xs font-bold uppercase tracking-wider mt-2">
+                                                <SparkleLoader/>
+                                                {currentAnalyzingClause ? `Analysing ${currentAnalyzingClause}...` : "AI Auditor Thinking..."}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
+
                                 <div className="mt-4 flex justify-end">
-                                    <button onClick={handleGenerateReport} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform w-full md:w-auto justify-center active:scale-95 duration-300">
+                                    <button onClick={handleGenerateReport} disabled={!analysisResult || analysisResult.length === 0} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform w-full md:w-auto justify-center active:scale-95 duration-300 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
                                         Generate Full Report <Icon name="FileText" size={18}/>
                                     </button>
                                 </div>
@@ -1067,13 +1054,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                             </div>
                         )}
                         
-                        {/* Empty States */}
-                        {layoutMode === 'findings' && !analysisResult && (
-                             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 animate-in zoom-in-95 duration-500">
-                                <Icon name="Wand2" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
-                                <p>No analysis data yet. Run analysis first.</p>
-                             </div>
-                        )}
+                        {/* Report Empty State */}
                         {layoutMode === 'report' && !finalReportText && (
                              <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 animate-in zoom-in-95 duration-500">
                                 <Icon name="FileText" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
@@ -1081,8 +1062,7 @@ Return JSON array with clauseId, status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), re
                              </div>
                         )}
 
-                        {/* Loaders */}
-                        {isAnalyzeLoading && <AINeuralLoader message={loadingMessage || "Analyzing Compliance..."} />}
+                        {/* Full Screen Loaders (Only for Reporting now, Analysis has inline loader) */}
                         {isReportLoading && <AINeuralLoader message={loadingMessage || "Synthesizing Report..."} />}
                     </div>
                 </div>

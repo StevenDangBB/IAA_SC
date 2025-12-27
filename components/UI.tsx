@@ -147,7 +147,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
         <select 
             value={value} 
             onChange={onChange}
-            className="w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
+            className={`w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}
         >
             <option value="" disabled>{defaultText}</option>
             {options.map((opt: any) => (
@@ -170,7 +170,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
         />
     </div>
 );

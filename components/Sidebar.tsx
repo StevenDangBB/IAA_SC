@@ -79,8 +79,11 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     }, [isResizing, setWidth]);
 
     // Handle Scroll to Toggle Header Visibility
+    // LOGIC: Only show full header when absolutely at the top (<= 10px).
+    // Hide immediately when scrolling down (> 10px).
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const scrollTop = e.currentTarget.scrollTop;
+        
         if (scrollTop > 10 && isHeaderVisible) {
             setIsHeaderVisible(false);
         } else if (scrollTop <= 10 && !isHeaderVisible) {
@@ -409,7 +412,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         });
     };
 
-    const auditFieldIconColor = "text-indigo-700 dark:text-indigo-400 font-bold";
+    const auditFieldIconColor = "text-indigo-700 dark:text-indigo-400";
     const health = runHealthCheck();
     const isCustomStandard = !STANDARDS_DATA[standardKey] || (standards[standardKey] && standards[standardKey] !== STANDARDS_DATA[standardKey]);
 
@@ -428,23 +431,44 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-500 ease-fluid-spring h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
-            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[360px] flex flex-col gap-3 transition-all duration-500 ease-in-out overflow-hidden ${isHeaderVisible ? 'max-h-[800px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
+            {/* 
+               HEADER CONTAINER (Audit Details + Standard Selector)
+               - Uses max-h-[1000px] to allow full expansion of Audit Details without clipping.
+               - Uses transition-all for smooth hide/show effect when scrolling.
+               - When hidden (max-h-0), content is invisible.
+            */}
+            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[360px] flex flex-col gap-3 transition-all duration-700 ease-fluid-spring overflow-hidden ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
-                {/* 1. AUDIT DETAILS ACCORDION - SMOOTH */}
-                <div className="border border-gray-100 dark:border-slate-800 rounded-xl overflow-hidden transition-all duration-300 hover:border-indigo-200 dark:hover:border-slate-700">
+                {/* 1. AUDIT DETAILS ACCORDION - SMOOTH & PROMINENT WHEN COLLAPSED */}
+                <div className={`border rounded-xl overflow-hidden transition-all duration-300 ${
+                    !isInfoExpanded 
+                    ? 'border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-900/10 shadow-sm' 
+                    : 'border-gray-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-slate-700'
+                }`}>
                     <button 
                         onClick={() => setIsInfoExpanded(!isInfoExpanded)}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                        className={`w-full flex items-center justify-between p-3.5 transition-colors duration-300 ${
+                            !isInfoExpanded 
+                            ? 'bg-indigo-50 dark:bg-indigo-900/20' 
+                            : 'bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800'
+                        }`}
                     >
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                            <Icon name="Info" size={12} className="text-indigo-500"/> Audit Details
+                        <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${
+                            !isInfoExpanded ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
+                        }`}>
+                             <div className={`transition-all duration-300 ${
+                                !isInfoExpanded ? 'p-1.5 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-indigo-500' : 'text-indigo-500'
+                            }`}>
+                                <Icon name="Info" size={!isInfoExpanded ? 14 : 12} />
+                            </div>
+                            Audit Details
                         </span>
                         <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isInfoExpanded ? 'rotate-180' : ''}`}/>
                     </button>
                     
                     <div className={`grid transition-all duration-300 ease-in-out ${isInfoExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                         <div className="overflow-hidden">
-                             <div className="p-3 bg-white dark:bg-slate-900 space-y-3">
+                             <div className="p-3 bg-white dark:bg-slate-900 space-y-3 border-t border-gray-100 dark:border-slate-800">
                                 <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
