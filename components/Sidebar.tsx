@@ -23,6 +23,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard }: SidebarProps) => {
+    const sidebarRef = useRef<HTMLDivElement>(null);
     const [isResizing, setIsResizing] = useState(false);
     const [searchQueryRaw, setSearchQueryRaw] = useState("");
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -47,27 +48,43 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         if ((e.target as Element).classList.contains('resize-handle')) {
             e.preventDefault();
             setIsResizing(true);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none'; // Prevent text selection while dragging
         }
     };
 
     useEffect(() => {
-        const stopResizing = () => setIsResizing(false);
-        const resize = (e: MouseEvent) => {
+        const stopResizing = () => {
             if (isResizing) {
-                // Constants for resizing constraints
-                const MIN_SIDEBAR_WIDTH = 360; // Standard Mobile Interface Width
-                const MIN_MAIN_CONTENT_WIDTH = 375; // Minimum preserved width for the main content area
-                const MAX_SIDEBAR_LIMIT = 800;
-
-                // Calculate the maximum allowed width for the sidebar
-                // taking into account the window width and the reserved space for main content
-                const maxSidebarWidth = Math.min(MAX_SIDEBAR_LIMIT, window.innerWidth - MIN_MAIN_CONTENT_WIDTH);
-
-                // Apply constraints
-                const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(e.clientX, maxSidebarWidth));
-                setWidth(newWidth);
+                setIsResizing(false);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                // Sync the final DOM width back to React State once dragging stops
+                if (sidebarRef.current) {
+                    const finalWidth = parseInt(sidebarRef.current.style.width, 10);
+                    if (!isNaN(finalWidth)) {
+                        setWidth(finalWidth);
+                    }
+                }
             }
         };
+
+        const resize = (e: MouseEvent) => {
+            if (isResizing && sidebarRef.current) {
+                // Constants for resizing constraints
+                const MIN_SIDEBAR_WIDTH = 360; 
+                const MIN_MAIN_CONTENT_WIDTH = 375; 
+                const MAX_SIDEBAR_LIMIT = 800;
+
+                const maxSidebarWidth = Math.min(MAX_SIDEBAR_LIMIT, window.innerWidth - MIN_MAIN_CONTENT_WIDTH);
+                const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(e.clientX, maxSidebarWidth));
+                
+                // Direct DOM manipulation for 60fps performance without React render loop
+                sidebarRef.current.style.width = `${newWidth}px`;
+            }
+        };
+
         if (isResizing) {
             window.addEventListener('mousemove', resize);
             window.addEventListener('mouseup', stopResizing);
@@ -79,8 +96,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     }, [isResizing, setWidth]);
 
     // Handle Scroll to Toggle Header Visibility
-    // LOGIC: Only show full header when absolutely at the top (<= 10px).
-    // Hide immediately when scrolling down (> 10px).
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const scrollTop = e.currentTarget.scrollTop;
         
@@ -428,7 +443,11 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     })();
 
     return (
-        <div className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 transition-[width] duration-500 ease-fluid-spring h-full`} style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}>
+        <div 
+            ref={sidebarRef}
+            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-500 ease-fluid-spring'} h-full`} 
+            style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}
+        >
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
             {/* 
