@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause } from './types';
-import { Icon, FontSizeController, SparkleLoader, Modal, IconInput, AINeuralLoader, Toast } from './components/UI';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode } from './types';
+import { Icon, FontSizeController, SparkleLoader, Modal, IconInput, AINeuralLoader, Toast, CommandPaletteModal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey } from './services/geminiService';
@@ -13,19 +13,20 @@ declare var mammoth: any;
 type LayoutMode = 'evidence' | 'findings' | 'report' | 'split';
 type ExportLanguage = 'en' | 'vi';
 
-// Strictly Infinity Only
-type LogoEffect = 'infinity';
-
 function App() {
     // -- STATE --
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
     const [isDarkMode, setIsDarkMode] = useState(true);
-    // Removed isSnowing state for professional look
     const [sidebarWidth, setSidebarWidth] = useState(390);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showAboutModal, setShowAboutModal] = useState(false);
-    const [showImportModal, setShowImportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
+    
+    // Feature: Command Palette
+    const [isCmdPaletteOpen, setIsCmdPaletteOpen] = useState(false);
+
+    // Feature: Matrix View
+    const [findingsViewMode, setFindingsViewMode] = useState<FindingsViewMode>('list');
     
     // New: Track Window Width for responsive calculations in JS
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -63,7 +64,7 @@ function App() {
     // Loading States
     const [isOcrLoading, setIsOcrLoading] = useState(false);
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
-    const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState<string>(""); // Track specifically which clause is processing
+    const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState<string>(""); 
     const [loadingMessage, setLoadingMessage] = useState<string>(""); 
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
@@ -72,45 +73,64 @@ function App() {
     
     const [aiError, setAiError] = useState<string | null>(null);
     
-    // Logo Animation State - Fixed to Infinity
+    // Logo Animation State
     const [logoKey, setLogoKey] = useState(0);
-    const logoEffect: LogoEffect = 'infinity';
     
     // Fluid Tab State
-    const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0 });
+    const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0, color: '' });
     const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
     const tabsContainerRef = useRef<HTMLDivElement>(null); 
     
+    // Process Steps Configuration
     const tabsList = [
-        { id: 'evidence', label: 'Evidence', icon: 'ScanText' }, 
-        { id: 'findings', label: 'Findings', icon: 'Wand2' }, 
-        { id: 'report', label: 'Report', icon: 'FileText' }
+        { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-900/10' }, 
+        { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-900/10' }, 
+        { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-900/10' }
     ];
 
+    const currentTabConfig = tabsList.find(t => t.id === layoutMode) || tabsList[0];
+
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const templateInputRef = useRef<HTMLInputElement>(null);
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const hasStartupChecked = useRef(false);
     const findingsContainerRef = useRef<HTMLDivElement>(null);
 
     const allStandards = { ...STANDARDS_DATA, ...customStandards };
     const hasEvidence = evidence.trim().length > 0 || pastedImages.length > 0;
     
-    // NEW: Strict Readiness Check
     const isReadyForAnalysis = !isAnalyzeLoading && selectedClauses.length > 0 && hasEvidence;
+
+    // --- HELPER: INSERT TEXT AT CURSOR ---
+    const insertTextAtCursor = (textToInsert: string) => {
+        if (evidenceTextareaRef.current) {
+            const textarea = evidenceTextareaRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const newValue = evidence.substring(0, start) + textToInsert + evidence.substring(end);
+            
+            setEvidence(newValue);
+            
+            if (layoutMode !== 'evidence') setLayoutMode('evidence');
+
+            setTimeout(() => {
+                if (evidenceTextareaRef.current) {
+                    evidenceTextareaRef.current.focus();
+                    evidenceTextareaRef.current.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
+                }
+            }, 100);
+        } else {
+            setEvidence(prev => prev + "\n" + textToInsert);
+            if (layoutMode !== 'evidence') setLayoutMode('evidence');
+        }
+    };
 
     // --- EFFECTS & PERSISTENCE ---
     useEffect(() => {
-        // Init load
         const storedScale = localStorage.getItem('iso_font_scale');
         if (storedScale) setFontSizeScale(parseFloat(storedScale));
         
-        loadSessionData(); // Load all saved data
+        loadSessionData();
+        const loadedKeys = loadKeyData();
         
-        // Initial Key Load
-        const loadedKeys = loadKeyData(); // Now returns keys for immediate use
-        
-        // Auto Precheck API Key on Startup
         if (!hasStartupChecked.current && loadedKeys.length > 0) {
             hasStartupChecked.current = true;
             checkAllKeys(loadedKeys);
@@ -123,18 +143,17 @@ function App() {
             setIsDarkMode(true); 
         }
 
-        // Mobile: Auto close sidebar on initial load if screen is small
         if (window.innerWidth < 768) {
             setIsSidebarOpen(false);
         }
 
-        // Window resize listener to track full width
         const handleResize = () => setWindowWidth(window.innerWidth);
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Update Fluid Tab Position - Enhanced Logic
+    const hasStartupChecked = useRef(false);
+
     useEffect(() => {
         const updateTabs = () => {
             const activeIndex = tabsList.findIndex(t => t.id === layoutMode);
@@ -143,33 +162,23 @@ function App() {
                 setTabStyle({
                     left: el.offsetLeft,
                     width: el.offsetWidth,
-                    opacity: 1
+                    opacity: 1,
+                    color: tabsList[activeIndex].colorClass
                 });
             }
         };
-
-        // 1. Run immediately
         updateTabs();
-
-        // 2. Run slightly delayed to catch font reflows
         const t = setTimeout(updateTabs, 50);
-
-        // 3. ResizeObserver for robust layout tracking
         const observer = new ResizeObserver(() => {
             updateTabs();
         });
-        
-        if (tabsContainerRef.current) {
-            observer.observe(tabsContainerRef.current);
-        }
-
+        if (tabsContainerRef.current) observer.observe(tabsContainerRef.current);
         return () => {
             clearTimeout(t);
             observer.disconnect();
         };
     }, [layoutMode, sidebarWidth, fontSizeScale]); 
 
-    // Auto-scroll findings
     useEffect(() => {
         if (layoutMode === 'findings' && findingsContainerRef.current) {
             findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight;
@@ -200,7 +209,6 @@ function App() {
         try {
             const savedKeys = localStorage.getItem("iso_api_keys");
             const savedActiveId = localStorage.getItem("iso_active_key_id");
-            // Migration for legacy single key
             const legacyKey = localStorage.getItem("iso_api_key");
             
             let loadedKeys: ApiKeyProfile[] = [];
@@ -208,7 +216,6 @@ function App() {
             if (savedKeys) {
                 loadedKeys = JSON.parse(savedKeys);
             } else if (legacyKey) {
-                // Migrate legacy key to new structure
                 const newId = Date.now().toString();
                 loadedKeys = [{
                     id: newId,
@@ -235,7 +242,6 @@ function App() {
         }
     };
 
-    // Real-time Saving
     useEffect(() => {
         if (isDarkMode) document.body.classList.add('dark');
         else {
@@ -259,7 +265,6 @@ function App() {
         localStorage.setItem('iso_report_template_name', templateFileName);
     }, [reportTemplate, templateFileName]);
 
-    // Save Keys and update the 'legacy' key slot for geminiService usage
     useEffect(() => {
         localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
         localStorage.setItem("iso_active_key_id", activeKeyId);
@@ -272,10 +277,7 @@ function App() {
         }
     }, [apiKeys, activeKeyId]);
 
-    // --- API KEY HANDLERS ---
-
     const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
-        // Set all to checking state visually
         setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
 
         const checkedKeys = await Promise.all(initialKeys.map(async (profile) => {
@@ -290,12 +292,9 @@ function App() {
 
         setApiKeys(checkedKeys);
 
-        // Auto-switch logic: 
-        // 1. Is the current active key valid?
         const currentActive = checkedKeys.find(k => k.id === localStorage.getItem("iso_active_key_id"));
         
         if (!currentActive || currentActive.status !== 'valid') {
-            // Find the best valid key (lowest latency)
             const bestKey = checkedKeys
                 .filter(k => k.status === 'valid')
                 .sort((a, b) => a.latency - b.latency)[0];
@@ -324,7 +323,6 @@ function App() {
         setIsCheckingKey(true);
         const tempId = Date.now().toString();
         
-        // Validate before adding
         const validation = await validateApiKey(newKeyInput);
         
         const newProfile: ApiKeyProfile = {
@@ -337,7 +335,6 @@ function App() {
         };
 
         setApiKeys(prev => [...prev, newProfile]);
-        // If it's the first key, make it active
         if (apiKeys.length === 0) setActiveKeyId(tempId);
         
         setNewKeyInput("");
@@ -362,42 +359,33 @@ function App() {
         }
     };
 
-    // --- RECURSIVE EXECUTION WITH SMART FAILOVER ---
-    
     const executeWithApiKeyFailover = async <T,>(
         operation: (apiKey: string) => Promise<T>, 
         attemptedKeys: string[] = []
     ): Promise<T> => {
-        // 1. Get current pool of usable keys (excluding ones we already failed on this specific call)
         const availableKeys = apiKeys.filter(k => 
-            k.status !== 'invalid' && // Don't use known bad keys
-            k.status !== 'quota_exceeded' && // Don't use exhausted keys
-            !attemptedKeys.includes(k.id) // Don't reuse keys we tried in this recursive chain
+            k.status !== 'invalid' && 
+            k.status !== 'quota_exceeded' && 
+            !attemptedKeys.includes(k.id) 
         );
 
-        // Sort by latency (lowest first) to prioritize fast keys
         availableKeys.sort((a, b) => a.latency - b.latency);
 
-        // 2. Identify candidate key
-        // Prefer the currently active key if it's in the available list, otherwise take the best one
         let candidateKey = availableKeys.find(k => k.id === activeKeyId);
         if (!candidateKey && availableKeys.length > 0) {
             candidateKey = availableKeys[0];
         }
 
         if (!candidateKey) {
-            // No keys left to try
             throw new Error("ALL_KEYS_EXHAUSTED");
         }
 
-        // Switch active key state if we had to failover to a new one
         if (candidateKey.id !== activeKeyId) {
             setActiveKeyId(candidateKey.id);
             setToastMsg(`Switching to backup key: ${candidateKey.label}...`);
         }
 
         try {
-            // 3. Attempt Execution
             return await operation(candidateKey.key);
         } catch (error: any) {
             console.warn(`Key [${candidateKey.label}] failed. Error:`, error);
@@ -406,18 +394,12 @@ function App() {
             const isApiError = msg.includes("403") || msg.includes("429") || msg.includes("quota") || msg.includes("key") || msg.includes("permission") || msg.includes("resource exhausted");
 
             if (isApiError) {
-                // 4. Mark failure in global state so other clauses don't waste time on this key
                 setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, status: 'quota_exceeded' } : k));
-                
-                // 5. Recursive Retry with the next key
                 return await executeWithApiKeyFailover(operation, [...attemptedKeys, candidateKey.id]);
             }
-            // Non-API error (e.g. parsing, network disconnect) - rethrow
             throw error;
         }
     };
-
-    // --- MAIN HANDLERS ---
 
     const handleNewSession = () => {
         if (window.confirm("Start new session? Current work will be cleared.")) {
@@ -488,28 +470,23 @@ function App() {
         setPastedImages(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    // --- SEQUENTIAL AI ANALYSIS HANDLER ---
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
         
-        // 1. Setup UI for Stream Mode
         setIsAnalyzeLoading(true); 
         setAiError(null);
-        setAnalysisResult([]); // Clear previous
-        setLayoutMode('findings'); // Force switch to findings tab to show real-time progress
+        setAnalysisResult([]); 
+        setLayoutMode('findings'); 
         setLoadingMessage("Initializing AI Auditor...");
 
         try {
-            // Get Clause Details
             const scopeClauses = allStandards[standardKey].groups.flatMap(g => g.clauses).filter(c => selectedClauses.includes(c.id));
             
-            // 2. Sequential Loop (One-by-One)
             for (let i = 0; i < scopeClauses.length; i++) {
                 const clause = scopeClauses[i];
-                setCurrentAnalyzingClause(clause.code); // For UI Feedback
+                setCurrentAnalyzingClause(clause.code); 
                 setLoadingMessage(`Analyzing Clause ${clause.code}...`);
 
-                // 2a. Build Single Prompt
                 const prompt = `Act as an ISO Lead Auditor. Evaluate compliance for this SINGLE clause:
                 [${clause.code}] ${clause.title}: ${clause.description}
 
@@ -519,44 +496,37 @@ function App() {
                 Return a JSON Array with exactly ONE object containing: clauseId (must be "${clause.id}"), status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report (concise).`;
 
                 try {
-                    // 2b. Execute with Failover
                     const resultStr = await executeWithApiKeyFailover(async (key) => {
                         return await generateAnalysis(prompt, `Output JSON array only.`, key);
                     });
 
-                    // 2c. Parse & Update State Immediately
                     const chunkResult = cleanAndParseJSON(resultStr || "");
                     if (chunkResult && Array.isArray(chunkResult) && chunkResult.length > 0) {
                         const resultItem = chunkResult[0];
-                        // Force ID match to be safe
                         resultItem.clauseId = clause.id;
                         
                         setAnalysisResult(prev => {
                             const prevSafe = prev || [];
-                            // Avoid duplicates just in case
                             if (prevSafe.find(r => r.clauseId === resultItem.clauseId)) return prevSafe;
                             
-                            // Update selection state for the new item
                             setSelectedFindings(sel => ({...sel, [resultItem.clauseId]: true}));
                             return [...prevSafe, resultItem];
                         });
                     }
                 } catch (innerError: any) {
                     if (innerError.message === "ALL_KEYS_EXHAUSTED") {
-                        throw innerError; // Stop the loop entirely
+                        throw innerError; 
                     }
                     console.error(`Failed to analyze clause ${clause.code}`, innerError);
-                    // Optionally push a "Failed" result so the user knows it was skipped
                 }
 
-                // Small delay to let the UI breathe and prevent super-rapid 429s even with key switching
                 await new Promise(r => setTimeout(r, 200));
             }
 
         } catch (e: any) { 
             if (e.message === "ALL_KEYS_EXHAUSTED") {
                 setAiError("All API Keys have been exhausted (Quota Limit). Please add a new valid key in Settings to continue.");
-                setShowSettingsModal(true); // Auto open settings
+                setShowSettingsModal(true); 
             } else {
                 setAiError(e.message || "Analysis Failed");
             }
@@ -575,7 +545,6 @@ function App() {
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
              const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
              
-             // Use Failover Wrapper
              const text = await executeWithApiKeyFailover(async (key) => {
                  return await generateTextReport(prompt, "Expert ISO Report Compiler.", key);
              });
@@ -628,7 +597,6 @@ function App() {
         }
     };
 
-    // --- REFACTORED EXPORT HANDLER WITH STREAMLINE CHUNKING ---
     const handleExport = async (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
         if (!text) return;
         let setLoading = setIsExportLoading;
@@ -643,21 +611,16 @@ function App() {
             let contentToExport = text;
             const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
 
-            // Determine if processing is needed (Translation or Refinement)
-            // Strategy: Chunking to prevent Token Limits (429/400).
+            const CHUNK_SIZE = 12000; 
             
-            const CHUNK_SIZE = 12000; // ~3000 tokens, safe for output limits
-            
-            // Smart Chunking: Split by length but try to find nearest newline
             const chunks: string[] = [];
             let currentPos = 0;
             while (currentPos < text.length) {
                 let endPos = currentPos + CHUNK_SIZE;
                 if (endPos < text.length) {
-                    // Backtrack to nearest newline to split cleanly
                     const lastNewline = text.lastIndexOf('\n', endPos);
                     if (lastNewline > currentPos) {
-                        endPos = lastNewline + 1; // Include the newline
+                        endPos = lastNewline + 1; 
                     }
                 }
                 chunks.push(text.slice(currentPos, endPos));
@@ -667,7 +630,6 @@ function App() {
             let processedContent = "";
             
             try {
-                // Sequential processing with Progress Feedback
                 for (let i = 0; i < chunks.length; i++) {
                     const chunk = chunks[i];
                     setLoadingMessage(`Translating/Refining Part ${i + 1}/${chunks.length}...`);
@@ -687,11 +649,9 @@ function App() {
                     if (result) {
                         processedContent += result + "\n"; 
                     } else {
-                        // Fallback if AI returns empty for a chunk (rare)
                         processedContent += chunk + "\n"; 
                     }
                     
-                    // Small delay to be gentle on rate limits
                     await new Promise(r => setTimeout(r, 200));
                 }
                 
@@ -700,7 +660,7 @@ function App() {
             } catch (aiErr) {
                 console.warn("Export AI processing failed, falling back to raw text", aiErr);
                 setAiError(`AI processing failed during export. Exporting original text.`);
-                contentToExport = text; // Fallback to original
+                contentToExport = text; 
             }
 
             let stdShort = "ISO";
@@ -735,7 +695,7 @@ function App() {
             setAiError(e.message || "Export Failed"); 
         } finally { 
             setLoading(false); 
-            setLoadingMessage(""); // Clear message
+            setLoadingMessage(""); 
         }
     };
 
@@ -757,6 +717,48 @@ function App() {
         }
     };
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setIsCmdPaletteOpen(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
+    const commandActions = useMemo(() => {
+        const actions: any[] = [
+            { label: "Analyze Compliance", desc: "Start AI analysis", icon: "Wand2", shortcut: "AI", action: handleAnalyze },
+            { label: "Toggle Dark Mode", desc: `Switch to ${isDarkMode ? 'Light' : 'Dark'}`, icon: isDarkMode ? "Sun" : "Moon", action: () => setIsDarkMode(!isDarkMode) },
+            { label: "Generate Report", desc: "Synthesize final report", icon: "FileText", action: handleGenerateReport },
+            { label: "Export Notes", desc: "Download findings", icon: "Download", action: () => {
+                 const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
+                 handleExport(reportTxt, 'notes', notesLanguage);
+            }},
+            { label: "Settings / API Key", desc: "Manage configuration", icon: "Settings", action: () => setShowSettingsModal(true) },
+        ];
+
+        if (allStandards[standardKey]) {
+            const flatten = (list: Clause[]): any[] => list.flatMap(c => {
+                const item = { 
+                    label: `${c.code} ${c.title}`, 
+                    desc: c.description, 
+                    type: 'clause', 
+                    icon: 'Book', 
+                    action: () => { 
+                        insertTextAtCursor(`[${c.code}] ${c.title}`);
+                    } 
+                };
+                return c.subClauses ? [item, ...flatten(c.subClauses)] : [item];
+            });
+            const clauses = allStandards[standardKey].groups.flatMap(g => flatten(g.clauses));
+            return [...actions, ...clauses];
+        }
+        return actions;
+    }, [isDarkMode, standardKey, allStandards, analysisResult, selectedFindings]);
+
     const getAnalyzeTooltip = () => {
         if (isAnalyzeLoading) return "AI is analyzing...";
         const missing = [];
@@ -766,12 +768,8 @@ function App() {
         return "Ready! Click to Start AI Analysis.";
     };
 
-    const mainContentWidth = isSidebarOpen ? (windowWidth - sidebarWidth) : windowWidth;
-    const isCompactLayout = mainContentWidth < 500;
-
     return (
         <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
-            {/* Toast Notification */}
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
             {aiError && (
@@ -795,12 +793,10 @@ function App() {
                 </div>
             )}
 
-            {/* HEADER - OPTIMIZED FOR MOBILE */}
+            {/* HEADER */}
             <div className="flex-shrink-0 px-4 md:px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
                 
-                {/* Left: Branding & Context */}
                 <div className="flex items-center h-full gap-3 md:gap-5">
-                    {/* Sidebar Toggle - PRESERVED LOGIC: Infinity on Open, TD Logo on Closed */}
                     <div 
                         className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:opacity-80 active:scale-95`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
@@ -808,13 +804,11 @@ function App() {
                     >
                         <div className="relative w-10 h-10 md:w-14 md:h-14 flex items-center justify-center">
                             {isSidebarOpen ? 
-                                /* Infinity Logo */
                                 <div className="relative w-8 h-8">
                                     <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
                                     <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse"></div>
                                 </div>
                                 : 
-                                /* TD Logo Replacement */
                                 <div className="hover:scale-110 transition-transform duration-300">
                                      <Icon name="TDLogo" size={32} className="drop-shadow-md" />
                                 </div>
@@ -823,13 +817,10 @@ function App() {
                     </div>
                     
                     <div className="flex items-center gap-2 md:gap-3">
-                        {/* Title: Hidden on Mobile */}
                         <h1 className="hidden md:block text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
                             ISO Audit <span className="font-light text-slate-400">Pro</span>
                         </h1>
                         <div className="hidden md:block h-5 w-px bg-gray-200 dark:bg-slate-700 mx-1"></div>
-                        
-                        {/* Standard Badge */}
                         <div className="flex items-center">
                             <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800/50 shadow-sm uppercase tracking-wider backdrop-blur-sm">
                                 {allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}
@@ -838,9 +829,7 @@ function App() {
                     </div>
                 </div>
 
-                {/* Right: Actions */}
                 <div className="flex items-center gap-2">
-                    {/* Font: Desktop Only */}
                     <div className="hidden lg:block">
                         <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
@@ -851,14 +840,19 @@ function App() {
                     
                     <div className="hidden md:block h-4 w-px bg-gray-200 dark:bg-slate-800 mx-1"></div>
 
-                    {/* API Key: Compact Dot on Mobile */}
-                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border transition-all duration-200 hover:shadow-sm ${activeKeyId ? 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                        <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
-                        <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider">{activeKeyId ? 'API Ready' : 'Set Key'}</span>
+                    {/* API STATUS PULSING DOT - Requirement 2 */}
+                    <button 
+                        onClick={() => setShowSettingsModal(true)} 
+                        className="group relative w-8 h-8 flex items-center justify-center transition-all"
+                        title="Connection Status"
+                    >
+                        {/* Pulse Ring */}
+                        <div className={`absolute inset-0 rounded-full opacity-20 animate-ping ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        {/* Core Dot */}
+                        <div className={`relative w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white dark:ring-slate-900 ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                     </button>
                     
-                    {/* Info: Desktop Only */}
-                    <button onClick={() => setShowAboutModal(true)} className="hidden md:block ml-1 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
+                    <button onClick={() => setShowAboutModal(true)} className="ml-1 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
                         <Icon name="Info" size={18}/>
                     </button>
                 </div>
@@ -893,7 +887,8 @@ function App() {
                     />
                 )}
                 
-                <div className={`flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-slate-950 transition-all relative w-full ${isDragging ? 'ring-4 ring-indigo-500/50 scale-[0.99]' : ''}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                {/* MAIN CONTENT WRAPPER - Requirement 3 (Visual Contrast Flow) */}
+                <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 relative w-full ${isDragging ? 'ring-4 ring-indigo-500/50 scale-[0.99]' : ''} ${currentTabConfig.bgSoft} border-t-4 ${currentTabConfig.borderClass}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
                     {isDragging && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-500/10 backdrop-blur-sm rounded-3xl border-4 border-dashed border-indigo-500 m-4 pointer-events-none">
                             <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl flex flex-col items-center animate-bounce">
@@ -905,11 +900,11 @@ function App() {
                     )}
 
                     {/* Toolbar */}
-                    <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur flex justify-between items-center gap-3">
+                    <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center gap-3">
                         <div className="flex-1 min-w-0">
                             <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-full">
                                 <div 
-                                    className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0"
+                                    className={`absolute top-1 bottom-1 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0 ${tabStyle.color}`}
                                     style={{
                                         left: tabStyle.left,
                                         width: tabStyle.width,
@@ -917,18 +912,21 @@ function App() {
                                     }}
                                 />
                                 
-                                {tabsList.map((tab, idx) => (
-                                    <button 
-                                        key={tab.id} 
-                                        ref={el => { tabsRef.current[idx] = el; }}
-                                        onClick={() => setLayoutMode(tab.id as LayoutMode)} 
-                                        className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                                        title={tab.label}
-                                    >
-                                        <Icon name={tab.icon} size={16}/> 
-                                        <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
-                                    </button>
-                                ))}
+                                {tabsList.map((tab, idx) => {
+                                    const isActive = layoutMode === tab.id;
+                                    return (
+                                        <button 
+                                            key={tab.id} 
+                                            ref={el => { tabsRef.current[idx] = el; }}
+                                            onClick={() => setLayoutMode(tab.id as LayoutMode)} 
+                                            className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${isActive ? 'text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                            title={tab.label}
+                                        >
+                                            <Icon name={tab.icon} size={16}/> 
+                                            <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -945,7 +943,8 @@ function App() {
                     <div className="flex-1 overflow-hidden relative p-4 md:p-6">
                         {/* 1. EVIDENCE MODE */}
                         {layoutMode === 'evidence' && (
-                            <div className="h-full flex flex-col gap-4 animate-fade-in-up">
+                            <div className="h-full flex flex-col gap-4 animate-fade-in-up relative">
+                                
                                 <div className="flex-1 flex flex-col gap-4 min-h-0">
                                     <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col relative group focus-within:ring-2 ring-indigo-500/20 transition-all duration-300">
                                         <textarea 
@@ -994,19 +993,20 @@ function App() {
                                     )}
                                 </div>
 
-                                <div className={`flex ${isCompactLayout ? 'flex-col gap-3' : 'flex-row justify-between items-center gap-3 md:gap-0'} mt-2`}>
-                                    <div className={`flex gap-2 ${isCompactLayout ? 'w-full' : 'w-full md:w-auto'}`}>
-                                        <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className={`${isCompactLayout ? 'w-full justify-center' : 'flex-1 md:flex-none'} px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95`} title="Export Raw Text">
-                                            {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
-                                            <div className="lang-pill-container ml-1">
-                                                <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                                <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('vi');}} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                    <button onClick={handleAnalyze} disabled={!isReadyForAnalysis} title={getAnalyzeTooltip()} className={`${isCompactLayout ? 'w-full' : 'w-full md:w-auto'} px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-3 ${isReadyForAnalysis ? "btn-shrimp shadow-xl hover:scale-105 active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"}`}>
-                                        {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={20}/>}
-                                        {isAnalyzeLoading ? "Streaming Analysis..." : "Compliance Analysis"}
+                                {/* BLOCK 1 FOOTER: Analysis, Report (Export) */}
+                                <div className="flex items-center justify-center md:justify-end gap-2 md:gap-3 w-full">
+                                    <button onClick={handleAnalyze} disabled={!isReadyForAnalysis} title={getAnalyzeTooltip()} className={`h-9 md:h-10 w-auto px-3 md:px-4 rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 md:gap-3 ${isReadyForAnalysis ? "btn-shrimp shadow-xl active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"}`}>
+                                        {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={18}/>}
+                                        <span className="hidden md:inline text-xs uppercase tracking-wider">Analyze Compliance</span>
+                                    </button>
+                                    
+                                    <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm" title="Export Raw Text">
+                                        {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                        <span className="hidden md:inline">Export Raw</span>
+                                        <div className="lang-pill-container ml-1">
+                                            <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                            <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('vi');}} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                        </div>
                                     </button>
                                 </div>
                             </div>
@@ -1015,25 +1015,8 @@ function App() {
                         {/* 2. FINDINGS MODE */}
                         {layoutMode === 'findings' && (
                              <div className="h-full flex flex-col animate-fade-in-up">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Icon name="List" size={24} className="text-indigo-500"/> Audit Findings</h3>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => {
-                                            const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
-                                            handleExport(reportTxt, 'notes', notesLanguage);
-                                        }} disabled={!analysisResult || analysisResult.length === 0} className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50">
-                                            {isNotesExportLoading ? <Icon name="Loader"/> : <Icon name="Download"/>} 
-                                            Export Notes
-                                            <div className="lang-pill-container ml-2">
-                                                <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('en');}} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                                <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('vi');}} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
                                 
                                 <div ref={findingsContainerRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 pb-4">
-                                    {/* Empty State when just started */}
                                     {(!analysisResult || analysisResult.length === 0) && !isAnalyzeLoading && (
                                         <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 animate-in zoom-in-95 duration-500">
                                             <Icon name="Wand2" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
@@ -1041,8 +1024,37 @@ function App() {
                                         </div>
                                     )}
 
-                                    {/* Render Findings */}
-                                    {analysisResult?.map((result, idx) => (
+                                    {/* Matrix View Render */}
+                                    {findingsViewMode === 'matrix' && analysisResult && analysisResult.length > 0 && (
+                                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 p-1">
+                                            {analysisResult.map((result, idx) => {
+                                                const isActive = selectedFindings[result.clauseId];
+                                                let bgColor = 'bg-gray-200 dark:bg-slate-700';
+                                                let textColor = 'text-slate-500 dark:text-slate-400';
+                                                
+                                                if (isActive) {
+                                                    if (result.status === 'COMPLIANT') { bgColor = 'bg-emerald-500'; textColor = 'text-white'; }
+                                                    else if (result.status.includes('MAJOR')) { bgColor = 'bg-red-600'; textColor = 'text-white'; }
+                                                    else if (result.status.includes('MINOR')) { bgColor = 'bg-orange-400'; textColor = 'text-white'; }
+                                                    else if (result.status === 'OFI') { bgColor = 'bg-blue-500'; textColor = 'text-white'; }
+                                                }
+
+                                                return (
+                                                    <div 
+                                                        key={result.clauseId}
+                                                        className={`aspect-square rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-all hover:scale-110 shadow-sm ${bgColor} ${textColor} ${!isActive ? 'opacity-50' : ''}`}
+                                                        title={`${result.clauseId}: ${result.status}\n${result.reason}`}
+                                                        onClick={() => setSelectedFindings(prev => ({...prev, [result.clauseId]: !prev[result.clauseId]}))}
+                                                    >
+                                                        {result.clauseId}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* List View Render */}
+                                    {findingsViewMode === 'list' && analysisResult?.map((result, idx) => (
                                         <div key={result.clauseId} className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all duration-500 hover:shadow-md hover:translate-x-1 animate-in slide-in-from-bottom-5 fade-in ${!selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : result.status === 'COMPLIANT' ? 'border-green-500' : result.status.includes('NC') ? 'border-red-500' : 'border-yellow-500'}`} style={{animationDelay: `${idx * 0.05}s`}}>
                                             <div className="flex justify-between items-start gap-4">
                                                 <div className="flex-1">
@@ -1059,7 +1071,6 @@ function App() {
                                         </div>
                                     ))}
 
-                                    {/* Streaming/Processing Placeholder Card */}
                                     {isAnalyzeLoading && (
                                         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900 shadow-lg animate-pulse">
                                             <div className="flex items-center gap-3">
@@ -1074,38 +1085,37 @@ function App() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* BLOCK 2 FOOTER: Toggle, Export */}
+                                <div className="flex items-center justify-center md:justify-end gap-2 md:gap-3 w-full mt-2">
+                                    <div className="bg-gray-200 dark:bg-slate-800 rounded-xl p-1 flex gap-1 h-9 md:h-10 items-center justify-center w-auto">
+                                        <button onClick={() => setFindingsViewMode('list')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                                            <Icon name="LayoutList" size={16}/> <span className="hidden md:inline">List</span>
+                                        </button>
+                                        <button onClick={() => setFindingsViewMode('matrix')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'matrix' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                                            <Icon name="Grid" size={16}/> <span className="hidden md:inline">Matrix</span>
+                                        </button>
+                                    </div>
+
+                                    <button onClick={() => {
+                                        const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
+                                        handleExport(reportTxt, 'notes', notesLanguage);
+                                    }} disabled={!analysisResult || analysisResult.length === 0} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 disabled:opacity-50 shadow-sm">
+                                        {isNotesExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                        <span className="hidden md:inline">Download Findings</span>
+                                        <div className="lang-pill-container ml-2">
+                                            <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('en');}} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                            <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('vi');}} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
                         )}
 
                         {/* 3. REPORT MODE */}
                         {layoutMode === 'report' && (
                              <div className="h-full flex flex-col animate-fade-in-up">
-                                {/* Header Actions */}
-                                <div className="flex justify-between items-center mb-4">
-                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                        <Icon name="FileText" size={24} className="text-indigo-500"/>
-                                        Audit Report
-                                    </h3>
-                                    <div className="flex gap-2">
-                                         {/* Template Upload */}
-                                        <div className="relative">
-                                            <input type="file" id="template-upload" className="hidden" accept=".txt,.md,.docx" onChange={handleTemplateUpload}/>
-                                            <label htmlFor="template-upload" className="cursor-pointer px-3 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
-                                                <Icon name="UploadCloud" size={14}/>
-                                                {templateFileName ? templateFileName.substring(0, 15) + "..." : "Load Template"}
-                                            </label>
-                                        </div>
-                                         <button onClick={() => handleExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/30 transition-all active:scale-95 disabled:opacity-50 disabled:shadow-none">
-                                            {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
-                                            Export Report
-                                            <div className="lang-pill-container ml-2 bg-indigo-700 border-indigo-500">
-                                                <span onClick={(e) => {e.stopPropagation(); setExportLanguage('en');}} className={`lang-pill-btn ${exportLanguage === 'en' ? 'bg-white text-indigo-700 shadow-sm' : 'text-indigo-200 hover:text-white'}`}>EN</span>
-                                                <span onClick={(e) => {e.stopPropagation(); setExportLanguage('vi');}} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'bg-white text-indigo-700 shadow-sm' : 'text-indigo-200 hover:text-white'}`}>VI</span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-
+                                
                                 <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-6 overflow-hidden flex flex-col relative">
                                     {!finalReportText ? (
                                         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -1114,11 +1124,6 @@ function App() {
                                             </div>
                                             <h4 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">Ready to Synthesize</h4>
                                             <p className="text-sm text-slate-500 max-w-md mb-6">Generate a comprehensive audit report based on {Object.keys(selectedFindings).length} identified findings and context data.</p>
-                                            
-                                            <button onClick={handleGenerateReport} disabled={!analysisResult || analysisResult.length === 0} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-sm shadow-xl shadow-indigo-500/30 hover:scale-105 transition-transform flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                {isReportLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={18}/>}
-                                                {isReportLoading ? "Synthesizing Report..." : "Generate Final Report"}
-                                            </button>
                                         </div>
                                     ) : (
                                         <textarea 
@@ -1128,6 +1133,32 @@ function App() {
                                         />
                                     )}
                                 </div>
+
+                                {/* BLOCK 3 FOOTER: Template, Generate Report, Export */}
+                                <div className="flex items-center justify-center md:justify-end gap-2 md:gap-3 w-full mt-2">
+                                    {/* Template Upload Button */}
+                                    <div className="relative">
+                                        <input type="file" id="template-upload" className="hidden" accept=".txt,.md,.docx" onChange={handleTemplateUpload}/>
+                                        <label htmlFor="template-upload" className="cursor-pointer h-9 md:h-10 w-auto px-3 md:px-4 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-transparent hover:border-gray-300 dark:hover:border-slate-600 shadow-sm whitespace-nowrap active:scale-95">
+                                            <Icon name="UploadCloud" size={14}/>
+                                            <span className="hidden md:inline">{templateFileName ? templateFileName.substring(0, 8) + "..." : "Template"}</span>
+                                        </label>
+                                    </div>
+
+                                    <button onClick={handleGenerateReport} disabled={!analysisResult || analysisResult.length === 0} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-xs shadow-xl shadow-indigo-500/30 transition-transform flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95">
+                                        {isReportLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={18}/>}
+                                        <span className="hidden md:inline">{isReportLoading ? "Synthesizing Report..." : "Generate Final Report"}</span>
+                                    </button>
+
+                                    <button onClick={() => handleExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 disabled:opacity-50 shadow-sm">
+                                        {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                        <span className="hidden md:inline">Export Report</span>
+                                        <div className="lang-pill-container ml-2">
+                                            <span onClick={(e) => {e.stopPropagation(); setExportLanguage('en');}} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                            <span onClick={(e) => {e.stopPropagation(); setExportLanguage('vi');}} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1135,6 +1166,16 @@ function App() {
             </div>
 
             {/* MODALS */}
+            <CommandPaletteModal 
+                isOpen={isCmdPaletteOpen} 
+                onClose={() => setIsCmdPaletteOpen(false)}
+                actions={commandActions}
+                onSelectAction={(item: any) => {
+                    item.action();
+                    setIsCmdPaletteOpen(false);
+                }}
+            />
+            
             <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
             
             {/* Settings Modal - API Keys */}

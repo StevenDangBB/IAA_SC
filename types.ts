@@ -34,6 +34,7 @@ export interface AuditInfo {
 }
 
 export type FindingStatus = 'COMPLIANT' | 'NC_MAJOR' | 'NC_MINOR' | 'OFI' | 'N_A';
+export type FindingsViewMode = 'list' | 'matrix';
 
 export interface AnalysisResult {
     clauseId: string;

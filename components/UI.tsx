@@ -45,6 +45,7 @@ export const Icons: Record<string, React.ReactNode> = {
         </svg>
     ),
     // ... (Keep all existing icons)
+    Grid: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>,
     Session1_SparklePlus: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/><path d="M12 2v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="M2 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M12 22v-4"/><path d="m19.07 19.07-2.83-2.83"/><path d="M22 12h-4"/><path d="m19.07 4.93-2.83 2.83"/></svg>,
     Session2_PlayCircle: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
     Session3_Rocket: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.1 4-1 4-1"/><path d="M12 15v5s3.03-.55 4-2c1.1-1.62 1-4 1-4"/></svg>,
@@ -188,6 +189,84 @@ export const Modal = ({ isOpen, title, onClose, children }: any) => {
                 </div>
                 <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
                     {children}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }: any) => {
+    const [search, setSearch] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setSearch("");
+            setTimeout(() => inputRef.current?.focus(), 50);
+        }
+    }, [isOpen]);
+
+    const filteredActions = actions.filter((a: any) => 
+        a.label.toLowerCase().includes(search.toLowerCase()) || 
+        (a.desc && a.desc.toLowerCase().includes(search.toLowerCase()))
+    );
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] animate-in fade-in duration-200" onClick={onClose}>
+            <div 
+                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-slate-800">
+                    <Icon name="Search" className="text-slate-400 mr-3" size={20} />
+                    <input 
+                        ref={inputRef}
+                        type="text" 
+                        className="flex-1 bg-transparent text-lg outline-none text-slate-800 dark:text-white placeholder-slate-400"
+                        placeholder="Type a command or search clauses..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' && filteredActions.length > 0) {
+                                onSelectAction(filteredActions[0]);
+                            } else if (e.key === 'Escape') {
+                                onClose();
+                            }
+                        }}
+                    />
+                    <div className="flex gap-2">
+                        <span className="text-[10px] bg-gray-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded border border-gray-200 dark:border-slate-700">ESC</span>
+                    </div>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto custom-scrollbar p-2">
+                    {filteredActions.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500">No results found.</div>
+                    ) : (
+                        filteredActions.map((action: any, idx: number) => (
+                            <div 
+                                key={idx}
+                                onClick={() => onSelectAction(action)}
+                                className={`flex items-center gap-4 p-3 rounded-xl cursor-pointer transition-colors group ${idx === 0 ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+                            >
+                                <div className={`p-2 rounded-lg ${action.type === 'clause' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                    <Icon name={action.icon || "Session6_Zap"} size={18}/>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                        {action.label}
+                                    </h4>
+                                    {action.desc && <p className="text-xs text-slate-500 truncate">{action.desc}</p>}
+                                </div>
+                                {action.shortcut && <span className="text-xs text-slate-400">{action.shortcut}</span>}
+                            </div>
+                        ))
+                    )}
+                </div>
+                <div className="px-4 py-2 bg-gray-50 dark:bg-slate-950 border-t border-gray-100 dark:border-slate-800 text-[10px] text-slate-400 flex justify-between">
+                     <span><strong>Tip:</strong> Search for clauses like "9.2" or actions like "Export".</span>
+                     <span>ISO Audit Pro</span>
                 </div>
             </div>
         </div>
