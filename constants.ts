@@ -4,7 +4,7 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.4";
+export const APP_VERSION = "2.5";
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -27,8 +27,18 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.4 (Performance & Fluidity)",
+        version: "2.5 (Stable Baseline)",
         date: new Date().toISOString().substring(0, 10),
+        features: [
+            "BRANDING: Restored signature 'TD Logo' for sidebar collapsed state while strictly maintaining the 'Infinity' animation for the active state.",
+            "MOBILE UX: Optimized Header layout for small screens. Hidden non-essential elements and compacted API status to reduce clutter.",
+            "VISUAL POLISH: Refined spacing, shadow effects, and interactions for the 'API Ready' indicator and Sidebar toggles.",
+            "PERFORMANCE: Codebase baselined and fitted for upcoming major architecture improvements."
+        ]
+    },
+    {
+        version: "2.4 (Performance & Fluidity)",
+        date: "2024-06-01",
         features: [
             "CORE AI UPDATE: Implemented 'Batch Processing' engine. Analysis is now split into sequential chunks to eliminate API Token Limits (429 Errors) and prevent Timeouts on large datasets.",
             "FLUID UX: Completely overhauled animation system using Spring Physics. Menus, tabs, and modals now move with natural momentum.",
@@ -46,17 +56,6 @@ export const RELEASE_NOTES = [
             "UX: Enhanced Drag & Drop Evidence Zone with instant preview.",
             "LOCALIZATION: Added EN/VI toggles for notes and report exports.",
             "REPORTING: Support for .docx Template ingestion for custom layouts."
-        ]
-    },
-    {
-        version: "2.2 (Decoupled Data)",
-        date: "2024-05-20",
-        features: [
-            "DATA: Fully isolated standard modules to prevent truncation.",
-            "ISO 27001: Complete 93 controls + PDCA structure.",
-            "ISO 9001: Included 8.4, 8.6, 8.7.",
-            "ISO 14001: Included 5.3, 7.4, 9.3.",
-            "DIAGNOSTIC: Clause count badge added to sidebar."
         ]
     }
 ];

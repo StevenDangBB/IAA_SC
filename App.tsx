@@ -644,12 +644,11 @@ function App() {
             const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
 
             // Determine if processing is needed (Translation or Refinement)
-            // If user wants Raw Evidence in same language, we could skip AI, but user requested refinement too.
-            // We will proceed with AI but use CHUNKING to prevent Token Limits.
+            // Strategy: Chunking to prevent Token Limits (429/400).
             
             const CHUNK_SIZE = 12000; // ~3000 tokens, safe for output limits
             
-            // Simple split by length, but improved to find nearest newline to avoid cutting sentences mid-way
+            // Smart Chunking: Split by length but try to find nearest newline
             const chunks: string[] = [];
             let currentPos = 0;
             while (currentPos < text.length) {
@@ -667,14 +666,11 @@ function App() {
 
             let processedContent = "";
             
-            // Only use AI if requested (translating) or for refinement. 
-            // If it's English to English raw evidence, maybe just export? 
-            // User requirement implies "Translate or Refine", so we run AI.
-            
             try {
+                // Sequential processing with Progress Feedback
                 for (let i = 0; i < chunks.length; i++) {
                     const chunk = chunks[i];
-                    setLoadingMessage(`Exporting: Processing part ${i + 1}/${chunks.length}...`);
+                    setLoadingMessage(`Translating/Refining Part ${i + 1}/${chunks.length}...`);
                     
                     const prompt = `Act as a professional ISO Lead Auditor. 
                     Task: Translate or Refine the following audit text fragment to ${targetLangName}.
@@ -689,7 +685,7 @@ function App() {
                     });
                     
                     if (result) {
-                        processedContent += result + "\n"; // Append result
+                        processedContent += result + "\n"; 
                     } else {
                         // Fallback if AI returns empty for a chunk (rare)
                         processedContent += chunk + "\n"; 
@@ -799,11 +795,12 @@ function App() {
                 </div>
             )}
 
-            {/* HEADER - Professional, Lean, and Strictly Aligned */}
-            <div className="flex-shrink-0 px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
+            {/* HEADER - OPTIMIZED FOR MOBILE */}
+            <div className="flex-shrink-0 px-4 md:px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
                 
-                {/* Left: Branding & Context (Aligned Center) */}
-                <div className="flex items-center h-full gap-5">
+                {/* Left: Branding & Context */}
+                <div className="flex items-center h-full gap-3 md:gap-5">
+                    {/* Sidebar Toggle - PRESERVED LOGIC: Infinity on Open, TD Logo on Closed */}
                     <div 
                         className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:opacity-80 active:scale-95`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
@@ -811,23 +808,28 @@ function App() {
                     >
                         <div className="relative w-10 h-10 md:w-14 md:h-14 flex items-center justify-center">
                             {isSidebarOpen ? 
-                                /* Restored Infinity Animation */
+                                /* Infinity Logo */
                                 <div className="relative w-8 h-8">
                                     <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
                                     <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse"></div>
                                 </div>
                                 : 
-                                <Icon name="LayoutList" size={24} className="text-slate-600 dark:text-slate-400"/>
+                                /* TD Logo Replacement */
+                                <div className="hover:scale-110 transition-transform duration-300">
+                                     <Icon name="TDLogo" size={32} className="drop-shadow-md" />
+                                </div>
                             }
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                    <div className="flex items-center gap-2 md:gap-3">
+                        {/* Title: Hidden on Mobile */}
+                        <h1 className="hidden md:block text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
                             ISO Audit <span className="font-light text-slate-400">Pro</span>
                         </h1>
-                        <div className="h-5 w-px bg-gray-200 dark:bg-slate-700 mx-1"></div>
-                        {/* Standard Badge - Glassmorphism & High Contrast */}
+                        <div className="hidden md:block h-5 w-px bg-gray-200 dark:bg-slate-700 mx-1"></div>
+                        
+                        {/* Standard Badge */}
                         <div className="flex items-center">
                             <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800/50 shadow-sm uppercase tracking-wider backdrop-blur-sm">
                                 {allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}
@@ -836,9 +838,10 @@ function App() {
                     </div>
                 </div>
 
-                {/* Right: Actions (Streamlined) */}
-                <div className="flex items-center gap-1">
-                    <div className="hidden sm:block">
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2">
+                    {/* Font: Desktop Only */}
+                    <div className="hidden lg:block">
                         <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
                     
@@ -846,14 +849,16 @@ function App() {
                         <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                     </button>
                     
-                    <div className="h-4 w-px bg-gray-200 dark:bg-slate-800 mx-2"></div>
+                    <div className="hidden md:block h-4 w-px bg-gray-200 dark:bg-slate-800 mx-1"></div>
 
-                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200 hover:shadow-sm ${activeKeyId ? 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">{activeKeyId ? 'API Ready' : 'Set Key'}</span>
+                    {/* API Key: Compact Dot on Mobile */}
+                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border transition-all duration-200 hover:shadow-sm ${activeKeyId ? 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                        <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
+                        <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider">{activeKeyId ? 'API Ready' : 'Set Key'}</span>
                     </button>
                     
-                    <button onClick={() => setShowAboutModal(true)} className="ml-2 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
+                    {/* Info: Desktop Only */}
+                    <button onClick={() => setShowAboutModal(true)} className="hidden md:block ml-1 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
                         <Icon name="Info" size={18}/>
                     </button>
                 </div>
@@ -1056,153 +1061,158 @@ function App() {
 
                                     {/* Streaming/Processing Placeholder Card */}
                                     {isAnalyzeLoading && (
-                                        <div className="p-5 rounded-2xl bg-gray-50 dark:bg-slate-800/50 border border-dashed border-indigo-200 dark:border-indigo-800 animate-pulse flex flex-col gap-3">
+                                        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900 shadow-lg animate-pulse">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-5 h-5 rounded bg-gray-200 dark:bg-slate-700 animate-pulse"></div>
-                                                <div className="h-5 w-24 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
-                                                <div className="h-5 w-16 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <div className="h-4 w-3/4 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
-                                                <div className="h-4 w-1/2 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-indigo-500 text-xs font-bold uppercase tracking-wider mt-2">
-                                                <SparkleLoader/>
-                                                {currentAnalyzingClause ? `Analysing ${currentAnalyzingClause}...` : "AI Auditor Thinking..."}
+                                                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-full animate-spin">
+                                                    <Icon name="Loader" size={20} className="text-indigo-600 dark:text-indigo-400"/>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{loadingMessage || "AI Analyst is working..."}</p>
+                                                    <p className="text-xs text-slate-500">{currentAnalyzingClause ? `Processing ${currentAnalyzingClause}` : "Please wait"}</p>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
                                 </div>
-
-                                <div className="mt-4 flex justify-end">
-                                    <button onClick={handleGenerateReport} disabled={!analysisResult || analysisResult.length === 0} className="btn-brain-wave px-8 py-3 rounded-xl text-white font-bold text-sm shadow-lg flex items-center gap-2 hover:scale-105 transition-transform w-full md:w-auto justify-center active:scale-95 duration-300 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
-                                        Generate Full Report <Icon name="FileText" size={18}/>
-                                    </button>
-                                </div>
-                             </div>
+                            </div>
                         )}
 
                         {/* 3. REPORT MODE */}
-                        {layoutMode === 'report' && finalReportText && (
-                            <div className="h-full flex flex-col animate-zoom-in-spring">
-                                <div className="flex justify-between items-center mb-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm transition-all hover:shadow-md">
-                                    <div className="flex items-center gap-4">
-                                        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg text-indigo-600"><Icon name="FileText" size={24}/></div>
-                                        <div>
-                                            <h3 className="font-bold text-slate-800 dark:text-white">Final Report Ready</h3>
-                                            <p className="text-xs text-slate-500">Review and export your document.</p>
-                                        </div>
-                                    </div>
+                        {layoutMode === 'report' && (
+                             <div className="h-full flex flex-col animate-fade-in-up">
+                                {/* Header Actions */}
+                                <div className="flex justify-between items-center mb-4">
+                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                        <Icon name="FileText" size={24} className="text-indigo-500"/>
+                                        Audit Report
+                                    </h3>
                                     <div className="flex gap-2">
-                                        <button onClick={() => setShowImportModal(true)} className="px-3 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">Change Template</button>
+                                         {/* Template Upload */}
+                                        <div className="relative">
+                                            <input type="file" id="template-upload" className="hidden" accept=".txt,.md,.docx" onChange={handleTemplateUpload}/>
+                                            <label htmlFor="template-upload" className="cursor-pointer px-3 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
+                                                <Icon name="UploadCloud" size={14}/>
+                                                {templateFileName ? templateFileName.substring(0, 15) + "..." : "Load Template"}
+                                            </label>
+                                        </div>
+                                         <button onClick={() => handleExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/30 transition-all active:scale-95 disabled:opacity-50 disabled:shadow-none">
+                                            {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                            Export Report
+                                            <div className="lang-pill-container ml-2 bg-indigo-700 border-indigo-500">
+                                                <span onClick={(e) => {e.stopPropagation(); setExportLanguage('en');}} className={`lang-pill-btn ${exportLanguage === 'en' ? 'bg-white text-indigo-700 shadow-sm' : 'text-indigo-200 hover:text-white'}`}>EN</span>
+                                                <span onClick={(e) => {e.stopPropagation(); setExportLanguage('vi');}} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'bg-white text-indigo-700 shadow-sm' : 'text-indigo-200 hover:text-white'}`}>VI</span>
+                                            </div>
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-inner border border-gray-200 dark:border-slate-800 overflow-y-auto custom-scrollbar p-8">
-                                    <div className="prose prose-sm dark:prose-invert max-w-none font-serif whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-white [&_*]:dark:text-white animate-in fade-in duration-700">
-                                        {finalReportText}
-                                    </div>
-                                </div>
-                                <div className="mt-4 flex justify-end gap-3">
-                                    <div className="lang-pill-container p-1.5 shadow-sm">
-                                        <span onClick={() => setExportLanguage('en')} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                        <span onClick={() => setExportLanguage('vi')} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                    </div>
-                                    <button onClick={() => handleExport(finalReportText, 'report', exportLanguage)} disabled={isExportLoading} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all active:scale-95 w-full md:w-auto justify-center hover:scale-105 duration-300">
-                                        {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>}
-                                        Download Report
-                                    </button>
+
+                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-6 overflow-hidden flex flex-col relative">
+                                    {!finalReportText ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                                            <div className="w-20 h-20 bg-indigo-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
+                                                <Icon name="FileText" size={40} className="text-indigo-200 dark:text-slate-600"/>
+                                            </div>
+                                            <h4 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">Ready to Synthesize</h4>
+                                            <p className="text-sm text-slate-500 max-w-md mb-6">Generate a comprehensive audit report based on {Object.keys(selectedFindings).length} identified findings and context data.</p>
+                                            
+                                            <button onClick={handleGenerateReport} disabled={!analysisResult || analysisResult.length === 0} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-sm shadow-xl shadow-indigo-500/30 hover:scale-105 transition-transform flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
+                                                {isReportLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={18}/>}
+                                                {isReportLoading ? "Synthesizing Report..." : "Generate Final Report"}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <textarea 
+                                            className="flex-1 w-full h-full bg-transparent resize-none focus:outline-none text-slate-800 dark:text-slate-200 font-mono text-sm leading-relaxed" 
+                                            value={finalReportText} 
+                                            onChange={(e) => setFinalReportText(e.target.value)}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         )}
-                        
-                        {/* Report Empty State */}
-                        {layoutMode === 'report' && !finalReportText && (
-                             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 animate-in zoom-in-95 duration-500">
-                                <Icon name="FileText" size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
-                                <p>No report generated. Go to Findings &gt; Generate Report.</p>
-                             </div>
-                        )}
-
-                        {/* Full Screen Loaders (Only for Reporting now, Analysis has inline loader) */}
-                        {isReportLoading && <AINeuralLoader message={loadingMessage || "Synthesizing Report..."} />}
-                        {/* Global Overlay Loader for Export when processing chunks */}
-                        {(isExportLoading || isNotesExportLoading || isEvidenceExportLoading) && <AINeuralLoader message={loadingMessage || "Processing Export..."} />}
                     </div>
                 </div>
             </div>
 
-            {/* Modals */}
+            {/* MODALS */}
             <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
             
-            <Modal isOpen={showImportModal} title="Report Template Settings" onClose={() => setShowImportModal(false)}>
-                <div className="space-y-4">
-                    <div className="p-4 border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer group" onClick={() => templateInputRef.current?.click()}>
-                        <Icon name="UploadCloud" size={32} className="text-gray-400 mb-2 group-hover:scale-110 transition-transform duration-300"/>
-                        <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Click to Upload .docx / .txt Template</p>
-                        <p className="text-xs text-slate-400 mt-1">{templateFileName || "No file selected"}</p>
-                        <input type="file" ref={templateInputRef} className="hidden" accept=".docx,.txt" onChange={handleTemplateUpload}/>
-                    </div>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg flex gap-3 items-start">
-                        <Icon name="Info" className="text-blue-500 mt-0.5 shrink-0"/>
-                        <p className="text-xs text-blue-700 dark:text-blue-300">
-                            The AI will use the structure and tone of your uploaded document to generate the final report. 
-                            Supported formats: <strong>Word (.docx)</strong> or Text (.txt).
-                        </p>
-                    </div>
-                </div>
-            </Modal>
-
-            <Modal isOpen={showSettingsModal} title="API Key Configuration" onClose={() => setShowSettingsModal(false)}>
+            {/* Settings Modal - API Keys */}
+            <Modal isOpen={showSettingsModal} title="Settings & API Keys" onClose={() => setShowSettingsModal(false)}>
                 <div className="space-y-6">
-                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
-                        <h4 className="font-bold text-indigo-900 dark:text-indigo-300 text-sm mb-2">Why do I need this?</h4>
-                        <p className="text-xs text-indigo-700 dark:text-indigo-400 leading-relaxed">
-                            This app communicates directly with Google Gemini AI. Your key is stored locally in your browser and is never sent to our servers.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        {apiKeys.map(keyProfile => (
-                            <div key={keyProfile.id} className={`p-3 rounded-xl border flex justify-between items-center transition-all duration-300 ${activeKeyId === keyProfile.id ? 'bg-white dark:bg-slate-800 border-indigo-500 shadow-md ring-1 ring-indigo-500 scale-[1.02]' : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 opacity-80 hover:opacity-100 hover:scale-100'}`}>
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <div onClick={() => setActiveKeyId(keyProfile.id)} className={`w-5 h-5 rounded-full border-2 cursor-pointer flex items-center justify-center transition-colors ${activeKeyId === keyProfile.id ? 'border-indigo-600' : 'border-gray-400'}`}>
-                                        {activeKeyId === keyProfile.id && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-zoom-in-spring"></div>}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{keyProfile.label}</p>
-                                            <span className={`text-[10px] px-1.5 rounded uppercase font-bold ${keyProfile.status === 'valid' ? 'bg-emerald-100 text-emerald-700' : keyProfile.status === 'checking' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                                                {keyProfile.status === 'checking' ? 'Checking...' : keyProfile.status}
+                    <div>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Manage API Keys</h4>
+                        <div className="space-y-3">
+                            {/* Key List */}
+                            {apiKeys.map(profile => (
+                                <div key={profile.id} className={`p-3 rounded-xl border flex items-center justify-between transition-all ${profile.id === activeKeyId ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-gray-100 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div onClick={() => setActiveKeyId(profile.id)} className={`cursor-pointer w-4 h-4 rounded-full border-2 flex items-center justify-center ${profile.id === activeKeyId ? 'border-indigo-500' : 'border-gray-300 dark:border-slate-500'}`}>
+                                            {profile.id === activeKeyId && <div className="w-2 h-2 rounded-full bg-indigo-500"></div>}
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{profile.label}</span>
+                                                {profile.status === 'valid' && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase">Valid</span>}
+                                                {profile.status === 'invalid' && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">Invalid</span>}
+                                                {profile.status === 'quota_exceeded' && <span className="text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold uppercase">Quota</span>}
+                                                {profile.status === 'checking' && <Icon name="Loader" size={10} className="animate-spin text-indigo-500"/>}
+                                            </div>
+                                            <span className="text-[10px] text-slate-400 font-mono truncate">
+                                                {profile.key.substring(0, 8)}...{profile.key.substring(profile.key.length - 4)} • {profile.latency > 0 ? `${profile.latency}ms` : 'Unknown'}
                                             </span>
                                         </div>
-                                        <p className="text-xs font-mono text-slate-500 truncate w-32">••••••••{keyProfile.key.slice(-4)}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                         <button onClick={() => handleRefreshStatus(profile.id)} className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Check Status">
+                                            <Icon name="RefreshCw" size={14} className={profile.status === 'checking' ? 'animate-spin' : ''}/>
+                                        </button>
+                                        <button onClick={() => handleDeleteKey(profile.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Remove Key">
+                                            <Icon name="Trash2" size={14}/>
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <button onClick={() => handleRefreshStatus(keyProfile.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Re-check"><Icon name="RefreshCw" size={14}/></button>
-                                    <button onClick={() => handleDeleteKey(keyProfile.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Icon name="Trash2" size={14}/></button>
+                            ))}
+
+                            {/* Add New Key Input */}
+                            <div className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 flex flex-col gap-3">
+                                <input 
+                                    className="w-full bg-transparent text-xs outline-none text-slate-700 dark:text-slate-300 placeholder-gray-400 border-b border-gray-200 dark:border-slate-700 pb-2 focus:border-indigo-500 transition-colors"
+                                    placeholder="Enter Google Gemini API Key (starts with AIza...)"
+                                    value={newKeyInput}
+                                    onChange={(e) => setNewKeyInput(e.target.value)}
+                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        className="flex-1 bg-transparent text-xs outline-none text-slate-700 dark:text-slate-300 placeholder-gray-400 border-b border-gray-200 dark:border-slate-700 pb-2 focus:border-indigo-500 transition-colors"
+                                        placeholder="Label (Optional, e.g. 'Personal Key')"
+                                        value={newKeyLabel}
+                                        onChange={(e) => setNewKeyLabel(e.target.value)}
+                                    />
+                                    <button 
+                                        onClick={handleAddKey} 
+                                        disabled={!newKeyInput || isCheckingKey}
+                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all shadow-sm"
+                                    >
+                                        {isCheckingKey ? <Icon name="Loader" className="animate-spin"/> : "Add Key"}
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-
-                    <div className="pt-4 border-t border-gray-100 dark:border-slate-800 space-y-3">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Add New Key</label>
-                        <div className="grid grid-cols-3 gap-3">
-                            <input type="text" placeholder="Label (e.g. Personal)" className="col-span-1 px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-indigo-500 transition-shadow focus:shadow-sm" value={newKeyLabel} onChange={e => setNewKeyLabel(e.target.value)} />
-                            <div className="col-span-2 flex gap-2">
-                                <input type="password" placeholder="Paste Gemini API Key here..." className="flex-1 px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-indigo-500 transition-shadow focus:shadow-sm" value={newKeyInput} onChange={e => setNewKeyInput(e.target.value)} />
-                                <button onClick={handleAddKey} disabled={!newKeyInput || isCheckingKey} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 transition-all active:scale-95">
-                                    {isCheckingKey ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Plus"/>}
-                                </button>
-                            </div>
                         </div>
-                        <p className="text-[10px] text-center text-slate-400 mt-2">
-                            Get your key from <a href="https://aistudio.google.com/" target="_blank" className="text-indigo-500 hover:underline">Google AI Studio</a>.
+                    </div>
+                    
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl flex gap-3">
+                        <Icon name="Info" className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={16}/>
+                        <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
+                            <strong>Note:</strong> Multiple keys are supported for "Failover Strategy". If one key hits the rate limit (Quota Exceeded), the system automatically switches to the next available valid key to continue your audit without interruption.
                         </p>
                     </div>
                 </div>
             </Modal>
+            
+            {/* Global Loading Overlay (if needed for heavy non-streaming tasks) */}
+            {/* Using inline loading mostly, but if we need a blocker: */}
+            {isReportLoading && <AINeuralLoader message="Synthesizing Audit Report..." />}
         </div>
     );
 }
