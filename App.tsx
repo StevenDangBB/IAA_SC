@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode } from './types';
+import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY } from './constants';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus } from './types';
 import { Icon, FontSizeController, SparkleLoader, Modal, IconInput, AINeuralLoader, Toast, CommandPaletteModal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
@@ -12,6 +12,20 @@ declare var mammoth: any;
 
 type LayoutMode = 'evidence' | 'findings' | 'report' | 'split';
 type ExportLanguage = 'en' | 'vi';
+
+// --- Smart Export State Interface ---
+interface ExportState {
+    isOpen: boolean;
+    isPaused: boolean;
+    isFinished: boolean;
+    totalChunks: number;
+    processedChunksCount: number;
+    chunks: string[];
+    results: string[];
+    error: string | null;
+    currentType: 'notes' | 'report' | 'evidence';
+    targetLang: ExportLanguage;
+}
 
 function App() {
     // -- STATE --
@@ -43,7 +57,7 @@ function App() {
 
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
-    const [evidenceLanguage, setEvidenceLanguage] = useState<ExportLanguage>('en'); // New state for Evidence export
+    const [evidenceLanguage, setEvidenceLanguage] = useState<ExportLanguage>('en'); 
     const [isDragging, setIsDragging] = useState(false);
     
     const [reportTemplate, setReportTemplate] = useState<string>("");
@@ -67,12 +81,27 @@ function App() {
     const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState<string>(""); 
     const [loadingMessage, setLoadingMessage] = useState<string>(""); 
     const [isReportLoading, setIsReportLoading] = useState(false);
-    const [isExportLoading, setIsExportLoading] = useState(false);
-    const [isNotesExportLoading, setIsNotesExportLoading] = useState(false);
-    const [isEvidenceExportLoading, setIsEvidenceExportLoading] = useState(false); 
+    
+    // Smart Export State
+    const [exportState, setExportState] = useState<ExportState>({
+        isOpen: false,
+        isPaused: false,
+        isFinished: false,
+        totalChunks: 0,
+        processedChunksCount: 0,
+        chunks: [],
+        results: [],
+        error: null,
+        currentType: 'report',
+        targetLang: 'en'
+    });
     
     const [aiError, setAiError] = useState<string | null>(null);
     
+    // Rescue Key State (Inline Input)
+    const [rescueKey, setRescueKey] = useState("");
+    const [isRescuing, setIsRescuing] = useState(false);
+
     // Logo Animation State
     const [logoKey, setLogoKey] = useState(0);
     
@@ -185,6 +214,15 @@ function App() {
         }
     }, [analysisResult]);
 
+    // NEW: Trigger export processor when not paused and not finished
+    useEffect(() => {
+        if (exportState.isOpen && !exportState.isPaused && !exportState.isFinished && exportState.processedChunksCount < exportState.totalChunks) {
+            processNextExportChunk();
+        } else if (exportState.isOpen && exportState.processedChunksCount >= exportState.totalChunks && !exportState.isFinished) {
+            finishExport();
+        }
+    }, [exportState]);
+
     const loadSessionData = () => {
         try {
             const savedAuditInfo = localStorage.getItem("iso_audit_info");
@@ -277,23 +315,61 @@ function App() {
         }
     }, [apiKeys, activeKeyId]);
 
+    // --- ENHANCED INITIALIZATION (PROBE MODELS) ---
     const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
         setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
+        
+        const today = new Date().toISOString().split('T')[0];
 
         const checkedKeys = await Promise.all(initialKeys.map(async (profile) => {
-            const result = await validateApiKey(profile.key);
-            return {
-                ...profile,
-                status: result.isValid ? 'valid' : (result.errorType || 'invalid'),
-                latency: result.latency,
-                lastChecked: new Date().toISOString()
-            } as ApiKeyProfile;
+            // Logic: If it's a new day, reset to try top tier models again.
+            // If same day, respect the 'activeModel' preference if it exists.
+            let startModelIndex = 0;
+            const isNewDay = profile.lastResetDate !== today;
+            
+            if (!isNewDay && profile.activeModel) {
+                // If same day, start trying from the saved model to save time/calls
+                const foundIndex = MODEL_HIERARCHY.indexOf(profile.activeModel);
+                if (foundIndex !== -1) startModelIndex = foundIndex;
+            }
+
+            let validProfile: ApiKeyProfile = { 
+                ...profile, 
+                status: 'invalid', 
+                latency: 0, 
+                lastChecked: new Date().toISOString(),
+                lastResetDate: today 
+            };
+
+            // PROBE LOOP: Find the first working model for this key
+            for (let i = startModelIndex; i < MODEL_HIERARCHY.length; i++) {
+                const modelToTest = MODEL_HIERARCHY[i];
+                const result = await validateApiKey(profile.key, modelToTest);
+                
+                if (result.isValid) {
+                    validProfile = {
+                        ...profile,
+                        status: 'valid',
+                        latency: result.latency,
+                        activeModel: modelToTest, // Lock this model
+                        lastResetDate: today,
+                        lastChecked: new Date().toISOString()
+                    };
+                    break; // Found the best available model, stop probing
+                } else if (result.errorType === 'invalid') {
+                    // Key is trash, stop everything
+                    validProfile.status = 'invalid';
+                    break;
+                }
+                // If errorType is 'quota_exceeded' (429), the loop continues to the next lower model
+            }
+
+            return validProfile;
         }));
 
         setApiKeys(checkedKeys);
 
         const currentActive = checkedKeys.find(k => k.id === localStorage.getItem("iso_active_key_id"));
-        
         if (!currentActive || currentActive.status !== 'valid') {
             const bestKey = checkedKeys
                 .filter(k => k.status === 'valid')
@@ -301,21 +377,41 @@ function App() {
 
             if (bestKey) {
                 setActiveKeyId(bestKey.id);
-                setToastMsg(`Switched to active key: ${bestKey.label}`);
+                setToastMsg(`Switched to active key: ${bestKey.label} (${bestKey.activeModel?.split('-')[1]})`);
             }
         }
     };
     
+    // Check specific key status (e.g., Refresh button) - also does probing
     const checkKeyStatus = async (id: string, keyStr: string) => {
         setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
-        const result = await validateApiKey(keyStr);
+        
+        let bestModel = MODEL_HIERARCHY[0];
+        let finalStatus: 'valid' | 'invalid' | 'quota_exceeded' = 'invalid';
+        let latency = 0;
+
+        for (const model of MODEL_HIERARCHY) {
+            const result = await validateApiKey(keyStr, model);
+            if (result.isValid) {
+                bestModel = model;
+                finalStatus = 'valid';
+                latency = result.latency;
+                break;
+            }
+            if (result.errorType === 'invalid') {
+                finalStatus = 'invalid';
+                break;
+            }
+            // If quota_exceeded, continue loop to next model
+        }
+
         setApiKeys(prev => prev.map(k => k.id === id ? { 
             ...k, 
-            status: result.isValid ? 'valid' : (result.errorType || 'invalid'),
-            latency: result.latency,
+            status: finalStatus,
+            latency: latency,
+            activeModel: finalStatus === 'valid' ? bestModel : k.activeModel,
             lastChecked: new Date().toISOString()
         } : k));
-        return result.isValid;
     };
 
     const handleAddKey = async () => {
@@ -323,15 +419,33 @@ function App() {
         setIsCheckingKey(true);
         const tempId = Date.now().toString();
         
-        const validation = await validateApiKey(newKeyInput);
+        // Use probing logic for new keys too
+        let bestModel = MODEL_HIERARCHY[0];
+        let isValid = false;
+        let latency = 0;
+        let errorType = 'unknown';
+
+        for (const model of MODEL_HIERARCHY) {
+            const res = await validateApiKey(newKeyInput, model);
+            if (res.isValid) {
+                bestModel = model;
+                isValid = true;
+                latency = res.latency;
+                break;
+            }
+            errorType = res.errorType || 'unknown';
+            if (errorType === 'invalid') break;
+        }
         
         const newProfile: ApiKeyProfile = {
             id: tempId,
             label: newKeyLabel || `API Key ${apiKeys.length + 1}`,
             key: newKeyInput,
-            status: validation.isValid ? 'valid' : (validation.errorType || 'invalid'),
-            latency: validation.latency,
-            lastChecked: new Date().toISOString()
+            status: isValid ? 'valid' : (errorType === 'quota_exceeded' ? 'quota_exceeded' : 'invalid'),
+            activeModel: isValid ? bestModel : undefined,
+            latency: latency,
+            lastChecked: new Date().toISOString(),
+            lastResetDate: new Date().toISOString().split('T')[0]
         };
 
         setApiKeys(prev => [...prev, newProfile]);
@@ -359,20 +473,30 @@ function App() {
         }
     };
 
-    const executeWithApiKeyFailover = async <T,>(
-        operation: (apiKey: string) => Promise<T>, 
+    // --- ENHANCED FAILOVER EXECUTION ---
+    // Now uses the pre-assigned 'activeModel' for each key.
+    // If that model fails (mid-session quota limit), it downgrades ONLY that key permanently for the session.
+    const executeWithSmartFailover = async <T,>(
+        operation: (apiKey: string, model: string) => Promise<T>, 
         attemptedKeys: string[] = []
     ): Promise<T> => {
+        
+        // 1. Find the best available key (Standard logic)
         const availableKeys = apiKeys.filter(k => 
             k.status !== 'invalid' && 
             k.status !== 'quota_exceeded' && 
             !attemptedKeys.includes(k.id) 
         );
 
+        // Sort by latency, but prioritize currently active
         availableKeys.sort((a, b) => a.latency - b.latency);
 
-        let candidateKey = availableKeys.find(k => k.id === activeKeyId);
-        if (!candidateKey && availableKeys.length > 0) {
+        let candidateKey: ApiKeyProfile | undefined = undefined;
+        const activeCandidate = availableKeys.find(k => k.id === activeKeyId);
+        
+        if (activeCandidate) {
+            candidateKey = activeCandidate;
+        } else if (availableKeys.length > 0) {
             candidateKey = availableKeys[0];
         }
 
@@ -382,21 +506,47 @@ function App() {
 
         if (candidateKey.id !== activeKeyId) {
             setActiveKeyId(candidateKey.id);
-            setToastMsg(`Switching to backup key: ${candidateKey.label}...`);
         }
 
+        // 2. Determine which model to use for this specific key
+        // Default to top model if not set (rare, as checkAllKeys sets it)
+        const modelToUse = candidateKey.activeModel || MODEL_HIERARCHY[0];
+
         try {
-            return await operation(candidateKey.key);
+            return await operation(candidateKey.key, modelToUse);
         } catch (error: any) {
-            console.warn(`Key [${candidateKey.label}] failed. Error:`, error);
-            
             const msg = error.message?.toLowerCase() || "";
-            const isApiError = msg.includes("403") || msg.includes("429") || msg.includes("quota") || msg.includes("key") || msg.includes("permission") || msg.includes("resource exhausted");
+            const isApiError = msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted") || (msg.includes("403") && !msg.includes("api key not valid"));
 
             if (isApiError) {
-                setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, status: 'quota_exceeded' } : k));
-                return await executeWithApiKeyFailover(operation, [...attemptedKeys, candidateKey.id]);
+                // FAILOVER LOGIC:
+                // Instead of just skipping the key, try to DOWNGRADE the key first.
+                const currentModelIndex = MODEL_HIERARCHY.indexOf(modelToUse);
+                
+                if (currentModelIndex !== -1 && currentModelIndex < MODEL_HIERARCHY.length - 1) {
+                    // We have a lower model available!
+                    const nextModel = MODEL_HIERARCHY[currentModelIndex + 1];
+                    
+                    console.warn(`[Smart Cascade] Key ${candidateKey.label} exhausted on ${modelToUse}. Downgrading to ${nextModel}...`);
+                    
+                    // UPDATE STATE: Permanently switch this key to the lower model for this session
+                    setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, activeModel: nextModel } : k));
+                    
+                    // Recursive retry with SAME key (it's not exhausted, just the model was)
+                    // We pass attemptedKeys unchanged so it can pick this key again with new model
+                    return await executeWithSmartFailover(operation, attemptedKeys); 
+                } else {
+                    // No lower models available for this key. Mark key as exhausted.
+                    setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, status: 'quota_exceeded' } : k));
+                    return await executeWithSmartFailover(operation, [...attemptedKeys, candidateKey.id]);
+                }
             }
+            
+            if (msg.includes("key not valid") || msg.includes("api key")) {
+                 setApiKeys(prev => prev.map(k => k.id === candidateKey!.id ? { ...k, status: 'invalid' } : k));
+                 return await executeWithSmartFailover(operation, [...attemptedKeys, candidateKey.id]);
+            }
+
             throw error;
         }
     };
@@ -413,6 +563,88 @@ function App() {
             setLayoutMode('evidence');
             setAiError(null);
         }
+    };
+
+    // --- TEST DATA GENERATOR (For Validation) ---
+    const loadStressTestData = () => {
+        // 1. Set Audit Info
+        setAuditInfo({
+            company: "TechCorp Global Solutions",
+            smo: "TC-2024-ISO-001",
+            department: "IT Infrastructure & Cloud Ops",
+            interviewee: "John Smith (CTO), Sarah Connor (SecOps Lead)",
+            auditor: "Trung Dang (Lead Auditor)",
+            type: "Stage 2"
+        });
+
+        // 2. Select Clauses (Mix of 9001 and 27001 logic for stress)
+        setStandardKey("ISO 27001:2022 (ISMS)");
+        // Select ~15 clauses for heavy analysis load
+        const clauseIds = ["5.1", "5.2", "6.1.2", "6.1.3", "7.1", "7.2", "A.5.1", "A.5.2", "A.5.9", "A.5.10", "A.8.2", "A.8.8", "9.2", "9.3", "10.1"];
+        setSelectedClauses(clauseIds);
+
+        // 3. Heavy Evidence Data (~3000 words to test token limits and chunking)
+        const heavyEvidence = `
+AUDIT EVIDENCE RECORD - STAGE 2
+DATE: ${new Date().toLocaleDateString()}
+
+[5.1 Leadership]
+Interviewed CTO. Confirmed Information Security Policy v2.4 approved on 2024-01-15.
+Sighted Minutes of Management Review (MMR) dated 2024-03-10. Agenda Item 4 covers ISMS performance.
+Observation: Top management demonstrates commitment. Resources for new SIEM tool approved ($50k budget).
+
+[6.1.2 Risk Assessment]
+Reviewed Risk Register (Excel Sheet 'Risk_Matrix_v4.xlsx').
+Total risks identified: 45. 
+Risk #12 (Ransomware): Impact High (5), Likelihood Medium (3). Risk Level 15 (Extreme).
+Treatment Plan: Implement EDR and Offline Backups. Owner: Sarah C. Due: 2024-06.
+Status: EDR deployed. Backups pending.
+Gap: Risk acceptance criteria not explicitly defined in the procedure document "IS-PROC-003".
+
+[A.5.9 Inventory of Assets]
+Checked Asset Management System (Jira Insight).
+Sampled 5 laptops:
+1. Asset Tag 001 - MacBook Pro - Assigned to John S. - Found in system.
+2. Asset Tag 045 - Dell XPS - Assigned to Dev Team - Found.
+3. Asset Tag 099 - Server Rack B - Location: Server Room - Found.
+4. Asset Tag 102 - Mobile Phone - Status "Lost" - Flagged in system correctly.
+5. Asset Tag 115 - Printer - Not found in Jira.
+Finding: The printer in HR department is not tagged or listed in the inventory. Potential OFI or Minor NC.
+
+[A.8.2 Privileged Access]
+Review of Active Directory groups.
+"Domain Admins" group has 8 members.
+Policy "IS-POL-ACCESS" states max 5 admins allowed.
+Evidence: User 'temp_admin_01' created 6 months ago for a vendor project is still active.
+Non-Conformity: Privileged access rights are not reviewed at planned intervals (quarterly). Last review was 2023-09.
+
+[9.2 Internal Audit]
+Internal Audit Report 2023 reviewed.
+Conducted by external consultant 'SecureAudit Inc.'.
+3 Minor NCs raised. 
+NC1: Clean desk policy violation. Closed.
+NC2: Access logs retention < 90 days. Open.
+NC3: Supplier due diligence missing for 'Cleaner Corp'. Closed.
+Corrective Action Plan for NC2 is overdue by 2 months.
+
+[A.8.8 Vulnerability Management]
+Sighted Tenable Nessus Report (Scan ID: 55432).
+Critical Vulnerabilities: 0.
+High Vulnerabilities: 2 (Apache Log4j legacy on Test Server 4).
+SLA for High Vuln is 14 days. Ticket INC-4002 created 20 days ago.
+Violation of SLA. Explanation: Patch requires reboot, pending change approval window.
+
+[General Observations]
+- Physical security: Access cards working. Server room locked. Visitor log maintained.
+- Training: Phishing simulation results show 4% click rate (Improvement from 12% last year).
+- Backup: Veeam Backup successful for last 30 days. Random restore test log missing for Q1 2024.
+
+[End of Evidence]
+        `.trim();
+        
+        setEvidence(heavyEvidence);
+        setToastMsg("Dev: Stress Test Data Loaded! Ready for Analysis.");
+        setLayoutMode('evidence');
     };
 
     const handleRecall = () => {
@@ -470,6 +702,16 @@ function App() {
         setPastedImages(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    // --- NEW: EDIT FINDINGS ---
+    const handleUpdateFinding = (index: number, field: keyof AnalysisResult, value: string) => {
+        setAnalysisResult(prev => {
+            if (!prev) return null;
+            const newArr = [...prev];
+            newArr[index] = { ...newArr[index], [field]: value };
+            return newArr;
+        });
+    };
+
     const handleAnalyze = async () => {
         if (!hasEvidence || selectedClauses.length === 0) return;
         
@@ -496,8 +738,9 @@ function App() {
                 Return a JSON Array with exactly ONE object containing: clauseId (must be "${clause.id}"), status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report (concise).`;
 
                 try {
-                    const resultStr = await executeWithApiKeyFailover(async (key) => {
-                        return await generateAnalysis(prompt, `Output JSON array only.`, key);
+                    // UPGRADE: Use executeWithSmartFailover instead of plain API call
+                    const resultStr = await executeWithSmartFailover(async (key, model) => {
+                        return await generateAnalysis(prompt, `Output JSON array only.`, key, model);
                     });
 
                     const chunkResult = cleanAndParseJSON(resultStr || "");
@@ -514,7 +757,7 @@ function App() {
                         });
                     }
                 } catch (innerError: any) {
-                    if (innerError.message === "ALL_KEYS_EXHAUSTED") {
+                    if (innerError.message === "ALL_RESOURCES_EXHAUSTED" || innerError.message === "ALL_KEYS_EXHAUSTED") {
                         throw innerError; 
                     }
                     console.error(`Failed to analyze clause ${clause.code}`, innerError);
@@ -524,8 +767,8 @@ function App() {
             }
 
         } catch (e: any) { 
-            if (e.message === "ALL_KEYS_EXHAUSTED") {
-                setAiError("All API Keys have been exhausted (Quota Limit). Please add a new valid key in Settings to continue.");
+            if (e.message === "ALL_KEYS_EXHAUSTED" || e.message === "ALL_RESOURCES_EXHAUSTED") {
+                setAiError("System Overload: All API Keys and Model Backups are exhausted. Please add a new key or wait a moment.");
                 setShowSettingsModal(true); 
             } else {
                 setAiError(e.message || "Analysis Failed");
@@ -540,18 +783,49 @@ function App() {
     const handleGenerateReport = async () => {
         if (!analysisResult) return;
         setIsReportLoading(true); setLayoutMode('report'); setAiError(null);
-        setLoadingMessage("Synthesizing Final Report..."); 
+        
+        // --- 1. ENHANCED FEEDBACK: Show user we are using their template ---
+        const hasTemplate = !!reportTemplate;
+        setLoadingMessage(hasTemplate ? `Analyzing Template "${templateFileName}" & Synthesizing Report...` : "Synthesizing Standard ISO Report...");
+        
         try {
              const acceptedFindings = analysisResult.filter(r => selectedFindings[r.clauseId]);
-             const prompt = `GENERATE FINAL REPORT. TEMPLATE: ${reportTemplate || "Standard"}. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}.`;
              
-             const text = await executeWithApiKeyFailover(async (key) => {
-                 return await generateTextReport(prompt, "Expert ISO Report Compiler.", key);
+             // --- 2. ENHANCED PROMPT LOGIC: Strict Template Adherence ---
+             let prompt = "";
+             
+             if (hasTemplate) {
+                 prompt = `ROLE: You are an expert ISO Lead Auditor.
+                 TASK: Generate a final audit report by STRICTLY following the provided TEMPLATE structure.
+                 
+                 INPUT 1: REPORT TEMPLATE (Style, Structure, Headers, Tone):
+                 """
+                 ${reportTemplate}
+                 """
+                 
+                 INPUT 2: AUDIT DATA (Content to fill):
+                 - Context: ${JSON.stringify(auditInfo)}
+                 - Findings: ${JSON.stringify(acceptedFindings)}
+                 
+                 INSTRUCTIONS:
+                 1. ANALYZE the Template's structure (Introduction, Summary, Findings Table, Conclusion, etc.).
+                 2. REPRODUCE the report using the exact same headings and formatting style.
+                 3. FILL placeholders (e.g., [Company Name], [Date]) with Context data.
+                 4. POPULATE the findings section with the Audit Data provided.
+                 5. Maintain the professional tone of the template.
+                 6. Do NOT output JSON. Output the final report text directly.`;
+             } else {
+                 prompt = `GENERATE FINAL REPORT. DATA: ${JSON.stringify(auditInfo)}. FINDINGS: ${JSON.stringify(acceptedFindings)}. Use standard ISO professional reporting format.`;
+             }
+             
+             // UPGRADE: Use executeWithSmartFailover
+             const text = await executeWithSmartFailover(async (key, model) => {
+                 return await generateTextReport(prompt, "Expert ISO Report Compiler.", key, model);
              });
 
              setFinalReportText(text || "");
         } catch (e: any) { 
-            if (e.message === "ALL_KEYS_EXHAUSTED") {
+            if (e.message === "ALL_KEYS_EXHAUSTED" || e.message === "ALL_RESOURCES_EXHAUSTED") {
                 setAiError("API Quota Exceeded during report generation. Please check Settings.");
                 setShowSettingsModal(true);
             } else {
@@ -567,8 +841,14 @@ function App() {
         try {
             const promises = pastedImages.map(async (file) => {
                 const b64 = await fileToBase64(file);
-                return await executeWithApiKeyFailover(async (key) => {
-                    return await generateOcrContent("Extract text accurately. Output raw text only.", b64, file.type, key);
+                // OCR typically uses Flash Vision models, maybe we stick to one model or use failover?
+                // Let's stick to simple key failover for OCR for now to avoid complexity, or use Smart Failover with fixed models if needed.
+                // But generateOcrContent uses DEFAULT_VISION_MODEL internally.
+                return await executeWithSmartFailover(async (key, model) => {
+                    // Note: generateOcrContent usually wants a vision model. 
+                    // Our Cascade includes text models which might fail on images.
+                    // For safety, we will just use Key Failover for OCR with the specific Vision model.
+                    return await generateOcrContent("Extract text accurately. Output raw text only.", b64, file.type, key, model); // Passing model here allows override if we wanted
                 });
             });
             const results = await Promise.all(promises);
@@ -597,105 +877,155 @@ function App() {
         }
     };
 
-    const handleExport = async (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
+    // --- SMART EXPORT LOGIC ---
+    const startSmartExport = (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
         if (!text) return;
-        let setLoading = setIsExportLoading;
-        if (type === 'notes') setLoading = setIsNotesExportLoading;
-        if (type === 'evidence') setLoading = setIsEvidenceExportLoading;
         
-        setLoading(true);
-        setAiError(null);
-        setLoadingMessage("Preparing export...");
+        const CHUNK_SIZE = 8000;
+        const chunks: string[] = [];
+        let currentPos = 0;
+        while (currentPos < text.length) {
+            let endPos = currentPos + CHUNK_SIZE;
+            if (endPos < text.length) {
+                const lastNewline = text.lastIndexOf('\n', endPos);
+                if (lastNewline > currentPos) endPos = lastNewline + 1;
+            }
+            chunks.push(text.slice(currentPos, endPos));
+            currentPos = endPos;
+        }
+
+        setExportState({
+            isOpen: true,
+            isPaused: false,
+            isFinished: false,
+            totalChunks: chunks.length,
+            processedChunksCount: 0,
+            chunks: chunks,
+            results: new Array(chunks.length).fill(""),
+            error: null,
+            currentType: type,
+            targetLang: lang
+        });
+    };
+
+    const processNextExportChunk = async () => {
+        const { processedChunksCount, chunks, targetLang, results } = exportState;
+        const index = processedChunksCount;
+        const chunk = chunks[index];
+        const targetLangName = targetLang === 'vi' ? "Vietnamese" : "English";
+
+        const prompt = `Act as an ISO Lead Auditor. 
+        Task: Translate or Refine the following audit text fragment to ${targetLangName}.
+        Constraint: Output ONLY the processed text. Do NOT add conversational filler.
+        Constraint: Maintain ISO terminology accuracy.
+        
+        Text Fragment (${index + 1}/${chunks.length}): 
+        """${chunk}"""`;
 
         try {
-            let contentToExport = text;
-            const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
-
-            const CHUNK_SIZE = 12000; 
+            // UPGRADE: Use executeWithSmartFailover
+            const result = await executeWithSmartFailover(async (key, model) => {
+                return await generateTextReport(prompt, "Professional ISO Translator.", key, model);
+            });
             
-            const chunks: string[] = [];
-            let currentPos = 0;
-            while (currentPos < text.length) {
-                let endPos = currentPos + CHUNK_SIZE;
-                if (endPos < text.length) {
-                    const lastNewline = text.lastIndexOf('\n', endPos);
-                    if (lastNewline > currentPos) {
-                        endPos = lastNewline + 1; 
-                    }
-                }
-                chunks.push(text.slice(currentPos, endPos));
-                currentPos = endPos;
+            const newResults = [...results];
+            newResults[index] = result && result.trim() ? result : chunk; // Fallback to raw if empty
+
+            setExportState(prev => ({
+                ...prev,
+                processedChunksCount: prev.processedChunksCount + 1,
+                results: newResults
+            }));
+
+        } catch (error: any) {
+            if (error.message === "ALL_KEYS_EXHAUSTED" || error.message === "ALL_RESOURCES_EXHAUSTED") {
+                setExportState(prev => ({
+                    ...prev,
+                    isPaused: true,
+                    error: "All API keys exhausted. Please add a new key or wait."
+                }));
+            } else {
+                // If it's a random network error, just use raw text and proceed
+                console.warn(`Export chunk ${index+1} failed. Appending raw text.`);
+                const newResults = [...results];
+                newResults[index] = chunk;
+                setExportState(prev => ({
+                    ...prev,
+                    processedChunksCount: prev.processedChunksCount + 1,
+                    results: newResults
+                }));
             }
+        }
+    };
 
-            let processedContent = "";
-            
-            try {
-                for (let i = 0; i < chunks.length; i++) {
-                    const chunk = chunks[i];
-                    setLoadingMessage(`Translating/Refining Part ${i + 1}/${chunks.length}...`);
-                    
-                    const prompt = `Act as a professional ISO Lead Auditor. 
-                    Task: Translate or Refine the following audit text fragment to ${targetLangName}.
-                    Constraint: Output ONLY the processed text. Do NOT add conversational filler like "Here is the translation".
-                    Constraint: Maintain ISO terminology accuracy.
-                    
-                    Text Fragment (${i + 1}/${chunks.length}): 
-                    """${chunk}"""`;
+    const finishExport = () => {
+        setExportState(prev => ({ ...prev, isFinished: true }));
+        const contentToExport = exportState.results.join('\n\n');
+        
+        // Generate File
+        let stdShort = "ISO";
+        if (standardKey.includes("27001")) stdShort = "27k";
+        else if (standardKey.includes("9001")) stdShort = "9k";
+        else if (standardKey.includes("14001")) stdShort = "14k";
+        else stdShort = cleanFileName(standardKey).substring(0, 10);
 
-                    const result = await executeWithApiKeyFailover(async (key) => {
-                        return await generateTextReport(prompt, "You are a professional ISO Audit Translator.", key);
-                    });
-                    
-                    if (result) {
-                        processedContent += result + "\n"; 
-                    } else {
-                        processedContent += chunk + "\n"; 
-                    }
-                    
-                    await new Promise(r => setTimeout(r, 200));
-                }
-                
-                contentToExport = processedContent.trim();
+        const typeSuffix = exportState.currentType === 'notes' ? 'Audit_Findings' : exportState.currentType === 'evidence' ? 'Audit_Evidence' : 'Audit_Report';
 
-            } catch (aiErr) {
-                console.warn("Export AI processing failed, falling back to raw text", aiErr);
-                setAiError(`AI processing failed during export. Exporting original text.`);
-                contentToExport = text; 
+        const fnParts = [
+            stdShort,
+            cleanFileName(auditInfo.type) || "Type",
+            cleanFileName(auditInfo.smo) || "ID",
+            cleanFileName(auditInfo.company) || "Company",
+            cleanFileName(auditInfo.department) || "Dept",
+            cleanFileName(auditInfo.auditor) || "Auditor",
+            typeSuffix,
+            new Date().toISOString().split('T')[0]
+        ];
+        
+        const fileName = fnParts.join('_');
+
+        const blob = new Blob([contentToExport], {type: 'text/plain;charset=utf-8'});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileName}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setTimeout(() => setExportState(prev => ({ ...prev, isOpen: false })), 2000);
+    };
+
+    const handleResumeExport = async () => {
+        if (rescueKey.trim()) {
+            setIsRescuing(true);
+            const validation = await validateApiKey(rescueKey);
+            if (validation.isValid) {
+                 const newId = Date.now().toString();
+                 const newProfile: ApiKeyProfile = {
+                    id: newId,
+                    label: `Rescue Key ${apiKeys.length + 1}`,
+                    key: rescueKey,
+                    status: 'valid',
+                    latency: validation.latency,
+                    lastChecked: new Date().toISOString()
+                };
+                setApiKeys(prev => [...prev, newProfile]);
+                setActiveKeyId(newId);
+                setRescueKey("");
+                setExportState(prev => ({ ...prev, isPaused: false, error: null }));
+                setToastMsg("Rescue Key Added & Export Resumed!");
+            } else {
+                setToastMsg("Invalid API Key");
             }
-
-            let stdShort = "ISO";
-            if (standardKey.includes("27001")) stdShort = "27k";
-            else if (standardKey.includes("9001")) stdShort = "9k";
-            else if (standardKey.includes("14001")) stdShort = "14k";
-            else stdShort = cleanFileName(standardKey).substring(0, 10);
-
-            const typeSuffix = type === 'notes' ? 'Audit_Findings' : type === 'evidence' ? 'Audit_Evidence' : 'Audit_Report';
-
-            const fnParts = [
-                stdShort,
-                cleanFileName(auditInfo.type) || "Type",
-                cleanFileName(auditInfo.smo) || "ID",
-                cleanFileName(auditInfo.company) || "Company",
-                cleanFileName(auditInfo.department) || "Dept",
-                cleanFileName(auditInfo.auditor) || "Auditor",
-                typeSuffix,
-                new Date().toISOString().split('T')[0]
-            ];
-            
-            const fileName = fnParts.join('_');
-
-            const blob = new Blob([contentToExport], {type: 'text/plain;charset=utf-8'});
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `${fileName}.txt`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } catch (e: any) { 
-            setAiError(e.message || "Export Failed"); 
-        } finally { 
-            setLoading(false); 
-            setLoadingMessage(""); 
+            setIsRescuing(false);
+        } else {
+            // "Soft Reset" Strategy:
+            // User clicked Resume WITHOUT adding a new key.
+            // This means they assume a key might have recovered (quota reset).
+            // Action: Reset all 'quota_exceeded' keys back to 'valid' to allow retry.
+            console.log("[Smart Resume] Soft resetting all quota_exceeded keys...");
+            setApiKeys(prev => prev.map(k => k.status === 'quota_exceeded' ? { ...k, status: 'valid' } : k));
+            setExportState(prev => ({ ...prev, isPaused: false, error: null }));
         }
     };
 
@@ -735,8 +1065,9 @@ function App() {
             { label: "Generate Report", desc: "Synthesize final report", icon: "FileText", action: handleGenerateReport },
             { label: "Export Notes", desc: "Download findings", icon: "Download", action: () => {
                  const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
-                 handleExport(reportTxt, 'notes', notesLanguage);
+                 startSmartExport(reportTxt, 'notes', notesLanguage);
             }},
+            { label: "Dev: Load Stress Test Data", desc: "Populate complex audit data for testing", icon: "Database", action: loadStressTestData },
             { label: "Settings / API Key", desc: "Manage configuration", icon: "Settings", action: () => setShowSettingsModal(true) },
         ];
 
@@ -940,6 +1271,7 @@ function App() {
                         </div>
                     </div>
 
+                    {/* ... (Rest of content structure remains same) ... */}
                     <div className="flex-1 overflow-hidden relative p-4 md:p-6">
                         {/* 1. EVIDENCE MODE */}
                         {layoutMode === 'evidence' && (
@@ -1000,8 +1332,8 @@ function App() {
                                         <span className="hidden md:inline text-xs uppercase tracking-wider">Analyze Compliance</span>
                                     </button>
                                     
-                                    <button onClick={() => handleExport(evidence, 'evidence', evidenceLanguage)} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm" title="Export Raw Text">
-                                        {isEvidenceExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                    <button onClick={() => startSmartExport(evidence, 'evidence', evidenceLanguage)} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm" title="Export Raw Text">
+                                        <Icon name="Download"/> 
                                         <span className="hidden md:inline">Export Raw</span>
                                         <div className="lang-pill-container ml-1">
                                             <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -1012,6 +1344,7 @@ function App() {
                             </div>
                         )}
 
+                        {/* ... (Existing Findings and Report Modes) ... */}
                         {/* 2. FINDINGS MODE */}
                         {layoutMode === 'findings' && (
                              <div className="h-full flex flex-col animate-fade-in-up">
@@ -1024,7 +1357,7 @@ function App() {
                                         </div>
                                     )}
 
-                                    {/* Matrix View Render */}
+                                    {/* Matrix View Render - SYNCHRONIZED LEGEND */}
                                     {findingsViewMode === 'matrix' && analysisResult && analysisResult.length > 0 && (
                                         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 p-1">
                                             {analysisResult.map((result, idx) => {
@@ -1033,9 +1366,10 @@ function App() {
                                                 let textColor = 'text-slate-500 dark:text-slate-400';
                                                 
                                                 if (isActive) {
+                                                    // LEGEND SYNC: COMPLIANT=Emerald, MAJOR=Red, MINOR=Orange, OFI=Blue
                                                     if (result.status === 'COMPLIANT') { bgColor = 'bg-emerald-500'; textColor = 'text-white'; }
-                                                    else if (result.status.includes('MAJOR')) { bgColor = 'bg-red-600'; textColor = 'text-white'; }
-                                                    else if (result.status.includes('MINOR')) { bgColor = 'bg-orange-400'; textColor = 'text-white'; }
+                                                    else if (result.status === 'NC_MAJOR') { bgColor = 'bg-red-600'; textColor = 'text-white'; }
+                                                    else if (result.status === 'NC_MINOR') { bgColor = 'bg-orange-500'; textColor = 'text-white'; }
                                                     else if (result.status === 'OFI') { bgColor = 'bg-blue-500'; textColor = 'text-white'; }
                                                 }
 
@@ -1053,19 +1387,66 @@ function App() {
                                         </div>
                                     )}
 
-                                    {/* List View Render */}
+                                    {/* List View Render (EDITABLE) - SYNCHRONIZED LEGEND */}
                                     {findingsViewMode === 'list' && analysisResult?.map((result, idx) => (
-                                        <div key={result.clauseId} className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all duration-500 hover:shadow-md hover:translate-x-1 animate-in slide-in-from-bottom-5 fade-in ${!selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : result.status === 'COMPLIANT' ? 'border-green-500' : result.status.includes('NC') ? 'border-red-500' : 'border-yellow-500'}`} style={{animationDelay: `${idx * 0.05}s`}}>
+                                        <div 
+                                            key={result.clauseId} 
+                                            className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border-l-4 shadow-sm transition-all duration-500 hover:shadow-md animate-in slide-in-from-bottom-5 fade-in ${
+                                                !selectedFindings[result.clauseId] ? 'opacity-60 grayscale border-gray-300' : 
+                                                result.status === 'COMPLIANT' ? 'border-emerald-500' : 
+                                                result.status === 'NC_MAJOR' ? 'border-red-600' : 
+                                                result.status === 'NC_MINOR' ? 'border-orange-500' : 
+                                                'border-blue-500' // OFI
+                                            }`} 
+                                            style={{animationDelay: `${idx * 0.05}s`}}
+                                        >
                                             <div className="flex justify-between items-start gap-4">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3 mb-2">
                                                         <input type="checkbox" checked={!!selectedFindings[result.clauseId]} onChange={() => setSelectedFindings(prev => ({...prev, [result.clauseId]: !prev[result.clauseId]}))} className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-transform duration-200 active:scale-90"/>
                                                         <span className="font-black text-sm bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300">{result.clauseId}</span>
-                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${result.status === 'COMPLIANT' ? 'bg-green-100 text-green-700' : result.status.includes('NC') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{result.status.replace('_', ' ')}</span>
+                                                        
+                                                        {/* EDITABLE STATUS DROPDOWN - SYNCHRONIZED LEGEND */}
+                                                        <select 
+                                                            value={result.status} 
+                                                            onChange={(e) => handleUpdateFinding(idx, 'status', e.target.value as FindingStatus)}
+                                                            className={`text-xs font-bold px-2 py-0.5 rounded uppercase border-none outline-none cursor-pointer transition-colors ${
+                                                                result.status === 'COMPLIANT' ? 'bg-emerald-100 text-emerald-700' : 
+                                                                result.status === 'NC_MAJOR' ? 'bg-red-100 text-red-700' : 
+                                                                result.status === 'NC_MINOR' ? 'bg-orange-100 text-orange-800' : 
+                                                                'bg-blue-100 text-blue-700' // OFI
+                                                            }`}
+                                                        >
+                                                            <option value="COMPLIANT">COMPLIANT</option>
+                                                            <option value="OFI">OFI</option>
+                                                            <option value="NC_MINOR">NC MINOR</option>
+                                                            <option value="NC_MAJOR">NC MAJOR</option>
+                                                        </select>
                                                     </div>
-                                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">{result.reason}</p>
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-gray-50 dark:bg-slate-950/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800">Evidence: {result.evidence}</p>
-                                                    {result.suggestion && <div className="mt-2 flex gap-2 items-start"><Icon name="Lightbulb" size={14} className="text-amber-500 mt-0.5"/><p className="text-xs text-slate-600 dark:text-slate-300">{result.suggestion}</p></div>}
+                                                    
+                                                    {/* EDITABLE REASON */}
+                                                    <input 
+                                                        className="w-full text-sm font-bold text-slate-800 dark:text-slate-100 mb-1 bg-transparent border-b border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none transition-colors"
+                                                        value={result.reason}
+                                                        onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
+                                                    />
+
+                                                    {/* EDITABLE EVIDENCE */}
+                                                    <div className="bg-gray-50 dark:bg-slate-950/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 mt-1">
+                                                        <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1">Evidence:</span>
+                                                        <textarea 
+                                                            className="w-full text-xs text-slate-500 dark:text-slate-400 italic bg-transparent border-none focus:ring-0 resize-y min-h-[40px] focus:text-slate-700 dark:focus:text-slate-200"
+                                                            value={result.evidence}
+                                                            onChange={(e) => handleUpdateFinding(idx, 'evidence', e.target.value)}
+                                                        />
+                                                    </div>
+
+                                                    {result.suggestion && (
+                                                        <div className="mt-2 flex gap-2 items-start">
+                                                            <Icon name="Lightbulb" size={14} className="text-amber-500 mt-0.5"/>
+                                                            <p className="text-xs text-slate-600 dark:text-slate-300">{result.suggestion}</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1099,9 +1480,9 @@ function App() {
 
                                     <button onClick={() => {
                                         const reportTxt = analysisResult?.filter(r => selectedFindings[r.clauseId]).map(r => `[${r.status}] Clause ${r.clauseId}: ${r.conclusion_report}`).join('\n\n') || "";
-                                        handleExport(reportTxt, 'notes', notesLanguage);
+                                        startSmartExport(reportTxt, 'notes', notesLanguage);
                                     }} disabled={!analysisResult || analysisResult.length === 0} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 disabled:opacity-50 shadow-sm">
-                                        {isNotesExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                        <Icon name="Download"/> 
                                         <span className="hidden md:inline">Download Findings</span>
                                         <div className="lang-pill-container ml-2">
                                             <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('en');}} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -1117,6 +1498,23 @@ function App() {
                              <div className="h-full flex flex-col animate-fade-in-up">
                                 
                                 <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-6 overflow-hidden flex flex-col relative">
+                                    {/* VISUAL FEEDBACK: Active Strategy Indicator */}
+                                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-50 dark:border-slate-800">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Preview</h4>
+                                        {reportTemplate ? (
+                                            <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800/50 shadow-sm animate-in fade-in slide-in-from-right-2">
+                                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div>
+                                                <Icon name="FileEdit" size={14}/>
+                                                <span className="text-xs font-bold">Template Active: {templateFileName.substring(0, 20)}{templateFileName.length > 20 ? '...' : ''}</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-slate-400 bg-gray-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-slate-700">
+                                                <Icon name="FileText" size={14}/>
+                                                <span className="text-xs font-medium">Standard ISO Structure</span>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     {!finalReportText ? (
                                         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                                             <div className="w-20 h-20 bg-indigo-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
@@ -1139,9 +1537,9 @@ function App() {
                                     {/* Template Upload Button */}
                                     <div className="relative">
                                         <input type="file" id="template-upload" className="hidden" accept=".txt,.md,.docx" onChange={handleTemplateUpload}/>
-                                        <label htmlFor="template-upload" className="cursor-pointer h-9 md:h-10 w-auto px-3 md:px-4 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-transparent hover:border-gray-300 dark:hover:border-slate-600 shadow-sm whitespace-nowrap active:scale-95">
+                                        <label htmlFor="template-upload" className={`cursor-pointer h-9 md:h-10 w-auto px-3 md:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border shadow-sm whitespace-nowrap active:scale-95 ${reportTemplate ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'bg-gray-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:border-gray-300 dark:hover:border-slate-600'}`}>
                                             <Icon name="UploadCloud" size={14}/>
-                                            <span className="hidden md:inline">{templateFileName ? templateFileName.substring(0, 8) + "..." : "Template"}</span>
+                                            <span className="hidden md:inline">{templateFileName ? "Change Template" : "Upload Template"}</span>
                                         </label>
                                     </div>
 
@@ -1150,8 +1548,8 @@ function App() {
                                         <span className="hidden md:inline">{isReportLoading ? "Synthesizing Report..." : "Generate Final Report"}</span>
                                     </button>
 
-                                    <button onClick={() => handleExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 disabled:opacity-50 shadow-sm">
-                                        {isExportLoading ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Download"/>} 
+                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="h-9 md:h-10 w-auto px-3 md:px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 disabled:opacity-50 shadow-sm">
+                                        <Icon name="Download"/> 
                                         <span className="hidden md:inline">Export Report</span>
                                         <div className="lang-pill-container ml-2">
                                             <span onClick={(e) => {e.stopPropagation(); setExportLanguage('en');}} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
@@ -1199,9 +1597,17 @@ function App() {
                                                 {profile.status === 'quota_exceeded' && <span className="text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold uppercase">Quota</span>}
                                                 {profile.status === 'checking' && <Icon name="Loader" size={10} className="animate-spin text-indigo-500"/>}
                                             </div>
-                                            <span className="text-[10px] text-slate-400 font-mono truncate">
-                                                {profile.key.substring(0, 8)}...{profile.key.substring(profile.key.length - 4)} • {profile.latency > 0 ? `${profile.latency}ms` : 'Unknown'}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-slate-400 font-mono truncate">
+                                                    {profile.key.substring(0, 8)}...{profile.key.substring(profile.key.length - 4)}
+                                                </span>
+                                                {/* ACTIVE MODEL BADGE */}
+                                                {profile.activeModel && (
+                                                    <span className="text-[9px] font-mono bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300 px-1.5 rounded border border-blue-100 dark:border-blue-800/30">
+                                                        {profile.activeModel.replace('gemini-', '')}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -1245,11 +1651,115 @@ function App() {
                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl flex gap-3">
                         <Icon name="Info" className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={16}/>
                         <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
-                            <strong>Note:</strong> Multiple keys are supported for "Failover Strategy". If one key hits the rate limit (Quota Exceeded), the system automatically switches to the next available valid key to continue your audit without interruption.
+                            <strong>Smart Model Management:</strong> The system automatically probes your keys to find the best available AI model (Pro, Flash, Lite). If a quota limit is reached during work, the key is automatically downgraded for the rest of the day to ensure continuity.
                         </p>
                     </div>
                 </div>
             </Modal>
+
+            {/* --- SMART EXPORT PROGRESS MODAL --- */}
+            {exportState.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col">
+                        <div className="p-6">
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                                        <Icon name="Download" className="text-indigo-500"/>
+                                        Export Manager
+                                    </h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                        Translating & Refining to {exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'}
+                                    </p>
+                                </div>
+                                {!exportState.isPaused && !exportState.isFinished && (
+                                    <span className="text-xs font-mono bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded animate-pulse">
+                                        Processing...
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="mb-2 flex justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+                                <span>Progress</span>
+                                <span>{Math.round((exportState.processedChunksCount / exportState.totalChunks) * 100)}%</span>
+                            </div>
+                            <div className="w-full h-3 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden mb-6 relative">
+                                <div 
+                                    className={`h-full transition-all duration-500 ease-out ${exportState.error ? 'bg-red-500' : exportState.isFinished ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                    style={{ width: `${(exportState.processedChunksCount / exportState.totalChunks) * 100}%` }}
+                                >
+                                    <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                                </div>
+                            </div>
+
+                            {/* Status Area */}
+                            <div className="bg-gray-50 dark:bg-slate-950/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800 mb-6 min-h-[100px] flex flex-col justify-center items-center text-center">
+                                {exportState.isFinished ? (
+                                    <div className="text-emerald-500 flex flex-col items-center gap-2 animate-in zoom-in">
+                                        <Icon name="CheckCircle2" size={32}/>
+                                        <span className="font-bold">Export Complete!</span>
+                                        <span className="text-xs text-slate-500">File is downloading...</span>
+                                    </div>
+                                ) : exportState.error ? (
+                                    <div className="text-red-500 flex flex-col items-center gap-2 animate-in shake w-full">
+                                        <Icon name="AlertCircle" size={32}/>
+                                        <span className="font-bold">Export Paused</span>
+                                        <span className="text-xs text-slate-500 mb-2">{exportState.error}</span>
+                                        
+                                        {/* INLINE KEY INPUT FOR IMMEDIATE RESUME */}
+                                        <div className="w-full mt-2 animate-in fade-in slide-in-from-bottom-2">
+                                            <input 
+                                                type="text" 
+                                                className="w-full bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-300 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                                                placeholder="Paste new API Key here to fix immediately..."
+                                                value={rescueKey}
+                                                onChange={(e) => setRescueKey(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-2">
+                                        <p className="text-xs text-slate-500">Processing Chunk</p>
+                                        <p className="text-2xl font-black text-indigo-600 dark:text-white">
+                                            {exportState.processedChunksCount + 1} <span className="text-base text-slate-400 font-normal">/ {exportState.totalChunks}</span>
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-3">
+                                {exportState.isPaused ? (
+                                    <>
+                                        <button 
+                                            onClick={() => setShowSettingsModal(true)} 
+                                            className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl font-bold text-xs transition-all"
+                                        >
+                                            Manage Keys
+                                        </button>
+                                        <button 
+                                            onClick={handleResumeExport} 
+                                            disabled={isRescuing}
+                                            className={`flex-1 py-3 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 ${rescueKey ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}
+                                        >
+                                            {isRescuing ? <Icon name="Loader" className="animate-spin" size={14}/> : null}
+                                            {rescueKey ? "Add Key & Resume" : "Resume Export"}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button 
+                                        onClick={() => setExportState(prev => ({ ...prev, isOpen: false, isPaused: true }))} 
+                                        className="w-full py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-red-500 transition-colors rounded-xl font-bold text-xs"
+                                    >
+                                        {exportState.isFinished ? "Close" : "Cancel"}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             
             {/* Global Loading Overlay (if needed for heavy non-streaming tasks) */}
             {/* Using inline loading mostly, but if we need a blocker: */}

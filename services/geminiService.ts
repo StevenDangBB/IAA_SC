@@ -21,24 +21,31 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-export const validateApiKey = async (key: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
+export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMINI_MODEL): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
     const start = performance.now();
     try {
         const ai = new GoogleGenAI({ apiKey: key });
-        // Perform a lightweight operation to check validity
-        await ai.models.countTokens({
-            model: DEFAULT_GEMINI_MODEL,
-            contents: [{ parts: [{ text: "ping" }] }]
+        
+        // CRITICAL FIX: Use generateContent instead of countTokens.
+        // Reason: Google often allows countTokens even when the generation quota (RPM/TPM) is exceeded.
+        // Generating a single token ensures the key is truly capable of processing the request.
+        await ai.models.generateContent({
+            model: modelId,
+            contents: "Test",
+            config: {
+                maxOutputTokens: 1, // Minimize latency and cost
+            }
         });
+
         const end = performance.now();
         return { isValid: true, latency: Math.round(end - start) };
     } catch (error: any) {
         let errorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
         const msg = error.message?.toLowerCase() || "";
         
-        if (msg.includes("403") || msg.includes("api key not valid")) {
+        if (msg.includes("403") || msg.includes("api key not valid") || msg.includes("permission denied")) {
             errorType = 'invalid';
-        } else if (msg.includes("429") || msg.includes("quota")) {
+        } else if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
             errorType = 'quota_exceeded';
         }
 
@@ -46,11 +53,11 @@ export const validateApiKey = async (key: string): Promise<{ isValid: boolean, l
     }
 };
 
-export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string, apiKey?: string) => {
+export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
     
     const response = await ai.models.generateContent({
-        model: DEFAULT_VISION_MODEL,
+        model: model || DEFAULT_VISION_MODEL,
         contents: {
             parts: [
                 { text: textPrompt },
@@ -66,11 +73,11 @@ export const generateOcrContent = async (textPrompt: string, base64Image: string
     return response.text || "";
 };
 
-export const generateAnalysis = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+export const generateAnalysis = async (prompt: string, systemInstruction: string, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
 
     const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+        model: model || DEFAULT_GEMINI_MODEL,
         contents: prompt,
         config: {
             systemInstruction: systemInstruction,
@@ -95,11 +102,11 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
     return response.text || "";
 };
 
-export const generateTextReport = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+export const generateTextReport = async (prompt: string, systemInstruction: string, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
 
     const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+        model: model || DEFAULT_GEMINI_MODEL,
         contents: prompt,
         config: {
             systemInstruction: systemInstruction
@@ -108,11 +115,11 @@ export const generateTextReport = async (prompt: string, systemInstruction: stri
     return response.text || "";
 };
 
-export const generateJsonFromText = async (prompt: string, systemInstruction: string, apiKey?: string) => {
+export const generateJsonFromText = async (prompt: string, systemInstruction: string, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
 
      const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+        model: model || DEFAULT_GEMINI_MODEL,
         contents: prompt,
         config: {
             systemInstruction: systemInstruction,
@@ -122,13 +129,13 @@ export const generateJsonFromText = async (prompt: string, systemInstruction: st
     return response.text || "";
 }
 
-export const generateMissingDescriptions = async (clauses: { code: string, title: string }[], apiKey?: string) => {
+export const generateMissingDescriptions = async (clauses: { code: string, title: string }[], apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
     const prompt = `You are an ISO Lead Auditor. Provide professional, concise (10-15 words) descriptions for these missing ISO clause descriptions:
 ${JSON.stringify(clauses)}`;
     
     const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+        model: model || DEFAULT_GEMINI_MODEL,
         contents: prompt,
         config: {
             responseMimeType: "application/json",

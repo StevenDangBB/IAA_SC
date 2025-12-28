@@ -4,9 +4,17 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.5";
+export const APP_VERSION = "2.6"; // Bump version
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
+
+// NEW: Define the fallback order based on intelligence vs stability/quota
+export const MODEL_HIERARCHY = [
+    "gemini-3-pro-preview",       // Tier 1: Highest Intelligence
+    "gemini-3-flash-preview",     // Tier 2: High Speed & Intelligence
+    "gemini-2.5-flash",           // Tier 3: High Stability (Legacy)
+    "gemini-flash-lite-latest"    // Tier 4: Lowest Cost/Latency fallback
+];
 
 export const AUDIT_TYPES: Record<string, string> = {
     "Stage 1": "Initial review of documentation and readiness.",
@@ -27,8 +35,17 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.5 (Stable Baseline)",
+        version: "2.6 (Smart Model Cascade)",
         date: new Date().toISOString().substring(0, 10),
+        features: [
+            "AI CORE: Implemented 'Smart Cascade' strategy. If the Pro model hits quota limits, the system automatically downgrades to Flash and then Lite models to ensure continuity.",
+            "FAILOVER: Logic now iterates through [All Keys x All Models] matrix before giving up.",
+            "STABILITY: Fixed API Key validation logic to use micro-generation instead of token counting for accurate 429 detection."
+        ]
+    },
+    {
+        version: "2.5 (Stable Baseline)",
+        date: "2024-06-05",
         features: [
             "BRANDING: Restored signature 'TD Logo' for sidebar collapsed state while strictly maintaining the 'Infinity' animation for the active state.",
             "MOBILE UX: Optimized Header layout for small screens. Hidden non-essential elements and compacted API status to reduce clutter.",
@@ -45,17 +62,6 @@ export const RELEASE_NOTES = [
             "VISUALS: New 'Glassmorphism' UI elements, Fluid Navigation Tabs, and smooth Accordion transitions.",
             "RESPONSIVE: Enhanced layout logic for smaller screens (Stacked Action Buttons, Auto-collapsing Sidebars).",
             "FEEDBACK: Added real-time progress indicators (e.g., 'Analyzing batch 1/4...') during complex AI tasks."
-        ]
-    },
-    {
-        version: "2.3 (Baseline Release)",
-        date: "2024-05-25",
-        features: [
-            "INTEGRITY: Added Standard Health Index to monitor data quality.",
-            "AI REPAIR: Self-healing capability to fix missing clause descriptions.",
-            "UX: Enhanced Drag & Drop Evidence Zone with instant preview.",
-            "LOCALIZATION: Added EN/VI toggles for notes and report exports.",
-            "REPORTING: Support for .docx Template ingestion for custom layouts."
         ]
     }
 ];

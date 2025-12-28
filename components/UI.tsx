@@ -179,7 +179,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
 export const Modal = ({ isOpen, title, onClose, children }: any) => {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={onClose}>
             <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-400 overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900">
                     <h3 className="text-lg font-black text-slate-800 dark:text-white tracking-tight">{title}</h3>
@@ -414,7 +414,7 @@ export const Toast = ({ message, onClose }: { message: string, onClose: () => vo
     }, [onClose]);
 
     return (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-500 ease-spring">
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-5 fade-in duration-500 ease-spring">
             <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
                 <div className="p-1 bg-green-500 rounded-full text-white">
                     <Icon name="CheckLineart" size={14}/>
