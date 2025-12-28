@@ -32,7 +32,8 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const [showIntegrityModal, setShowIntegrityModal] = useState(false);
     
     // UI State: Collapse Audit Info to save space
-    const [isInfoExpanded, setIsInfoExpanded] = useState(window.innerWidth > 768);
+    // Changed to default FALSE to keep it lean on startup
+    const [isInfoExpanded, setIsInfoExpanded] = useState(false);
     
     // UI State: Scroll-aware Header Visibility
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -72,7 +73,8 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
         const resize = (e: MouseEvent) => {
             if (isResizing && sidebarRef.current) {
-                const MIN_SIDEBAR_WIDTH = 360; 
+                // UPDATE: Increased minimum width to 390px (iPhone 13 ratio)
+                const MIN_SIDEBAR_WIDTH = 390; 
                 const MIN_MAIN_CONTENT_WIDTH = 375; 
                 const MAX_SIDEBAR_LIMIT = 800;
 
@@ -94,17 +96,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     }, [isResizing, setWidth]);
 
     // --- AGGRESSIVE SCROLL LOGIC ---
-    // User requested: Hide header ALWAYS when scrolling down, even if content is short.
-    // To support this without "jumping", we enforce a min-height on the container (see render).
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (isResizing) return;
 
         const target = e.currentTarget;
         const scrollTop = target.scrollTop;
         
-        // Simple Threshold: Just check direction and threshold.
-        // We rely on the CSS `min-h-[150vh]` in the renderClauses container 
-        // to ensure scrollbar NEVER disappears.
         const SCROLL_THRESHOLD = 50; 
         
         if (scrollTop > SCROLL_THRESHOLD && isHeaderVisible) {
@@ -116,7 +113,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
     // Auto-expand Audit Details if standard changes
     useEffect(() => {
-        setIsInfoExpanded(true);
         if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
     }, [standardKey]);
 
@@ -463,52 +459,9 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         >
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
-            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[360px] flex flex-col gap-3 transition-all duration-700 ease-fluid-spring overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
+            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col gap-3 transition-all duration-700 ease-fluid-spring overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
-                <div className={`border rounded-xl overflow-hidden transition-all duration-300 ${
-                    !isInfoExpanded 
-                    ? 'border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-900/10 shadow-sm' 
-                    : 'border-gray-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-slate-700'
-                }`}>
-                    <button 
-                        onClick={() => setIsInfoExpanded(!isInfoExpanded)}
-                        className={`w-full flex items-center justify-between p-3.5 transition-colors duration-300 ${
-                            !isInfoExpanded 
-                            ? 'bg-indigo-50 dark:bg-indigo-900/20' 
-                            : 'bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                        <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${
-                            !isInfoExpanded ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
-                        }`}>
-                             <div className={`transition-all duration-300 ${
-                                !isInfoExpanded ? 'p-1.5 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-indigo-500' : 'text-indigo-500'
-                            }`}>
-                                <Icon name="Info" size={!isInfoExpanded ? 14 : 12} />
-                            </div>
-                            Audit Details
-                        </span>
-                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isInfoExpanded ? 'rotate-180' : ''}`}/>
-                    </button>
-                    
-                    <div className={`grid transition-all duration-300 ease-in-out ${isInfoExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                        <div className="overflow-hidden">
-                             <div className="p-3 bg-white dark:bg-slate-900 space-y-3 border-t border-gray-100 dark:border-slate-800">
-                                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
-                                    <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
-                                </div>
-                                <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+                {/* Standard Selector - Clean & Prominent */}
                 <div className="relative">
                     <IconSelect 
                         icon="Book" 
@@ -524,9 +477,46 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         </button>
                     )}
                 </div>
+
+                {/* Audit Context - Collapsible Accordion to save visual space */}
+                <div className={`border rounded-xl overflow-hidden transition-all duration-300 ${
+                    !isInfoExpanded 
+                    ? 'border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900' 
+                    : 'border-indigo-100 dark:border-slate-700 shadow-sm'
+                }`}>
+                    <button 
+                        onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+                        className="w-full flex items-center justify-between p-3 transition-colors duration-300 hover:bg-gray-50 dark:hover:bg-slate-800/50"
+                    >
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                             <div className={`transition-all duration-300 ${isInfoExpanded ? 'text-indigo-500' : 'text-slate-400'}`}>
+                                <Icon name="Info" size={14} />
+                            </div>
+                            Context & Details
+                        </span>
+                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isInfoExpanded ? 'rotate-180' : ''}`}/>
+                    </button>
+                    
+                    <div className={`grid transition-all duration-300 ease-in-out ${isInfoExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                        <div className="overflow-hidden">
+                             <div className="p-3 bg-gray-50/50 dark:bg-slate-900/50 space-y-3 border-t border-gray-100 dark:border-slate-800">
+                                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
+                                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
+                                    <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
+                                </div>
+                                <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[360px]">
+            <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[390px]">
                 <div className={`p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0 transition-all duration-500 ${!isHeaderVisible ? 'shadow-md border-indigo-100 dark:border-indigo-900/50' : ''}`}>
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20">

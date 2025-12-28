@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause } from './types';
-import { Icon, FontSizeController, SparkleLoader, Modal, SnowOverlay, IconInput, AINeuralLoader, Toast } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, Modal, IconInput, AINeuralLoader, Toast } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey } from './services/geminiService';
@@ -20,8 +20,8 @@ function App() {
     // -- STATE --
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
     const [isDarkMode, setIsDarkMode] = useState(true);
-    const [isSnowing, setIsSnowing] = useState(false);
-    const [sidebarWidth, setSidebarWidth] = useState(380);
+    // Removed isSnowing state for professional look
+    const [sidebarWidth, setSidebarWidth] = useState(390);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
@@ -240,7 +240,6 @@ function App() {
         if (isDarkMode) document.body.classList.add('dark');
         else {
             document.body.classList.remove('dark');
-            setIsSnowing(false); 
         }
         localStorage.setItem('iso_dark_mode', String(isDarkMode));
     }, [isDarkMode]);
@@ -629,32 +628,83 @@ function App() {
         }
     };
 
+    // --- REFACTORED EXPORT HANDLER WITH STREAMLINE CHUNKING ---
     const handleExport = async (text: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
         if (!text) return;
         let setLoading = setIsExportLoading;
         if (type === 'notes') setLoading = setIsNotesExportLoading;
         if (type === 'evidence') setLoading = setIsEvidenceExportLoading;
+        
         setLoading(true);
         setAiError(null);
+        setLoadingMessage("Preparing export...");
 
         try {
             let contentToExport = text;
             const targetLangName = lang === 'vi' ? "Vietnamese" : "English";
 
-            try {
-                const prompt = `Act as a professional Lead Auditor. Translate or Refine the following audit text to ${targetLangName}. 
-                1. If translating: Ensure strict adherence to ISO terminology.
-                2. If already in ${targetLangName}: Refine for professional tone.
-                Text to process: """${text}"""`;
-                
-                const trans = await executeWithApiKeyFailover(async (key) => {
-                     return await generateTextReport(prompt, "You are a professional ISO Audit Translator.", key);
-                });
+            // Determine if processing is needed (Translation or Refinement)
+            // If user wants Raw Evidence in same language, we could skip AI, but user requested refinement too.
+            // We will proceed with AI but use CHUNKING to prevent Token Limits.
+            
+            const CHUNK_SIZE = 12000; // ~3000 tokens, safe for output limits
+            
+            // Simple split by length, but improved to find nearest newline to avoid cutting sentences mid-way
+            const chunks: string[] = [];
+            let currentPos = 0;
+            while (currentPos < text.length) {
+                let endPos = currentPos + CHUNK_SIZE;
+                if (endPos < text.length) {
+                    // Backtrack to nearest newline to split cleanly
+                    const lastNewline = text.lastIndexOf('\n', endPos);
+                    if (lastNewline > currentPos) {
+                        endPos = lastNewline + 1; // Include the newline
+                    }
+                }
+                chunks.push(text.slice(currentPos, endPos));
+                currentPos = endPos;
+            }
 
-                if (trans) contentToExport = trans;
+            let processedContent = "";
+            
+            // Only use AI if requested (translating) or for refinement. 
+            // If it's English to English raw evidence, maybe just export? 
+            // User requirement implies "Translate or Refine", so we run AI.
+            
+            try {
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    setLoadingMessage(`Exporting: Processing part ${i + 1}/${chunks.length}...`);
+                    
+                    const prompt = `Act as a professional ISO Lead Auditor. 
+                    Task: Translate or Refine the following audit text fragment to ${targetLangName}.
+                    Constraint: Output ONLY the processed text. Do NOT add conversational filler like "Here is the translation".
+                    Constraint: Maintain ISO terminology accuracy.
+                    
+                    Text Fragment (${i + 1}/${chunks.length}): 
+                    """${chunk}"""`;
+
+                    const result = await executeWithApiKeyFailover(async (key) => {
+                        return await generateTextReport(prompt, "You are a professional ISO Audit Translator.", key);
+                    });
+                    
+                    if (result) {
+                        processedContent += result + "\n"; // Append result
+                    } else {
+                        // Fallback if AI returns empty for a chunk (rare)
+                        processedContent += chunk + "\n"; 
+                    }
+                    
+                    // Small delay to be gentle on rate limits
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                
+                contentToExport = processedContent.trim();
+
             } catch (aiErr) {
-                console.warn("Translation failed, falling back to raw text", aiErr);
-                setAiError(`Translation to ${targetLangName} failed. Exporting original text.`);
+                console.warn("Export AI processing failed, falling back to raw text", aiErr);
+                setAiError(`AI processing failed during export. Exporting original text.`);
+                contentToExport = text; // Fallback to original
             }
 
             let stdShort = "ISO";
@@ -689,6 +739,7 @@ function App() {
             setAiError(e.message || "Export Failed"); 
         } finally { 
             setLoading(false); 
+            setLoadingMessage(""); // Clear message
         }
     };
 
@@ -748,53 +799,63 @@ function App() {
                 </div>
             )}
 
-            {/* HEADER - Sticky on Mobile, Z-Index 70 to sit ABOVE sidebar */}
-            <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
-                <div className="flex items-center gap-4 md:gap-6">
+            {/* HEADER - Professional, Lean, and Strictly Aligned */}
+            <div className="flex-shrink-0 px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
+                
+                {/* Left: Branding & Context (Aligned Center) */}
+                <div className="flex items-center h-full gap-5">
                     <div 
-                        className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:scale-105 active:scale-95`}
+                        className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:opacity-80 active:scale-95`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
                         title="Toggle Sidebar"
                     >
                         <div className="relative w-10 h-10 md:w-14 md:h-14 flex items-center justify-center">
                             {isSidebarOpen ? 
-                                <Icon name="TDLogo" size={32} className="relative z-10 md:w-[42px] md:h-[42px] transition-transform duration-500" /> 
-                                : 
+                                /* Restored Infinity Animation */
                                 <div className="relative w-8 h-8">
                                     <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
                                     <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse"></div>
                                 </div>
+                                : 
+                                <Icon name="LayoutList" size={24} className="text-slate-600 dark:text-slate-400"/>
                             }
                         </div>
                     </div>
                     
-                    <div className="flex flex-col">
-                        <h1 className="text-lg md:text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">ISO Audit <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-400">Pro</span></h1>
-                        <div className="hidden sm:flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700">v{APP_VERSION}</span>
-                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}</span>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                            ISO Audit <span className="font-light text-slate-400">Pro</span>
+                        </h1>
+                        <div className="h-5 w-px bg-gray-200 dark:bg-slate-700 mx-1"></div>
+                        {/* Standard Badge - Glassmorphism & High Contrast */}
+                        <div className="flex items-center">
+                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800/50 shadow-sm uppercase tracking-wider backdrop-blur-sm">
+                                {allStandards[standardKey]?.name.split(' ')[1] || 'ISO'}
+                            </span>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1 md:gap-2">
-                    <button onClick={() => setIsSnowing(!isSnowing)} className={`p-2 rounded-xl transition-all duration-300 hover:scale-110 active:scale-95 hidden sm:block ${isSnowing ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`} title="Winter Mode"><Icon name="Snowflake" size={18}/></button>
-                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all duration-300 hover:scale-110 active:scale-95 shadow-sm">
-                        <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
-                    </button>
-                    
-                    <div className="h-6 w-px bg-gray-200 dark:bg-slate-800 mx-1"></div>
+                {/* Right: Actions (Streamlined) */}
+                <div className="flex items-center gap-1">
                     <div className="hidden sm:block">
                         <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
                     
-                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 hover:scale-105 active:scale-95 ${activeKeyId ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 animate-pulse'}`}>
-                        <div className={`w-2 h-2 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                        <span className="text-xs font-bold hidden md:block">{activeKeyId ? 'API Ready' : 'No Key'}</span>
+                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition-all">
+                        <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                     </button>
                     
-                    <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-indigo-50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 transition-all duration-300 hover:scale-110 active:scale-95 shadow-sm"><Icon name="Settings" size={18}/></button>
-                    <button onClick={() => setShowAboutModal(true)} className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30 transition-all duration-300 hover:scale-110 active:scale-95"><Icon name="Info" size={18}/></button>
+                    <div className="h-4 w-px bg-gray-200 dark:bg-slate-800 mx-2"></div>
+
+                    <button onClick={() => setShowSettingsModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200 hover:shadow-sm ${activeKeyId ? 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${activeKeyId ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{activeKeyId ? 'API Ready' : 'Set Key'}</span>
+                    </button>
+                    
+                    <button onClick={() => setShowAboutModal(true)} className="ml-2 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
+                        <Icon name="Info" size={18}/>
+                    </button>
                 </div>
             </div>
 
@@ -1064,6 +1125,8 @@ function App() {
 
                         {/* Full Screen Loaders (Only for Reporting now, Analysis has inline loader) */}
                         {isReportLoading && <AINeuralLoader message={loadingMessage || "Synthesizing Report..."} />}
+                        {/* Global Overlay Loader for Export when processing chunks */}
+                        {(isExportLoading || isNotesExportLoading || isEvidenceExportLoading) && <AINeuralLoader message={loadingMessage || "Processing Export..."} />}
                     </div>
                 </div>
             </div>
@@ -1140,12 +1203,6 @@ function App() {
                     </div>
                 </div>
             </Modal>
-            
-            {/* 
-               MOVED: SnowOverlay is now the absolute last element in the root div.
-               This ensures it sits on top of everything else (Header, Sidebar, Content).
-            */}
-            {isSnowing && <SnowOverlay />}
         </div>
     );
 }
