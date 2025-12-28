@@ -769,7 +769,7 @@ function App() {
     };
 
     return (
-        <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
+        <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
             {aiError && (
@@ -794,7 +794,7 @@ function App() {
             )}
 
             {/* HEADER */}
-            <div className="flex-shrink-0 px-4 md:px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] sticky top-0 flex justify-between items-center h-16 relative transition-all duration-300">
+            <div className="flex-shrink-0 px-4 md:px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] relative flex justify-between items-center h-16 transition-all duration-300">
                 
                 <div className="flex items-center h-full gap-3 md:gap-5">
                     <div 
@@ -1088,11 +1088,11 @@ function App() {
 
                                 {/* BLOCK 2 FOOTER: Toggle, Export */}
                                 <div className="flex items-center justify-center md:justify-end gap-2 md:gap-3 w-full mt-2">
-                                    <div className="bg-gray-200 dark:bg-slate-800 rounded-xl p-1 flex gap-1 h-9 md:h-10 items-center justify-center w-auto">
-                                        <button onClick={() => setFindingsViewMode('list')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                                    <div className="flex gap-2 items-center justify-center w-auto">
+                                        <button onClick={() => setFindingsViewMode('list')} className={`h-9 md:h-10 px-3 md:px-4 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-xs shadow-sm border ${findingsViewMode === 'list' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'}`}>
                                             <Icon name="LayoutList" size={16}/> <span className="hidden md:inline">List</span>
                                         </button>
-                                        <button onClick={() => setFindingsViewMode('matrix')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'matrix' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                                        <button onClick={() => setFindingsViewMode('matrix')} className={`h-9 md:h-10 px-3 md:px-4 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-xs shadow-sm border ${findingsViewMode === 'matrix' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'}`}>
                                             <Icon name="Grid" size={16}/> <span className="hidden md:inline">Matrix</span>
                                         </button>
                                     </div>
