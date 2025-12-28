@@ -1,9 +1,10 @@
+
 import { useState, useEffect } from 'react';
 import { Icon } from './UI';
 import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES } from '../constants';
 
 const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    // Logic: Try to load 'author.png'. If it fails, strictly show the CSS Fallback.
+    // Logic: Try to load 'author.png'. If it fails, strictly show the CSS Fallback with TDLogo.
     const [imgError, setImgError] = useState(false);
 
     // Reset state when modal opens
@@ -33,13 +34,20 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                     <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 p-2 bg-slate-800/50 rounded-full hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><Icon name="X" size={20}/></button>
 
                     <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8 z-10">
-                        {/* Author Image with Glow Effect */}
+                        {/* Author Image with INTENSIFIED SHRIMP Effect */}
                         <div className="relative flex-shrink-0">
-                            {/* Outer Glow Ring */}
-                            <div className="absolute -inset-1 bg-gradient-to-br from-amber-300 via-orange-500 to-indigo-600 rounded-full opacity-70 blur-sm animate-pulse-slow"></div>
+                            {/* Layer 1: Wide Deep Aura (Static Base) */}
+                            <div className="absolute -inset-10 bg-indigo-600/30 rounded-full blur-3xl"></div>
+
+                            {/* Layer 2: The SHRIMP ROTATOR (High Energy Conic Gradient) */}
+                            {/* Uses a conic gradient mask to create a spinning ring of fire */}
+                            <div className="absolute -inset-[6px] rounded-full bg-[conic-gradient(from_0deg,transparent_0_deg,#f472b6_100deg,#8b5cf6_200deg,#06b6d4_300deg,transparent_360deg)] opacity-100 blur-md animate-[spin_4s_linear_infinite]"></div>
                             
-                            {/* Main Avatar Container - Ensures Round Shape */}
-                            <div className="relative w-24 h-24 rounded-full p-1 bg-slate-900 ring-1 ring-white/10 z-10">
+                            {/* Layer 3: Pulse Core (Heartbeat) */}
+                            <div className="absolute -inset-1 bg-gradient-to-br from-amber-400 via-pink-500 to-cyan-500 rounded-full opacity-60 blur-lg animate-pulse"></div>
+
+                            {/* Main Avatar Container */}
+                            <div className="relative w-24 h-24 rounded-full p-0.5 bg-slate-900 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl">
                                 {!imgError ? (
                                     <img 
                                         src="./author.png"
@@ -48,11 +56,20 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                                         onError={() => setImgError(true)}
                                     />
                                 ) : (
-                                    /* High-End CSS Fallback Avatar - No Square Edges */
-                                    <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-800 to-black flex flex-col items-center justify-center border-2 border-slate-700 shadow-inner">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-300 drop-shadow-sm">TD</span>
-                                            <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Author</span>
+                                    /* FALLBACK: SUPER HIGH CONTRAST TD Logo */
+                                    <div className="w-full h-full rounded-full flex items-center justify-center bg-black relative overflow-hidden border-2 border-slate-800/50">
+                                        {/* Deep Space Background */}
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1e1b4b_0%,_#000000_100%)]"></div>
+                                        
+                                        {/* Grid Noise */}
+                                        <div className="absolute inset-0 opacity-30 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+
+                                        {/* Scanning Laser Effect */}
+                                        <div className="absolute inset-[-100%] bg-gradient-to-tr from-transparent via-cyan-400/30 to-transparent rotate-45 animate-[spinReverse_6s_linear_infinite]"></div>
+                                        
+                                        {/* The Logo: Pushed forward with heavy neon shadow */}
+                                        <div className="relative z-10 transform scale-110 drop-shadow-[0_0_25px_rgba(0,242,195,0.8)]">
+                                            <Icon name="TDLogo" size={56} />
                                         </div>
                                     </div>
                                 )}
@@ -64,21 +81,21 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                             </div>
                         </div>
 
-                        {/* Author Info */}
-                        <div className="flex-1 min-w-0 text-center md:text-left">
+                        {/* Author Info - Higher Z-Index to sit over the Halo */}
+                        <div className="flex-1 min-w-0 text-center md:text-left relative z-10">
                             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1">
-                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[0.6rem] font-bold text-amber-500 uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[0.6rem] font-bold text-amber-500 uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.15)]">
                                     Solution Architect
                                 </span>
                                 <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-[0.6rem] font-bold text-indigo-400 uppercase tracking-widest">
                                     AI Core Lead
                                 </span>
                             </div>
-                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2 drop-shadow-md">
+                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
                                 Trung DANGHOANG
                             </h2>
                             <p className="text-slate-400 text-sm font-medium flex items-center justify-center md:justify-start gap-2">
-                                Creator of <span className="text-white font-semibold">ISO Audit Pro</span>
+                                Creator of <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400 font-bold">ISO Audit Pro</span>
                             </p>
                             <p className="text-slate-500 text-xs mt-2 italic max-w-lg mx-auto md:mx-0">
                                 "Pioneering the intersection of International Standards and Artificial Intelligence to empower the next generation of auditors."

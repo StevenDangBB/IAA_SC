@@ -4,7 +4,7 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.6"; // Bump version
+export const APP_VERSION = "2.7"; // Baseline new version
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -35,8 +35,18 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.6 (Smart Model Cascade)",
+        version: "2.7 (AI Architecture Upgrade)",
         date: new Date().toISOString().substring(0, 10),
+        features: [
+            "SMART MODEL PROBING: System now proactively 'probes' your API keys against all models (Pro → Flash → Lite) at startup. It locks in the highest performing model available for the day, preventing repetitive downgrade errors.",
+            "TEMPLATE INTELLIGENCE: The Report Engine is now context-aware. It analyzes your uploaded document's structure and tone, then synthesizes findings to fit that exact format (instead of just appending text).",
+            "PERMANENT FAILOVER: If a model hits a Quota Limit mid-session, the system automatically downgrades that specific Key for the remainder of the session to ensure zero-interruption workflow.",
+            "VISUAL FEEDBACK: Added 'Template Active' indicators and enhanced 'Model Status' visualizers."
+        ]
+    },
+    {
+        version: "2.6 (Smart Model Cascade)",
+        date: "2024-06-10",
         features: [
             "AI CORE: Implemented 'Smart Cascade' strategy. If the Pro model hits quota limits, the system automatically downgrades to Flash and then Lite models to ensure continuity.",
             "FAILOVER: Logic now iterates through [All Keys x All Models] matrix before giving up.",
@@ -51,17 +61,6 @@ export const RELEASE_NOTES = [
             "MOBILE UX: Optimized Header layout for small screens. Hidden non-essential elements and compacted API status to reduce clutter.",
             "VISUAL POLISH: Refined spacing, shadow effects, and interactions for the 'API Ready' indicator and Sidebar toggles.",
             "PERFORMANCE: Codebase baselined and fitted for upcoming major architecture improvements."
-        ]
-    },
-    {
-        version: "2.4 (Performance & Fluidity)",
-        date: "2024-06-01",
-        features: [
-            "CORE AI UPDATE: Implemented 'Batch Processing' engine. Analysis is now split into sequential chunks to eliminate API Token Limits (429 Errors) and prevent Timeouts on large datasets.",
-            "FLUID UX: Completely overhauled animation system using Spring Physics. Menus, tabs, and modals now move with natural momentum.",
-            "VISUALS: New 'Glassmorphism' UI elements, Fluid Navigation Tabs, and smooth Accordion transitions.",
-            "RESPONSIVE: Enhanced layout logic for smaller screens (Stacked Action Buttons, Auto-collapsing Sidebars).",
-            "FEEDBACK: Added real-time progress indicators (e.g., 'Analyzing batch 1/4...') during complex AI tasks."
         ]
     }
 ];
