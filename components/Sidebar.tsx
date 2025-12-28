@@ -195,7 +195,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
             const findMissing = (list: Clause[]) => {
                 list.forEach(c => {
-                    if (!c.description || c.description.trim().length < 2) {
+                    if (!c.description || c.description.trim().length < 5) {
                         missingClauses.push({ ref: c, code: c.code, title: c.title });
                     }
                     if (c.subClauses) findMissing(c.subClauses);

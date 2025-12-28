@@ -558,6 +558,18 @@ function App() {
         }
     };
 
+    const handleUpdateStandard = (updated: Standard) => {
+        setCustomStandards(prev => ({ ...prev, [standardKey]: updated }));
+    };
+
+    const handleResetStandard = (key: string) => {
+        setCustomStandards(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
+
     // --- TEST DATA GENERATOR (For Validation) ---
     const loadStressTestData = () => {
         // 1. Set Audit Info
@@ -649,11 +661,11 @@ Violation of SLA. Explanation: Patch requires reboot, pending change approval wi
         setTimeout(() => notification.remove(), 2000);
     };
 
-    const handleUpdateStandard = (updated: Standard) => {
+    const handleUpdateStandardEntry = (updated: Standard) => {
         setCustomStandards(prev => ({ ...prev, [updated.name]: updated }));
     };
 
-    const handleResetStandard = (key: string) => {
+    const handleResetStandardEntry = (key: string) => {
         setCustomStandards(prev => {
             const next = { ...prev };
             delete next[key];
@@ -1167,6 +1179,15 @@ Violation of SLA. Explanation: Patch requires reboot, pending change approval wi
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* COMMAND PALETTE TRIGGER (Visible on Mobile & Desktop) */}
+                    <button 
+                        onClick={() => setIsCmdPaletteOpen(true)} 
+                        className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all active:scale-95"
+                        title="Open Command Palette (Ctrl+K)"
+                    >
+                        <Icon name="Search" size={20}/>
+                    </button>
+
                     <div className="hidden lg:block">
                         <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir: any) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
