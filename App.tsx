@@ -1088,11 +1088,11 @@ function App() {
 
                                 {/* BLOCK 2 FOOTER: Toggle, Export */}
                                 <div className="flex items-center justify-center md:justify-end gap-2 md:gap-3 w-full mt-2">
-                                    <div className="flex gap-2 items-center justify-center w-auto">
-                                        <button onClick={() => setFindingsViewMode('list')} className={`h-9 md:h-10 px-3 md:px-4 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-xs shadow-sm border ${findingsViewMode === 'list' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'}`}>
+                                    <div className="h-9 md:h-10 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl flex items-center border border-gray-200 dark:border-slate-700">
+                                        <button onClick={() => setFindingsViewMode('list')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-300 ring-1 ring-black/5' : 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'}`}>
                                             <Icon name="LayoutList" size={16}/> <span className="hidden md:inline">List</span>
                                         </button>
-                                        <button onClick={() => setFindingsViewMode('matrix')} className={`h-9 md:h-10 px-3 md:px-4 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-xs shadow-sm border ${findingsViewMode === 'matrix' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'}`}>
+                                        <button onClick={() => setFindingsViewMode('matrix')} className={`h-full px-3 md:px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-xs ${findingsViewMode === 'matrix' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-300 ring-1 ring-black/5' : 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'}`}>
                                             <Icon name="Grid" size={16}/> <span className="hidden md:inline">Matrix</span>
                                         </button>
                                     </div>
