@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus } from './types';
-import { Icon, FontSizeController, SparkleLoader, Modal, IconInput, AINeuralLoader, Toast, CommandPaletteModal } from './components/UI';
+import { Icon, FontSizeController, SparkleLoader, Modal, AINeuralLoader, Toast, CommandPaletteModal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey } from './services/geminiService';
@@ -42,9 +42,6 @@ function App() {
     // Feature: Matrix View
     const [findingsViewMode, setFindingsViewMode] = useState<FindingsViewMode>('list');
     
-    // New: Track Window Width for responsive calculations in JS
-    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-
     // API Key Management State
     const [apiKeys, setApiKeys] = useState<ApiKeyProfile[]>([]);
     const [activeKeyId, setActiveKeyId] = useState<string>("");
@@ -63,7 +60,7 @@ function App() {
     const [reportTemplate, setReportTemplate] = useState<string>("");
     const [templateFileName, setTemplateFileName] = useState<string>("");
     
-    const [customStandards, setCustomStandards] = useState<StandardsData>({});
+    const [customStandards, setCustomStandards] = useState<StandardsData>(STANDARDS_DATA);
     const [standardKey, setStandardKey] = useState<string>("ISO 9001:2015");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
@@ -175,10 +172,6 @@ function App() {
         if (window.innerWidth < 768) {
             setIsSidebarOpen(false);
         }
-
-        const handleResize = () => setWindowWidth(window.innerWidth);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     const hasStartupChecked = useRef(false);
@@ -1129,21 +1122,34 @@ Violation of SLA. Explanation: Patch requires reboot, pending change approval wi
                 
                 <div className="flex items-center h-full gap-3 md:gap-5">
                     <div 
-                        className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:opacity-80 active:scale-95`}
+                        className={`relative group cursor-pointer flex items-center justify-center transition-all duration-500 hover:opacity-100 active:scale-95`}
                         onClick={() => { setIsSidebarOpen(!isSidebarOpen); setLogoKey(prev => prev + 1); }}
                         title="Toggle Sidebar"
                     >
+                        {/* HALO CONTAINER */}
                         <div className="relative w-10 h-10 md:w-14 md:h-14 flex items-center justify-center">
-                            {isSidebarOpen ? 
-                                <div className="relative w-8 h-8">
-                                    <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin"></div>
-                                    <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse"></div>
-                                </div>
-                                : 
-                                <div className="hover:scale-110 transition-transform duration-300">
-                                     <Icon name="TDLogo" size={32} className="drop-shadow-md" />
-                                </div>
-                            }
+                            
+                            {/* Layer 1: Ambient Glow - Subtle ambient light (invisible normally, faint glow on hover) */}
+                            <div className="absolute -inset-4 bg-indigo-500/0 rounded-full blur-xl transition-all duration-500 group-hover:bg-indigo-500/10"></div>
+
+                            {/* Layer 2: The SHRIMP HALO - Soft Light Only */}
+                            {/* High blur (blur-lg) + Low opacity (opacity-30) ensures it looks like light, not a sticker */}
+                            <div className="absolute -inset-1 rounded-full bg-[conic-gradient(from_0deg,transparent_0_deg,#f472b6_100deg,#8b5cf6_200deg,#06b6d4_300deg,transparent_360deg)] opacity-30 blur-lg animate-[spin_4s_linear_infinite] group-hover:opacity-70 group-hover:blur-md transition-all duration-500"></div>
+
+                            {/* MAIN CONTENT (Z-Index High) */}
+                            <div className="relative z-10">
+                                {isSidebarOpen ? 
+                                    <div className="relative w-8 h-8">
+                                        {/* Infinity Spin - Enhanced with Neon Dropshadows */}
+                                        <div className="absolute inset-0 border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-infinity-spin drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div>
+                                        <div className="absolute inset-2 border-2 border-transparent border-l-purple-500 border-r-pink-500 rounded-full animate-spin-reverse drop-shadow-[0_0_6px_rgba(236,72,153,0.8)]"></div>
+                                    </div>
+                                    : 
+                                    <div className="hover:scale-110 transition-transform duration-300 drop-shadow-[0_0_15px_rgba(0,242,195,0.6)]">
+                                         <Icon name="TDLogo" size={32} />
+                                    </div>
+                                }
+                            </div>
                         </div>
                     </div>
                     
@@ -1162,7 +1168,7 @@ Violation of SLA. Explanation: Patch requires reboot, pending change approval wi
 
                 <div className="flex items-center gap-2">
                     <div className="hidden lg:block">
-                        <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
+                        <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir: any) => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />
                     </div>
                     
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition-all">

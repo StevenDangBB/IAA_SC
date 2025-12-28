@@ -36,7 +36,7 @@ export const STANDARDS_DATA: StandardsData = {
 export const RELEASE_NOTES = [
     {
         version: "2.7 (AI Architecture Upgrade)",
-        date: new Date().toISOString().substring(0, 10),
+        date: "2024-06-18", // Fixed release date
         features: [
             "SMART MODEL PROBING: System now proactively 'probes' your API keys against all models (Pro → Flash → Lite) at startup. It locks in the highest performing model available for the day, preventing repetitive downgrade errors.",
             "TEMPLATE INTELLIGENCE: The Report Engine is now context-aware. It analyzes your uploaded document's structure and tone, then synthesizes findings to fit that exact format (instead of just appending text).",
