@@ -1,3 +1,4 @@
+
 # Logs
 logs
 *.log
@@ -39,7 +40,7 @@ jspm_packages/
 # TypeScript v1 declaration files
 typings/
 
-# Optional npm cache directory
+# Optional npm cache
 .npm
 
 # Optional eslint cache
@@ -91,3 +92,6 @@ dist
 # Electron build output
 release
 dist-electron
+
+# Temporary update file
+update.xml

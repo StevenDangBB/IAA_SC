@@ -20,9 +20,10 @@ interface SidebarProps {
     onAddNewStandard: () => void;
     onUpdateStandard: (std: Standard) => void;
     onResetStandard: (key: string) => void;
+    onReferenceClause: (clause: Clause) => void;
 }
 
-const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard }: SidebarProps) => {
+const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause }: SidebarProps) => {
     const sidebarRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null); 
     const [isResizing, setIsResizing] = useState(false);
@@ -351,7 +352,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
         return (
             <div key={c.id} className={`flex flex-col transition-all duration-300 ${level > 0 ? 'ml-4 border-l-2 dark:border-slate-800' : ''}`}>
-                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all duration-200 cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/20 translate-x-1' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50 hover:translate-x-1'}`}>
+                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all duration-200 ease-soft cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/20 translate-x-1' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50 hover:translate-x-1'}`}>
                     <button onClick={(e) => { e.stopPropagation(); toggleClauseSelection(c); }} className={`mt-1 flex-shrink-0 transition-colors duration-200 ${selection.some ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-300 dark:text-slate-600 hover:text-gray-400'}`}>
                         {selection.all ? <Icon name="CheckSquare" size={16}/> : selection.some ? <div className="w-4 h-4 bg-indigo-500 rounded flex items-center justify-center"><div className="w-2.5 h-0.5 bg-white"></div></div> : <Icon name="Square" size={16}/>}
                     </button>
@@ -365,10 +366,13 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                                 <span className="text-sm text-slate-900 dark:text-slate-100 font-medium tracking-tight leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{c.title}</span>
                                 {isRepaired && <span className="text-[9px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-md animate-pulse">UPDATED</span>}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                                <button onClick={(e) => { e.stopPropagation(); onReferenceClause(c); }} className="p-1 transition-all transform duration-300 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:scale-110" title="Reference original text">
+                                    <Icon name="BookOpen" size={14} />
+                                </button>
                                 <button
                                     onClick={(e) => handleSingleClauseCopy(e, c)}
-                                    className={`p-1 transition-all transform duration-300 ${isCopied ? 'text-emerald-600 scale-125 opacity-100' : 'opacity-0 group-hover:opacity-100 text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110'}`}
+                                    className={`p-1 transition-all transform duration-300 ${isCopied ? 'text-emerald-500 scale-125 opacity-100' : 'opacity-0 group-hover:opacity-100 text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110'}`}
                                     title={isCopied ? "Copied!" : "Copy Clause"}
                                 >
                                     <Icon name={isCopied ? "CheckThick" : "Copy"} size={isCopied ? 20 : 14} />
@@ -457,12 +461,12 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     return (
         <div 
             ref={sidebarRef}
-            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-500 ease-fluid-spring'} h-full`} 
+            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-soft'} h-full`} 
             style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}
         >
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
-            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col gap-3 transition-all duration-700 ease-fluid-spring overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
+            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col gap-3 transition-all duration-400 ease-soft overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
                 {/* Standard Selector - Clean & Prominent */}
                 <div className="relative">

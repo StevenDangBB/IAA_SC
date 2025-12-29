@@ -4,7 +4,7 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.7"; // Baseline new version
+export const APP_VERSION = "2.8"; // Stable Snapshot
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -34,6 +34,16 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "2.8 (Stable Snapshot)",
+        date: "2024-06-25",
+        features: [
+            "SMART EXPORT ENGINE: New chunk-based export system with auto-translation (EN/VI) and pause/resume capabilities.",
+            "MATRIX EDITING: Directly edit compliance status, evidence, and reasons from the Matrix view.",
+            "RESCUE KEY: Instant API key injection during export failures to prevent data loss.",
+            "DRAG & DROP: Seamlessly drag image evidence directly into the analysis workspace."
+        ]
+    },
     {
         version: "2.7 (AI Architecture Upgrade)",
         date: "2024-06-18", // Fixed release date
@@ -71,5 +81,4 @@ export const KEY_CAPABILITIES = [
     { icon: "FileText", title: "Auto Report", desc: "Synthesizes final audit findings." }
 ];
 
-export const INITIAL_EVIDENCE = `AUDIT INFO: Interview with [Name], Process [PROCESS ID], Effective Date [Effective date].
-EVIDENCE: Records reviewed show implementation of [Control Name]. Documentation is [Status].`;
+export const INITIAL_EVIDENCE = "";

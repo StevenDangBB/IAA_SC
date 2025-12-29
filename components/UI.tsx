@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 
 // --- Icons (Content unchanged for brevity, only UI components enhanced) ---
 export const Icons: Record<string, React.ReactNode> = {
+    BookOpen: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+    Quote: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H4c-1.25 0-2 .75-2 2v6c0 7 4 8 7 8Z"/><path d="M14 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-4c-1.25 0-2 .75-2 2v6c0 7 4 8 7 8Z"/></svg>,
     TDLogo: (
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -101,7 +103,7 @@ export const Icons: Record<string, React.ReactNode> = {
     Copy: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
     Download: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-3-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
     Sun: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
-    Moon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+    Moon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
     RefreshCw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>,
     Lightbulb: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v2"/><path d="M12 16a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/><path d="M9 10a3 3 0 0 1 3-3 3 3 0 0 1 3 3v2H9z"/></svg>,
     AIIndicator: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>,
@@ -179,8 +181,8 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
 export const Modal = ({ isOpen, title, onClose, children }: any) => {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-400 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-300 overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900">
                     <h3 className="text-lg font-black text-slate-800 dark:text-white tracking-tight">{title}</h3>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-all duration-300 text-slate-400 hover:rotate-90">
@@ -216,7 +218,7 @@ export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }
     return (
         <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] animate-in fade-in duration-200" onClick={onClose}>
             <div 
-                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring"
+                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring duration-300"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-slate-800">
@@ -408,13 +410,22 @@ export const AINeuralLoader = ({ message }: { message: string }) => (
 );
 
 export const Toast = ({ message, onClose }: { message: string, onClose: () => void }) => {
+    const [isExiting, setIsExiting] = useState(false);
+
+    const handleClose = () => {
+        setIsExiting(true);
+        setTimeout(() => {
+            onClose();
+        }, 300); // Match animation duration
+    };
+    
     useEffect(() => {
-        const timer = setTimeout(onClose, 4000);
+        const timer = setTimeout(handleClose, 3700);
         return () => clearTimeout(timer);
     }, [onClose]);
 
     return (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-5 fade-in duration-500 ease-spring">
+        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[300] transition-all duration-300 ease-soft ${isExiting ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
             <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
                 <div className="p-1 bg-green-500 rounded-full text-white">
                     <Icon name="CheckLineart" size={14}/>
@@ -423,7 +434,7 @@ export const Toast = ({ message, onClose }: { message: string, onClose: () => vo
                     <span className="text-xs font-black uppercase tracking-wider opacity-70">Notification</span>
                     <span className="text-sm font-bold">{message}</span>
                 </div>
-                <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900 transition-colors">
+                <button onClick={handleClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900 transition-colors">
                     <Icon name="X" size={16}/>
                 </button>
             </div>

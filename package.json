@@ -2,8 +2,8 @@
 {
   "name": "iso-audit-assistant",
   "private": true,
-  "version": "2.5.0",
-  "type": "module",
+  "version": "2.8.0",
+  "type": "commonjs",
   "main": "electron/main.js",
   "homepage": "./",
   "author": "ISO Audit Pro",
@@ -20,7 +20,8 @@
   "dependencies": {
     "@google/genai": "^1.34.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "xml-js": "^1.6.11"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",

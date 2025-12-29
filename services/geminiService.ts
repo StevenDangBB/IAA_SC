@@ -1,6 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
+import { Clause } from "../types";
+import { cleanAndParseJSON } from "../utils";
 
 const getApiKey = () => {
     // Safely check for process.env to prevent "ReferenceError: process is not defined" in browser
@@ -12,7 +14,8 @@ const getApiKey = () => {
     } catch (e) {
         // Ignore error if process is accessed in strict mode or undefined
     }
-    return localStorage.getItem("iso_api_key") || envKey || "";
+    // FIX: Per @google/genai guidelines, prioritize environment variable for API key.
+    return envKey || localStorage.getItem("iso_api_key") || "";
 };
 
 const getAiClient = (overrideKey?: string) => {
@@ -34,6 +37,9 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
             contents: "Test",
             config: {
                 maxOutputTokens: 1, // Minimize latency and cost
+                // FIX: Per @google/genai guidelines, set thinkingBudget to 0 when using a small maxOutputTokens
+                // to prevent all tokens from being consumed by "thinking", which would cause the validation to fail.
+                thinkingConfig: { thinkingBudget: 0 },
             }
         });
 
@@ -51,6 +57,42 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
 
         return { isValid: false, latency: 0, errorType };
     }
+};
+
+export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, apiKey?: string, model?: string): Promise<{ en: string, vi: string }> => {
+    const ai = getAiClient(apiKey);
+    const prompt = `You are an expert ISO standards repository. Provide the full, verbatim, original text for the following clause in two languages: English and Vietnamese.
+
+- Standard: ${standardName}
+- Clause Code: ${clause.code}
+- Clause Title: ${clause.title}
+
+Output ONLY a valid JSON object with two keys: "en" for the English text, and "vi" for the Vietnamese text. Do not add any conversational filler or markdown formatting.
+Crucially, preserve all original formatting, including line breaks (using '\\n'), within the JSON string values for maximum readability.`;
+    
+    const response = await ai.models.generateContent({
+        model: model || DEFAULT_GEMINI_MODEL,
+        contents: prompt,
+        config: {
+            systemInstruction: "You are a helpful assistant that provides precise, verbatim text from official standards in a bilingual JSON format, preserving all original formatting and line breaks for readability.",
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    en: { type: Type.STRING, description: "The full, original clause text in English, with original formatting and line breaks preserved." },
+                    vi: { type: Type.STRING, description: "The full, original clause text translated into Vietnamese, with original formatting and line breaks preserved." }
+                },
+                required: ["en", "vi"]
+            }
+        }
+    });
+
+    const parsed = cleanAndParseJSON(response.text || "{}");
+    
+    return {
+        en: parsed?.en || "AI could not retrieve the English text.",
+        vi: parsed?.vi || "AI không thể truy xuất văn bản tiếng Việt."
+    };
 };
 
 export const generateOcrContent = async (textPrompt: string, base64Image: string, mimeType: string, apiKey?: string, model?: string) => {
