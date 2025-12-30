@@ -216,17 +216,17 @@ export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] animate-in fade-in duration-200" onClick={onClose}>
+        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[10vh] px-4 md:px-0 animate-in fade-in duration-200" onClick={onClose}>
             <div 
                 className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring duration-300"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-slate-800">
-                    <Icon name="Search" className="text-slate-400 mr-3" size={20} />
+                <div className="flex items-center px-3 py-3 md:px-4 border-b border-gray-100 dark:border-slate-800">
+                    <Icon name="Session6_Zap" className="text-indigo-500 mr-2 md:mr-3 flex-shrink-0" size={20} />
                     <input 
                         ref={inputRef}
                         type="text" 
-                        className="flex-1 bg-transparent text-lg outline-none text-slate-800 dark:text-white placeholder-slate-400"
+                        className="flex-1 bg-transparent text-sm md:text-lg outline-none text-slate-800 dark:text-white placeholder-slate-400 min-w-0"
                         placeholder="Type a command or search clauses..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
@@ -238,8 +238,10 @@ export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }
                             }
                         }}
                     />
-                    <div className="flex gap-2">
-                        <span className="text-[10px] bg-gray-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded border border-gray-200 dark:border-slate-700">ESC</span>
+                    <div className="flex gap-2 flex-shrink-0 ml-2">
+                        <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-all duration-300 text-slate-400 hover:rotate-90">
+                            <Icon name="X" size={20}/>
+                        </button>
                     </div>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto custom-scrollbar p-2">
@@ -261,6 +263,19 @@ export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }
                                     </h4>
                                     {action.desc && <p className="text-xs text-slate-500 truncate">{action.desc}</p>}
                                 </div>
+                                
+                                {action.type === 'clause' && (
+                                    <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            onClick={action.onReference} 
+                                            className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-all"
+                                            title="Reference/Lookup"
+                                        >
+                                            <Icon name="BookOpen" size={16}/>
+                                        </button>
+                                    </div>
+                                )}
+                                
                                 {action.shortcut && <span className="text-xs text-slate-400">{action.shortcut}</span>}
                             </div>
                         ))
@@ -401,7 +416,7 @@ export const AINeuralLoader = ({ message }: { message: string }) => (
             {/* Orbiting particles */}
             <div className="absolute top-0 left-1/2 w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] animate-ping"></div>
         </div>
-        <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 animate-pulse">{message}</h3>
+        <h3 className="text-lg font-black text-slate-800 dark:text-white mb-2 animate-pulse px-4 text-center max-w-[80%]">{message}</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 font-mono flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
             Gemini AI Processing...
@@ -425,7 +440,8 @@ export const Toast = ({ message, onClose }: { message: string, onClose: () => vo
     }, [onClose]);
 
     return (
-        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[300] transition-all duration-300 ease-soft ${isExiting ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
+        // FIX: Increased z-index from 300 to 9999 so it appears over Modals
+        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[9999] transition-all duration-300 ease-soft ${isExiting ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
             <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
                 <div className="p-1 bg-green-500 rounded-full text-white">
                     <Icon name="CheckLineart" size={14}/>

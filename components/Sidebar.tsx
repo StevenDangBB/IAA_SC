@@ -21,16 +21,18 @@ interface SidebarProps {
     onUpdateStandard: (std: Standard) => void;
     onResetStandard: (key: string) => void;
     onReferenceClause: (clause: Clause) => void;
+    showIntegrityModal: boolean;
+    setShowIntegrityModal: (show: boolean) => void;
 }
 
-const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause }: SidebarProps) => {
+const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause, showIntegrityModal, setShowIntegrityModal }: SidebarProps) => {
     const sidebarRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null); 
     const [isResizing, setIsResizing] = useState(false);
     const [searchQueryRaw, setSearchQueryRaw] = useState("");
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
     const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
-    const [showIntegrityModal, setShowIntegrityModal] = useState(false);
+    // Removed local showIntegrityModal state in favor of props
     
     // UI State: Collapse Audit Info to save space
     // Changed to default FALSE to keep it lean on startup
@@ -584,6 +586,36 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         </div>
                     </div>
                     {/* ... (Rest of integrity modal) ... */}
+                     <div className="space-y-3">
+                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Integrity Checklist</h5>
+                        {health.integrity.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-1.5 rounded-full shadow-sm ${item.status === 'pass' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-red-500 bg-red-50 dark:bg-red-900/20'}`}>
+                                        <Icon name={item.status === 'pass' ? "CheckCircle2" : "AlertCircle"} size={18}/>
+                                    </div>
+                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.label}</span>
+                                </div>
+                                <span className={`text-[10px] font-black px-3 py-1 rounded-full shadow-sm uppercase ${item.status === 'pass' ? 'text-emerald-700 bg-emerald-100' : 'text-red-700 bg-red-100'}`}>
+                                    {item.detail}
+                                </span>
+                            </div>
+                        ))}
+                        {health.completeness.map((item, idx) => (
+                            <div key={`comp-${idx}`} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-1.5 rounded-full shadow-sm ${item.status === 'pass' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-red-500 bg-red-50 dark:bg-red-900/20'}`}>
+                                        <Icon name={item.status === 'pass' ? "CheckCircle2" : "AlertCircle"} size={18}/>
+                                    </div>
+                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.label}</span>
+                                </div>
+                                <span className={`text-[10px] font-black px-3 py-1 rounded-full shadow-sm uppercase ${item.status === 'pass' ? 'text-emerald-700 bg-emerald-100' : 'text-red-700 bg-red-100'}`}>
+                                    {item.detail}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
                      <div className="mt-6 pt-4 border-t border-gray-100 dark:border-slate-700 flex justify-end gap-3">
                      {isCustomStandard && (
                         <button 

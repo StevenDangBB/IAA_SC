@@ -1,4 +1,5 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vitest/config';
+import { loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import process from 'node:process';
 
@@ -14,6 +15,12 @@ export default defineConfig(({ mode }) => {
     define: {
       // Ensure API_KEY is always a string (empty if missing) to prevent crash
       'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
+    },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: './setupTests.ts',
+      css: true,
     },
     build: {
       outDir: 'dist',
