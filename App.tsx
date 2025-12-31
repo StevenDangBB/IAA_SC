@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MODEL_META, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus } from './types';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus, SessionSnapshot } from './types';
 import { Icon, FontSizeController, SparkleLoader, Modal, AINeuralLoader, Toast, CommandPaletteModal, IconInput } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
+import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText } from './services/geminiService';
 import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard } from './utils';
 
@@ -46,6 +47,7 @@ export default function App() {
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showIntegrityModal, setShowIntegrityModal] = useState(false);
+    const [showRecallModal, setShowRecallModal] = useState(false); // NEW: Recall Modal State
     
     const [isCmdPaletteOpen, setIsCmdPaletteOpen] = useState(false);
     const [findingsViewMode, setFindingsViewMode] = useState<FindingsViewMode>('list');
@@ -69,7 +71,6 @@ export default function App() {
     // 1. isRestoring: Blocks auto-save while data is being pumped from storage into state.
     const isRestoring = useRef(false);
     // 2. isManuallyCleared: Allows auto-save to write empty data ONLY if the user explicitly clicked "New Session".
-    //    Otherwise, we assume empty state is a bug/load error and refuse to overwrite disk.
     const isManuallyCleared = useRef(false);
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
@@ -353,11 +354,8 @@ export default function App() {
 
         // GUARD 2: EMPTY STATE PROTECTION
         // If critical data is empty, check if we actually WANTED it empty (New Session).
-        // If not manually cleared, this means we might be in an initialized/error state,
-        // so we DO NOT overwrite the potentially valid data on disk.
         const isEmptyState = !evidence && (!selectedClauses || selectedClauses.length === 0);
         if (isEmptyState && !isManuallyCleared.current) {
-            // Check if disk has data. If yes, don't overwrite with empty.
             if (localStorage.getItem("iso_session_data")) {
                 return; 
             }
@@ -377,13 +375,13 @@ export default function App() {
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
             
-            // Reset manual clear flag after a successful save, as we now have valid latest state
+            // Reset manual clear flag after a successful save
             if (isManuallyCleared.current) isManuallyCleared.current = false;
 
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
             setIsSaving(false);
-        }, 800); // 800ms debounce
+        }, 800); 
 
         return () => clearTimeout(handler);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
@@ -391,7 +389,6 @@ export default function App() {
     // --- DATA SAFETY: BEFORE UNLOAD ---
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            // Synchronously save critical data before close to prevent data loss
             if (!isRestoring.current) {
                 const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
                 localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
@@ -401,78 +398,84 @@ export default function App() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText]);
 
-    // --- NEW SESSION LOGIC ---
+    // --- NEW ARCHITECTURE: HANDLE NEW SESSION (TIME MACHINE TRIGGER) ---
     const handleNewSession = (e?: any) => { 
         if(e) e.stopPropagation(); 
-        if(!confirm("Start New Session? This will DELETE all current Audit Data.")) return; 
-        
-        // 1. BACKUP DATA before destroying it (Safety Net)
-        const currentData = localStorage.getItem("iso_session_data");
-        if (currentData) {
-            localStorage.setItem("iso_session_backup", currentData);
-        }
-
-        // 2. EXPLICIT AUTHORIZATION to overwrite disk with empty data
-        isManuallyCleared.current = true;
-
-        // 3. Force Clear Local Storage immediately
-        localStorage.removeItem("iso_session_data");
-
-        // 4. CLEAR STATE (Full Reset)
-        setStandardKey("ISO 9001:2015"); // Reset to default standard
-        setAuditInfo(DEFAULT_AUDIT_INFO); 
-        setEvidence(""); 
-        setSelectedClauses([]); 
-        setUploadedFiles([]); 
-        setAnalysisResult(null); 
-        setSelectedFindings({}); 
-        setFinalReportText(null); 
-        setLastSavedTime(null); 
-        
-        setSessionKey(Date.now());
-        setLayoutMode('evidence'); 
-
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
-        
-        setToastMsg("New Session Started. (Use Recall to Undo)");
-    };
-    
-    // --- RECALL LOGIC (Architected for Reliability) ---
-    const handleRecallSession = () => {
-        let savedDataStr = localStorage.getItem("iso_session_data");
-        let isBackup = false;
-
-        if (!savedDataStr) {
-            savedDataStr = localStorage.getItem("iso_session_backup");
-            isBackup = true;
-        }
-
-        if (!savedDataStr) { setToastMsg("No auto-saved or backup data found."); return; }
-        
-        const confirmMsg = isBackup 
-            ? "No active session. Restore the PREVIOUSLY CLEARED session? (Undo New)"
-            : "Reload auto-saved data? Current unsaved changes might be lost.";
-
-        if (hasEvidence && !confirm(confirmMsg)) return;
-        if (isBackup && !hasEvidence && !confirm(confirmMsg)) return;
+        if(!confirm("Start New Session? Current data will be moved to 'Backup Vault'.")) return; 
         
         try {
-            // STEP 1: LOCK DOWN AUTO-SAVE
-            isRestoring.current = true;
-
-            const data = JSON.parse(savedDataStr);
+            // 1. CREATE SNAPSHOT (Time Machine)
+            // Save current state to history stack before wiping
+            const currentData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+            const hasData = evidence.trim().length > 0 || selectedClauses.length > 0;
             
-            // STEP 2: HARD WRITE TO DISK FIRST (Source of Truth)
-            // This ensures disk is correct even if React takes time to render
-            localStorage.setItem("iso_session_data", savedDataStr);
+            if (hasData) {
+                const snapshot: SessionSnapshot = {
+                    id: `backup_${Date.now()}`,
+                    timestamp: Date.now(),
+                    label: "Backup (Pre-Reset)",
+                    triggerType: "MANUAL_BACKUP",
+                    data: currentData
+                };
 
-            // STEP 3: HYDRATE STATE
+                const historyRaw = localStorage.getItem("iso_session_history");
+                const history = historyRaw ? JSON.parse(historyRaw) : [];
+                // Add new snapshot to top, limit to 5
+                const newHistory = [snapshot, ...history].slice(0, 5);
+                localStorage.setItem("iso_session_history", JSON.stringify(newHistory));
+            }
+
+            // 2. EXPLICIT AUTHORIZATION to overwrite disk with empty data
+            isManuallyCleared.current = true;
+
+            // 3. Force Clear Local Storage immediately
+            localStorage.removeItem("iso_session_data");
+
+            // 4. CLEAR STATE (Full Reset)
+            setStandardKey("ISO 9001:2015");
+            setAuditInfo(DEFAULT_AUDIT_INFO); 
+            setEvidence(""); 
+            setSelectedClauses([]); 
+            setUploadedFiles([]); 
+            setAnalysisResult(null); 
+            setSelectedFindings({}); 
+            setFinalReportText(null); 
+            setLastSavedTime(null); 
+            
+            setSessionKey(Date.now());
+            setLayoutMode('evidence'); 
+
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
+            
+            setToastMsg("New Session Started. (Previous session archived in Recall)");
+
+        } catch (error) {
+            console.error("New Session Error", error);
+            setToastMsg("Error creating backup. Session reset anyway.");
+        }
+    };
+    
+    // --- NEW ARCHITECTURE: ATOMIC RESTORE FROM SNAPSHOT ---
+    const handleRestoreSnapshot = (snapshot: SessionSnapshot) => {
+        try {
+            // 1. LOCK DOWN AUTO-SAVE
+            isRestoring.current = true;
+            setShowRecallModal(false);
+
+            const data = snapshot.data;
+            
+            // 2. HARD WRITE TO DISK (Atomic Persistence)
+            // Crucial: We write the restored data to disk immediately so if the browser crashes
+            // during React rendering, the data is safe on next load.
+            localStorage.setItem("iso_session_data", JSON.stringify(data));
+
+            // 3. HYDRATE STATE (Update UI)
             if (data.standardKey) setStandardKey(data.standardKey);
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
-            setUploadedFiles([]); 
+            setUploadedFiles([]); // Files are not persisted in snapshots to save space
             if (data.analysisResult) setAnalysisResult(data.analysisResult);
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
@@ -481,19 +484,17 @@ export default function App() {
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
 
-            setToastMsg(isBackup ? "Undid 'New Session'. Data Restored." : "Recalled auto-saved session.");
+            setToastMsg(`Restored session from: ${new Date(snapshot.timestamp).toLocaleTimeString()}`);
 
-            // STEP 4: RELEASE LOCK AFTER SAFETY MARGIN
-            // We use a generous timeout to ensure all React effect flushes are complete
+            // 4. RELEASE LOCK AFTER SAFETY MARGIN
             setTimeout(() => {
                 isRestoring.current = false;
-                // Important: Reset manual clear flag as we now have populated data
                 isManuallyCleared.current = false; 
             }, 1200);
 
         } catch (e) {
-            console.error("Recall failed", e);
-            setToastMsg("Failed to recall data.");
+            console.error("Restore failed", e);
+            setToastMsg("Failed to restore session snapshot.");
             isRestoring.current = false;
         }
     };
@@ -573,11 +574,9 @@ export default function App() {
         setReferenceClauseState({ isOpen: false, clause: null, isLoading: false, fullText: { en: "", vi: "" } });
     };
 
-    // --- APPLY FONT SCALE EFFECT (Restored) ---
     useEffect(() => {
         document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString());
         localStorage.setItem('iso_font_scale', fontSizeScale.toString());
-        // Dispatch resize to re-calculate UI elements if necessary (like tabs)
         window.dispatchEvent(new Event('resize'));
     }, [fontSizeScale]);
 
@@ -593,7 +592,6 @@ export default function App() {
         if (window.innerWidth < 768) setIsSidebarOpen(false);
     }, []);
 
-    // --- FIX: Robust Dark Mode handling ---
     useEffect(() => {
         const root = document.documentElement;
         if (isDarkMode) { root.classList.add('dark'); document.body.classList.add('dark'); }
@@ -646,13 +644,10 @@ export default function App() {
         if (field === 'status' && analysisResult) { const nextIndex = index + 1; if (nextIndex < analysisResult.length && findingRefs.current[nextIndex]) setTimeout(() => findingRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }
     };
 
-    // --- REPLACED: Sequential Analysis with Parallel Batch Processing (Turbo Mode) ---
     const handleAnalyze = async () => {
         if (!isReadyForAnalysis) return;
         setIsAnalyzeLoading(true); setAiError(null); setAnalysisResult([]); setLayoutMode('findings'); 
         
-        // TURBO MODE: Calculate concurrency based on available health keys
-        // Logic: 2 threads base, plus 1 thread for every valid key, capped at 6 to be safe for browsers.
         const healthyKeysCount = apiKeys.filter(k => k.status === 'valid').length;
         const CONCURRENCY_LIMIT = Math.max(2, Math.min(6, healthyKeysCount + 2));
         
@@ -668,7 +663,6 @@ export default function App() {
             const flatAllClauses = flatten(allClausesInStandard);
             const scopeClauses = selectedClauses.map(id => flatAllClauses.find(c => c.id === id)).filter((c): c is Clause => !!c);
             
-            // --- BATCH PROCESSING LOOP ---
             for (let i = 0; i < scopeClauses.length; i += CONCURRENCY_LIMIT) {
                 const batch = scopeClauses.slice(i, i + CONCURRENCY_LIMIT);
                 const batchCodes = batch.map(c => c.code).join(", ");
@@ -676,14 +670,13 @@ export default function App() {
                 setCurrentAnalyzingClause(batchCodes); 
                 setLoadingMessage(`Turbo Analyzing Batch: [${batchCodes}]...`);
 
-                // Fire requests in parallel
                 const promises = batch.map(async (clause) => {
                     const prompt = `Act as an ISO Lead Auditor. Evaluate compliance for this SINGLE clause: [${clause.code}] ${clause.title}: ${clause.description}\nCONTEXT: ${auditInfo.type} for ${auditInfo.company}.\nRAW EVIDENCE: """ ${evidence} """\nReturn a JSON Array with exactly ONE object containing: clauseId (must be "${clause.id}"), status (COMPLIANT, NC_MAJOR, NC_MINOR, OFI), reason, suggestion, evidence, conclusion_report (concise).`;
                     try {
                         const resultStr = await executeWithSmartFailover(async (key, model) => generateAnalysis(prompt, `Output JSON array only.`, key, model));
                         return { clause, resultStr, error: null };
                     } catch (innerError: any) {
-                        if (innerError.message.includes("ALL_")) throw innerError; // Stop global if all keys dead
+                        if (innerError.message.includes("ALL_")) throw innerError; 
                         console.error(`Failed to analyze clause ${clause.code}`, innerError);
                         return { clause, resultStr: null, error: innerError };
                     }
@@ -691,19 +684,16 @@ export default function App() {
 
                 const results = await Promise.all(promises);
 
-                // Process results
                 setAnalysisResult(prev => {
                     const prevSafe = prev || [];
                     const newItems = [...prevSafe];
                     
                     results.forEach(res => {
-                        if (res.error || !res.resultStr) return; // Skip failed
+                        if (res.error || !res.resultStr) return; 
                         const chunkResult = cleanAndParseJSON(res.resultStr);
                         if (chunkResult && Array.isArray(chunkResult) && chunkResult.length > 0) {
                             const resultItem = chunkResult[0];
                             resultItem.clauseId = res.clause.id;
-                            
-                            // Avoid duplicates if re-running
                             if (!newItems.find(r => r.clauseId === resultItem.clauseId)) {
                                 newItems.push(resultItem);
                             }
@@ -712,7 +702,6 @@ export default function App() {
                     return newItems;
                 });
                 
-                // Update selection map in separate state
                 setSelectedFindings(prev => {
                     const next = { ...prev };
                     results.forEach(res => {
@@ -721,7 +710,6 @@ export default function App() {
                     return next;
                 });
 
-                // Small breather for the event loop
                 await new Promise(r => setTimeout(r, 100));
             }
         } catch (e: any) { 
@@ -908,10 +896,11 @@ export default function App() {
                             </div>
                         </div>
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
+                            {/* RECALL BUTTON: NOW OPENS TIME MACHINE MODAL */}
                             <button 
-                                onClick={handleRecallSession} 
+                                onClick={() => setShowRecallModal(true)} 
                                 className={`h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 border ${lastSavedTime ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`} 
-                                title={lastSavedTime ? `Last Auto-Saved: ${lastSavedTime}. Click to Recall.` : "Recall Auto-Saved Session"}
+                                title={lastSavedTime ? `Last Auto-Saved: ${lastSavedTime}. Click to Open Time Machine.` : "Open Session History"}
                             >
                                 <div className="relative">
                                     <Icon name="History" size={18}/>
@@ -924,10 +913,11 @@ export default function App() {
                                 </div>
                                 <span className="hidden xl:inline text-xs font-bold">Recall</span>
                             </button>
+
                             <button 
                                 onClick={(e) => handleNewSession(e)} 
                                 className="h-10 w-10 md:w-auto md:px-4 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:text-amber-700 dark:hover:text-amber-400 duration-300 active:scale-95" 
-                                title="Start New Session (Clears All Data)"
+                                title="Start New Session (Archives current data)"
                             >
                                 <Icon name="Session4_FilePlus" size={18}/>
                                 <span className="hidden md:inline text-xs font-bold">New</span>
@@ -1238,6 +1228,12 @@ export default function App() {
                 fullText={referenceClauseState.fullText}
                 isLoading={referenceClauseState.isLoading}
                 onInsert={handleInsertReferenceText}
+            />
+
+            <RecallModal
+                isOpen={showRecallModal}
+                onClose={() => setShowRecallModal(false)}
+                onRestore={handleRestoreSnapshot}
             />
 
             <Modal isOpen={showSettingsModal} title="Settings & Neural Network" onClose={() => setShowSettingsModal(false)}>

@@ -59,3 +59,20 @@ export interface ApiKeyProfile {
     latency: number; // in ms
     lastChecked: string;
 }
+
+// --- NEW ARCHITECTURE: SESSION SNAPSHOT ---
+export interface SessionSnapshot {
+    id: string;
+    timestamp: number;
+    label: string;
+    triggerType: 'AUTO_SAVE' | 'MANUAL_BACKUP'; // How this snapshot was created
+    data: {
+        standardKey: string;
+        auditInfo: AuditInfo;
+        selectedClauses: string[];
+        evidence: string;
+        analysisResult: AnalysisResult[] | null;
+        selectedFindings: Record<string, boolean>;
+        finalReportText: string | null;
+    };
+}
