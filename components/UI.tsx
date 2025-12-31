@@ -150,7 +150,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
         <select 
             value={value} 
             onChange={onChange}
-            className={`w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}
+            className={`w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}
         >
             <option value="" disabled>{defaultText}</option>
             {options.map((opt: any) => (
@@ -173,7 +173,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
         />
     </div>
 );
@@ -182,7 +182,7 @@ export const Modal = ({ isOpen, title, onClose, children }: any) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-300 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 transform transition-all animate-zoom-in-spring duration-300 overflow-hidden dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_10px_15px_-3px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900">
                     <h3 className="text-lg font-black text-slate-800 dark:text-white tracking-tight">{title}</h3>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-all duration-300 text-slate-400 hover:rotate-90">
@@ -218,7 +218,7 @@ export const CommandPaletteModal = ({ isOpen, onClose, actions, onSelectAction }
     return (
         <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[10vh] px-4 md:px-0 animate-in fade-in duration-200" onClick={onClose}>
             <div 
-                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring duration-300"
+                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col animate-zoom-in-spring duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_10px_15px_-3px_rgba(0,0,0,0.5)]"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex items-center px-3 py-3 md:px-4 border-b border-gray-100 dark:border-slate-800">

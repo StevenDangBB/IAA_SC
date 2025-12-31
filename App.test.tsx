@@ -68,7 +68,7 @@ describe('App Session Management', () => {
         expect(localStorageMock.getItem("iso_session_data")).toContain("Test Corp");
     });
 
-    it('should clear all data when "New Session" is clicked', async () => {
+    it('should clear all data when "New Session" is clicked, but backup first', async () => {
         // 1. Setup dirty state in localStorage
         const dirtyData = {
             standardKey: "ISO 9001:2015",
@@ -83,33 +83,34 @@ describe('App Session Management', () => {
         const newButton = screen.getByTitle("Start New Session (Clears All Data)");
         fireEvent.click(newButton);
 
-        // 3. Verify localStorage is cleared immediately
+        // 3. Verify localStorage is cleared, but backup exists
         expect(localStorageMock.getItem("iso_session_data")).toBeNull();
+        expect(localStorageMock.getItem("iso_session_backup")).toContain("Old Company");
     });
 
-    it('should recall saved data correctly without merging dirty state', async () => {
-        // 1. Save data to storage
-        const savedData = {
+    it('should allow UNDOing a "New Session" via Recall (Backup Restore)', async () => {
+        // 1. Setup backup data (simulating post-New Session state)
+        const backupData = {
             standardKey: "ISO 9001:2015",
-            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Saved Company" },
-            evidence: "Saved Evidence"
+            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Restored Company" },
+            evidence: "Restored Evidence"
         };
-        localStorageMock.setItem("iso_session_data", JSON.stringify(savedData));
+        localStorageMock.setItem("iso_session_backup", JSON.stringify(backupData));
+        // Ensure main session is empty
+        localStorageMock.removeItem("iso_session_data");
 
-        const { container } = render(<App />);
+        render(<App />);
 
-        // 2. Simulate User typing something else ("Dirty State")
-        // Since we can't easily simulate complex typing flow in this basic test, 
-        // we rely on the button click logic which we validated in code review.
-        // But we can verify the button click restores "Saved Company".
-        
+        // 2. Click Recall
         const recallButton = screen.getByTitle("Recall Auto-Saved Session");
         fireEvent.click(recallButton);
 
-        // 3. We can't easily check internal React state without a wrapper, 
-        // but we can check if toast appeared indicating success
+        // 3. Check for Toast message about undo
         await waitFor(() => {
-            expect(screen.getByText(/Recalled auto-saved session/i)).toBeInTheDocument();
+            expect(screen.getByText(/Undid 'New Session'/i)).toBeInTheDocument();
         });
+        
+        // 4. Verify data is put back into active session storage
+        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Company");
     });
 });

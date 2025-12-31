@@ -128,9 +128,9 @@ export default function App() {
     const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0, color: '' });
     
     const tabsList = [
-        { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-900/10' }, 
-        { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-900/10' }, 
-        { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-900/10' }
+        { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-950/30' }, 
+        { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-950/30' }, 
+        { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30' }
     ];
 
     const currentTabConfig = tabsList.find(t => t.id === layoutMode) || tabsList[0];
@@ -373,10 +373,16 @@ export default function App() {
         if(e) e.stopPropagation(); 
         if(!confirm("Start New Session? This will DELETE all current Audit Data.")) return; 
         
-        // 1. Force Clear Local Storage immediately
+        // 1. BACKUP DATA before destroying it (Safety Net)
+        const currentData = localStorage.getItem("iso_session_data");
+        if (currentData) {
+            localStorage.setItem("iso_session_backup", currentData);
+        }
+
+        // 2. Force Clear Local Storage immediately
         localStorage.removeItem("iso_session_data");
 
-        // 2. CLEAR STATE (Full Reset)
+        // 3. CLEAR STATE (Full Reset)
         setStandardKey("ISO 9001:2015"); // Reset to default standard
         setAuditInfo(DEFAULT_AUDIT_INFO); 
         setEvidence(""); 
@@ -393,26 +399,38 @@ export default function App() {
         // Switch to Evidence tab
         setLayoutMode('evidence'); 
 
-        // 3. DOM Cleanup (Double Tap)
+        // 4. DOM Cleanup (Double Tap)
         if (fileInputRef.current) fileInputRef.current.value = "";
         if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
         
-        setToastMsg("New Session Started. Data Cleared.");
+        setToastMsg("New Session Started. (Use Recall to Undo)");
     };
     
-    // --- RESTRUCTURED: RECALL LOGIC ---
+    // --- RESTRUCTURED: RECALL LOGIC (With Undo) ---
     const handleRecallSession = () => {
-        const savedData = localStorage.getItem("iso_session_data");
-        if (!savedData) { setToastMsg("No auto-saved data found."); return; }
+        let savedData = localStorage.getItem("iso_session_data");
+        let isBackup = false;
+
+        // FALLBACK: If active data is missing (e.g., after accidental New Session), try backup
+        if (!savedData) {
+            savedData = localStorage.getItem("iso_session_backup");
+            isBackup = true;
+        }
+
+        if (!savedData) { setToastMsg("No auto-saved or backup data found."); return; }
         
-        if (hasEvidence && !confirm("Reload auto-saved data? Current unsaved changes might be lost.")) return;
+        const confirmMsg = isBackup 
+            ? "No active session. Restore the PREVIOUSLY CLEARED session? (Undo New)"
+            : "Reload auto-saved data? Current unsaved changes might be lost.";
+
+        if (hasEvidence && !confirm(confirmMsg)) return;
+        if (isBackup && !hasEvidence && !confirm(confirmMsg)) return;
         
         try {
             const data = JSON.parse(savedData);
             if (data.standardKey) setStandardKey(data.standardKey);
             
             // FIX: Completely overwrite auditInfo with defaults + saved data. 
-            // Do NOT merge with current state (prev) to avoid retaining dirty data.
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
@@ -423,6 +441,11 @@ export default function App() {
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             
+            // If we restored from backup, reinstate it as the active session immediately
+            if (isBackup) {
+                localStorage.setItem("iso_session_data", savedData);
+            }
+
             // Force re-render of child components
             setSessionKey(Date.now());
 
@@ -430,7 +453,7 @@ export default function App() {
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
 
-            setToastMsg(`Recalled auto-saved session.`);
+            setToastMsg(isBackup ? "Undid 'New Session'. Data Restored." : "Recalled auto-saved session.");
         } catch (e) {
             console.error("Recall failed", e);
             setToastMsg("Failed to recall data.");
@@ -836,10 +859,10 @@ export default function App() {
                     
                     <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center gap-3">
                         <div className="flex-1 min-w-0">
-                            <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-full">
+                            <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-950 p-1 rounded-xl w-full dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                                 <div className={`absolute top-1 bottom-1 shadow-sm rounded-lg transition-all duration-500 ease-fluid-spring z-0 ${tabStyle.color}`} style={{ left: tabStyle.left, width: tabStyle.width, opacity: tabStyle.opacity }} />
                                 {tabsList.map((tab, idx) => (
-                                    <button key={tab.id} ref={el => { tabsRef.current[idx] = el; }} onClick={() => setLayoutMode(tab.id as LayoutMode)} className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                                    <button key={tab.id} ref={el => { tabsRef.current[idx] = el; }} onClick={() => setLayoutMode(tab.id as LayoutMode)} className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>
                                         <Icon name={tab.icon} size={16}/> 
                                         <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
                                     </button>
@@ -863,7 +886,11 @@ export default function App() {
                                 </div>
                                 <span className="hidden xl:inline text-xs font-bold">Recall</span>
                             </button>
-                            <button onClick={(e) => handleNewSession(e)} className="h-10 w-10 md:w-auto md:px-3 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm hover:text-indigo-600 dark:hover:text-indigo-400 duration-300 hover:scale-105 active:scale-95" title="Start New Session (Clears All Data)">
+                            <button 
+                                onClick={(e) => handleNewSession(e)} 
+                                className="h-10 w-10 md:w-auto md:px-4 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:border-amber-300 hover:text-amber-700 dark:hover:text-amber-400 duration-300 hover:scale-105 active:scale-95" 
+                                title="Start New Session (Clears All Data)"
+                            >
                                 <Icon name="Session4_FilePlus" size={18}/>
                                 <span className="hidden md:inline text-xs font-bold">New</span>
                             </button>
@@ -876,7 +903,7 @@ export default function App() {
                             <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
                                 <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0">
                                     <div 
-                                        className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-col relative group transition-all duration-300 ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-slate-800'}`}
+                                        className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-col relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
                                         onDragOver={handleDragOver}
                                         onDragLeave={handleDragLeave}
                                         onDrop={handleDrop}
@@ -892,10 +919,10 @@ export default function App() {
                                         <textarea ref={evidenceTextareaRef} className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap" placeholder="Paste audit evidence here or drag files (Images, PDF, TXT) directly..." value={evidence} onChange={(e) => setEvidence(e.target.value)} onPaste={handlePaste} />
                                     </div>
                                     {uploadedFiles.length > 0 && (
-                                        <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl animate-in slide-in-from-bottom-5 duration-300">
+                                        <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-2xl animate-in slide-in-from-bottom-5 duration-300 dark:shadow-inner">
                                             <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
                                                 {uploadedFiles.map((fileEntry) => (
-                                                    <div key={fileEntry.id} className={`relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border overflow-hidden transition-all duration-300 ${fileEntry.status === 'error' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-100 dark:border-slate-700'}`}>
+                                                    <div key={fileEntry.id} className={`relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border overflow-hidden transition-all duration-300 dark:shadow-lg ${fileEntry.status === 'error' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-100 dark:border-white/5'}`}>
                                                         {fileEntry.file.type.startsWith('image/') ? (
                                                             <img src={URL.createObjectURL(fileEntry.file)} alt="preview" className={`w-full h-full object-cover transition-opacity ${fileEntry.status === 'processing' ? 'opacity-30' : 'opacity-80 group-hover:opacity-100'}`} />
                                                         ) : (
@@ -995,7 +1022,7 @@ export default function App() {
                                                 <div 
                                                     key={idx} 
                                                     ref={el => { findingRefs.current[idx] = el; }}
-                                                    className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 border transition-all duration-300 hover:shadow-lg ${selectedFindings[res.clauseId] ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-gray-100 dark:border-slate-800 opacity-70 hover:opacity-100'}`}
+                                                    className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 border transition-all duration-300 hover:shadow-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${selectedFindings[res.clauseId] ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-gray-100 dark:border-transparent opacity-70 hover:opacity-100'}`}
                                                     onClick={() => setSelectedFindings(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
                                                 >
                                                     <div className="absolute top-4 right-4 z-10">
@@ -1013,7 +1040,7 @@ export default function App() {
                                                                 <span className="text-xs font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">{res.clauseId}</span>
                                                             </div>
                                                             <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-2">{res.reason}</h4>
-                                                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed bg-gray-50 dark:bg-slate-800/50 p-3 rounded-lg border border-gray-100 dark:border-slate-800/50">
+                                                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed bg-gray-50 dark:bg-slate-950/50 p-3 rounded-lg border border-gray-100 dark:border-white/5 shadow-inner">
                                                                 <strong className="block mb-1 text-indigo-600 dark:text-indigo-400">Evidence:</strong>
                                                                 {res.evidence}
                                                             </p>
@@ -1053,7 +1080,7 @@ export default function App() {
                                 <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                                     
                                     {/* PILL 1: View Mode Toggle */}
-                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0">
+                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
                                         <button 
                                             onClick={() => setFindingsViewMode('list')} 
                                             className={`flex-1 md:flex-none md:w-auto h-full px-3 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${findingsViewMode === 'list' ? 'bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`} 
@@ -1073,7 +1100,7 @@ export default function App() {
                                     </div>
 
                                     {/* PILL 2: Selection Toggle */}
-                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0">
+                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
                                         <button 
                                             onClick={() => { 
                                                 const allIds = analysisResult?.reduce((acc: any, r) => ({...acc, [r.clauseId]: true}), {});
@@ -1097,7 +1124,7 @@ export default function App() {
                                     </div>
 
                                     {/* Export Button */}
-                                    <button onClick={() => startSmartExport(analysisResult?.map(r => `[${r.clauseId}] ${r.status}: ${r.reason}\n${r.evidence}`).join('\n\n') || "", 'notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap">
+                                    <button onClick={() => startSmartExport(analysisResult?.map(r => `[${r.clauseId}] ${r.status}: ${r.reason}\n${r.evidence}`).join('\n\n') || "", 'notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
                                         <Icon name="Download"/>
                                         <span className="hidden md:inline">Export</span>
                                         <div className="lang-pill-container">
@@ -1112,7 +1139,7 @@ export default function App() {
                         {/* Report View */}
                         {layoutMode === 'report' && (
                             <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up">
-                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col">
+                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-100 dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)]">
                                     <div className="flex-1 relative">
                                         <textarea 
                                             className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-mono" 
@@ -1130,7 +1157,7 @@ export default function App() {
                                     </div>
                                 </div>
                                 <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                                    <label className="flex-none w-[52px] md:w-auto px-0 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 active:scale-95 shadow-sm group whitespace-nowrap" title={templateFileName || "Upload Template"}>
+                                    <label className="flex-none w-[52px] md:w-auto px-0 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 active:scale-95 shadow-sm group whitespace-nowrap dark:shadow-md" title={templateFileName || "Upload Template"}>
                                         <Icon name="UploadCloud" size={20} className={templateFileName ? "text-emerald-500" : ""}/>
                                         <span className="hidden lg:inline">{templateFileName ? "Template Loaded" : "Upload Template"}</span>
                                         <input type="file" accept=".txt,.docx" className="hidden" onChange={handleTemplateUpload}/>
@@ -1141,7 +1168,7 @@ export default function App() {
                                         <span className="inline text-xs uppercase tracking-wider">Synthesize</span>
                                     </button>
 
-                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap">
+                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
                                         <Icon name="Download"/>
                                         <span className="hidden md:inline">Download</span>
                                         <div className="lang-pill-container">
@@ -1177,13 +1204,13 @@ export default function App() {
 
             <Modal isOpen={showSettingsModal} title="Settings & Neural Network" onClose={() => setShowSettingsModal(false)}>
                 <div className="space-y-6">
-                    <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-2xl border border-gray-100 dark:border-slate-700">
+                    <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-2xl border border-gray-100 dark:border-slate-700 dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">API Key Pool Management</h4>
                         <div className="flex gap-2 mb-4">
                             <input 
                                 type="password" 
                                 placeholder="Enter Google Gemini API Key..." 
-                                className="flex-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-indigo-500"
+                                className="flex-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-indigo-500 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
                                 value={newKeyInput}
                                 onChange={(e) => setNewKeyInput(e.target.value)}
                             />
@@ -1214,7 +1241,7 @@ export default function App() {
                             ))}
                         </div>
                     </div>
-                    <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 dark:shadow-md">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl"><Icon name="Session10_Pulse" size={18}/></div>
                             <div>

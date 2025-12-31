@@ -32,10 +32,8 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const [searchQueryRaw, setSearchQueryRaw] = useState("");
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
     const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
-    // Removed local showIntegrityModal state in favor of props
     
     // UI State: Collapse Audit Info to save space
-    // Changed to default FALSE to keep it lean on startup
     const [isInfoExpanded, setIsInfoExpanded] = useState(false);
     
     // UI State: Scroll-aware Header Visibility
@@ -76,7 +74,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
         const resize = (e: MouseEvent) => {
             if (isResizing && sidebarRef.current) {
-                // UPDATE: Increased minimum width to 390px (iPhone 13 ratio)
                 const MIN_SIDEBAR_WIDTH = 390; 
                 const MIN_MAIN_CONTENT_WIDTH = 375; 
                 const MAX_SIDEBAR_LIMIT = 800;
@@ -98,7 +95,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         };
     }, [isResizing, setWidth]);
 
-    // --- AGGRESSIVE SCROLL LOGIC ---
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (isResizing) return;
 
@@ -114,12 +110,10 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         }
     };
 
-    // Auto-expand Audit Details if standard changes
     useEffect(() => {
         if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
     }, [standardKey]);
 
-    // --- HEALTH CHECK LOGIC ---
     const runHealthCheck = () => {
         if (!standardKey || !standards[standardKey]) return { isHealthy: false, score: 0, integrity: [], completeness: [] };
         const data = standards[standardKey];
@@ -136,7 +130,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         };
         const flatList = flatten(allClauses);
 
-        // Integrity
         const missingDesc = flatList.filter(c => !c.description || c.description.trim().length < 2).length;
         integrity.push({ 
             label: 'Content Quality', 
@@ -152,7 +145,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             detail: duplicateCount === 0 ? 'Clean' : `${duplicateCount} Duplicates` 
         });
 
-        // Completeness
         if (standardKey.includes("9001")) {
             const crucial = ['8.4', '8.6', '8.7', '7.1.4'];
             crucial.forEach(code => {
@@ -354,7 +346,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
         return (
             <div key={c.id} className={`flex flex-col transition-all duration-300 ${level > 0 ? 'ml-4 border-l-2 dark:border-slate-800' : ''}`}>
-                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all duration-200 ease-soft cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/20 translate-x-1' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50 hover:translate-x-1'}`}>
+                <div className={`group flex items-start gap-3 p-2 rounded-xl transition-all duration-200 ease-soft cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-900/30 translate-x-1' : isRepaired ? 'bg-emerald-50/80 dark:bg-emerald-900/20 ring-1 ring-emerald-500/30' : 'hover:bg-gray-100/50 dark:hover:bg-slate-800/50 hover:translate-x-1 hover:shadow-sm'}`}>
                     <button onClick={(e) => { e.stopPropagation(); toggleClauseSelection(c); }} className={`mt-1 flex-shrink-0 transition-colors duration-200 ${selection.some ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-300 dark:text-slate-600 hover:text-gray-400'}`}>
                         {selection.all ? <Icon name="CheckSquare" size={16}/> : selection.some ? <div className="w-4 h-4 bg-indigo-500 rounded flex items-center justify-center"><div className="w-2.5 h-0.5 bg-white"></div></div> : <Icon name="Square" size={16}/>}
                     </button>
@@ -421,7 +413,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             if (filteredClauses.length === 0) return null;
 
             return (
-                <div key={g.id} className="mb-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
+                <div key={g.id} className="mb-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-transparent dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.05)] shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
                     <div className="flex items-center justify-between p-3.5 bg-gray-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" onClick={() => toggleGroupExpand(g.id)}>
                         <div className="flex items-center gap-3">
                             <button 
@@ -463,7 +455,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     return (
         <div 
             ref={sidebarRef}
-            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-soft'} h-full`} 
+            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-soft'} h-full dark:shadow-[5px_0_15px_-3px_rgba(0,0,0,0.5)]`} 
             style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}
         >
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
@@ -488,7 +480,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                 </div>
 
                 {/* Audit Context - Collapsible Accordion to save visual space */}
-                <div className={`border rounded-xl overflow-hidden transition-all duration-300 ${
+                <div className={`border rounded-xl overflow-hidden transition-all duration-300 dark:shadow-md ${
                     !isInfoExpanded 
                     ? 'border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900' 
                     : 'border-indigo-100 dark:border-slate-700 shadow-sm'
@@ -528,7 +520,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[390px]">
                 <div className={`p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 sticky top-0 transition-all duration-500 ${!isHeaderVisible ? 'shadow-md border-indigo-100 dark:border-indigo-900/50' : ''}`}>
                     <div className="flex items-center gap-2">
-                        <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-800 rounded-xl px-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20">
+                        <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-950 rounded-xl px-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                             <span className="text-blue-700 dark:text-blue-400 font-bold pl-1"><Icon name="Search" size={14}/></span>
                             <input className="w-full bg-transparent py-2 px-1 text-xs font-medium outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
                             
@@ -554,12 +546,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                         )}
                     </div>
                 </div>
-                {/* 
-                   MAJOR FIX: "min-h-[150vh]" forces a scroll runway.
-                   This ensures there is ALWAYS enough content to scroll down and hide the header,
-                   even if the actual list of clauses is very short.
-                   The whitespace at the bottom acts as a buffer.
-                */}
+                
                 <div 
                     ref={scrollContainerRef}
                     className="flex-1 overflow-y-auto custom-scrollbar p-3 scroll-smooth"
@@ -573,10 +560,8 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
             </div>
 
             <Modal isOpen={showIntegrityModal} title="Standard Health Index" onClose={() => setShowIntegrityModal(false)}>
-                {/* Modal content preserved... */}
                  <div className="space-y-6">
-                    {/* ... (Existing modal content) ... */}
-                    <div className="flex items-center gap-5 p-5 rounded-3xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-inner">
+                    <div className="flex items-center gap-5 p-5 rounded-3xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-inner dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)]">
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-black shadow-xl ring-4 ring-white dark:ring-slate-700 ${health.score > 90 ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
                             {health.score}%
                         </div>
@@ -585,11 +570,11 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">{health.isHealthy ? 'Excellent! Data is accurate, clean, and complete for professional use.' : 'Standard data is incomplete or contains errors. Please review.'}</p>
                         </div>
                     </div>
-                    {/* ... (Rest of integrity modal) ... */}
+                    {/* ... (Existing check items) ... */}
                      <div className="space-y-3">
                         <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Integrity Checklist</h5>
                         {health.integrity.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                            <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-md">
                                 <div className="flex items-center gap-4">
                                     <div className={`p-1.5 rounded-full shadow-sm ${item.status === 'pass' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-red-500 bg-red-50 dark:bg-red-900/20'}`}>
                                         <Icon name={item.status === 'pass' ? "CheckCircle2" : "AlertCircle"} size={18}/>
@@ -602,7 +587,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                             </div>
                         ))}
                         {health.completeness.map((item, idx) => (
-                            <div key={`comp-${idx}`} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                            <div key={`comp-${idx}`} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-md">
                                 <div className="flex items-center gap-4">
                                     <div className={`p-1.5 rounded-full shadow-sm ${item.status === 'pass' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-red-500 bg-red-50 dark:bg-red-900/20'}`}>
                                         <Icon name={item.status === 'pass' ? "CheckCircle2" : "AlertCircle"} size={18}/>
