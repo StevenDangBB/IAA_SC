@@ -426,31 +426,41 @@ export const AINeuralLoader = ({ message }: { message: string }) => (
 
 export const Toast = ({ message, onClose }: { message: string, onClose: () => void }) => {
     const [isExiting, setIsExiting] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
 
     const handleClose = () => {
         setIsExiting(true);
-        setTimeout(() => {
-            onClose();
-        }, 300); // Match animation duration
+        setTimeout(() => onClose(), 400); 
     };
     
     useEffect(() => {
-        const timer = setTimeout(handleClose, 3700);
+        setIsMounted(true);
+        const timer = setTimeout(handleClose, 4000);
         return () => clearTimeout(timer);
     }, [onClose]);
 
+    // Responsive Positioning:
+    // Mobile: Top Center (safe from keyboard/footer)
+    // Desktop: Bottom Right (standard toast area)
+    const positionClasses = "top-20 left-1/2 -translate-x-1/2 md:top-auto md:left-auto md:bottom-10 md:right-10 md:translate-x-0";
+    
+    // Animation States
+    const activeClasses = "opacity-100 scale-100 translate-y-0";
+    // Mobile Exit: Slide up | Desktop Exit: Slide down/right
+    const exitClasses = "opacity-0 scale-95 md:translate-x-4 -translate-y-4 md:translate-y-0";
+    const enterClasses = "opacity-0 scale-95 translate-y-4 md:translate-y-0 md:translate-x-4";
+
     return (
-        // FIX: Increased z-index from 300 to 9999 so it appears over Modals
-        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[9999] transition-all duration-300 ease-soft ${isExiting ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
-            <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700 dark:border-slate-200">
-                <div className="p-1 bg-green-500 rounded-full text-white">
+        <div className={`fixed z-[9999] w-[90vw] max-w-sm md:w-auto md:max-w-md ${positionClasses} transition-all duration-500 ease-spring ${!isMounted ? enterClasses : isExiting ? exitClasses : activeClasses}`}>
+            <div className="bg-slate-900/95 dark:bg-white/95 backdrop-blur-md text-white dark:text-slate-900 px-4 py-3 md:px-5 md:py-4 rounded-2xl shadow-2xl flex items-start gap-3 md:gap-4 border border-slate-700/50 dark:border-slate-200/50">
+                <div className="flex-shrink-0 p-1.5 bg-emerald-500 rounded-full text-white shadow-lg shadow-emerald-500/30 mt-0.5">
                     <Icon name="CheckLineart" size={14}/>
                 </div>
-                <div className="flex flex-col">
-                    <span className="text-xs font-black uppercase tracking-wider opacity-70">Notification</span>
-                    <span className="text-sm font-bold">{message}</span>
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60 leading-none mb-1">System Notification</span>
+                    <span className="text-xs md:text-sm font-bold leading-snug break-words">{message}</span>
                 </div>
-                <button onClick={handleClose} className="ml-2 text-slate-500 hover:text-white dark:hover:text-slate-900 transition-colors">
+                <button onClick={handleClose} className="flex-shrink-0 -mr-2 -mt-2 p-2 text-slate-500 hover:text-white dark:hover:text-slate-900 transition-colors rounded-full hover:bg-white/10 dark:hover:bg-black/5">
                     <Icon name="X" size={16}/>
                 </button>
             </div>
