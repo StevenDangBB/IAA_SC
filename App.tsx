@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MODEL_META, MY_FIXED_KEYS, BUILD_TIMESTAMP } from './constants';
+import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MODEL_META, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus } from './types';
 import { Icon, FontSizeController, SparkleLoader, Modal, AINeuralLoader, Toast, CommandPaletteModal, IconInput } from './components/UI';
 import Sidebar from './components/Sidebar';
@@ -37,6 +37,9 @@ interface UploadedFile {
 
 export default function App() {
     // -- STATE --
+    // sessionKey is used to force re-render components that might hold stale state (like uncontrolled inputs)
+    const [sessionKey, setSessionKey] = useState(Date.now());
+    
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(420); 
@@ -61,7 +64,7 @@ export default function App() {
 
     const [toastMsg, setToastMsg] = useState<string | null>(null);
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false); // New state for saving indicator
+    const [isSaving, setIsSaving] = useState(false); 
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
         isOpen: boolean;
@@ -85,7 +88,7 @@ export default function App() {
     
     const [customStandards, setCustomStandards] = useState<StandardsData>({});
     const [standardKey, setStandardKey] = useState<string>("ISO 9001:2015");
-    const [auditInfo, setAuditInfo] = useState<AuditInfo>({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" });
+    const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
     
@@ -319,14 +322,15 @@ export default function App() {
             if (session) {
                 const data = JSON.parse(session);
                 if (data.standardKey) setStandardKey(data.standardKey);
-                if (data.auditInfo) setAuditInfo(data.auditInfo);
+                // FIX: Ensure we don't accidentally load partial undefineds
+                if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
                 if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
                 if (data.evidence) setEvidence(data.evidence);
                 if (data.analysisResult) setAnalysisResult(data.analysisResult);
                 if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
                 if (data.finalReportText) setFinalReportText(data.finalReportText);
-                setLastSavedTime(new Date().toLocaleTimeString()); // Set initial load time
-                setToastMsg("Previous session restored automatically.");
+                setLastSavedTime(new Date().toLocaleTimeString());
+                setToastMsg("Previous session restored.");
             }
         } catch (e) { console.error("Load failed", e); }
     };
@@ -353,6 +357,17 @@ export default function App() {
         return () => clearTimeout(handler);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
 
+    // --- DATA SAFETY: BEFORE UNLOAD ---
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            // Synchronously save critical data before close to prevent data loss
+            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+            localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText]);
+
     // --- RESTRUCTURED: NEW SESSION LOGIC ---
     const handleNewSession = (e?: any) => { 
         if(e) e.stopPropagation(); 
@@ -363,7 +378,7 @@ export default function App() {
 
         // 2. CLEAR STATE (Full Reset)
         setStandardKey("ISO 9001:2015"); // Reset to default standard
-        setAuditInfo({ company: "", smo: "", department: "", interviewee: "", auditor: "", type: "" }); 
+        setAuditInfo(DEFAULT_AUDIT_INFO); 
         setEvidence(""); 
         setSelectedClauses([]); 
         setUploadedFiles([]); 
@@ -372,11 +387,15 @@ export default function App() {
         setFinalReportText(null); 
         setLastSavedTime(null); // Visual reset of the red dot
         
+        // Force re-render of child components (like Sidebar) to ensure inputs clear
+        setSessionKey(Date.now());
+
         // Switch to Evidence tab
         setLayoutMode('evidence'); 
 
         // 3. DOM Cleanup (Double Tap)
         if (fileInputRef.current) fileInputRef.current.value = "";
+        if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
         
         setToastMsg("New Session Started. Data Cleared.");
     };
@@ -392,8 +411,9 @@ export default function App() {
             const data = JSON.parse(savedData);
             if (data.standardKey) setStandardKey(data.standardKey);
             
-            // Merge auditInfo to ensure all fields are populated even if saved data is partial
-            setAuditInfo(prev => ({ ...prev, ...(data.auditInfo || {}) }));
+            // FIX: Completely overwrite auditInfo with defaults + saved data. 
+            // Do NOT merge with current state (prev) to avoid retaining dirty data.
+            setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
@@ -403,6 +423,9 @@ export default function App() {
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             
+            // Force re-render of child components
+            setSessionKey(Date.now());
+
             // Update timestamp to show it's "fresh" from memory
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
@@ -805,7 +828,7 @@ export default function App() {
 
             <main className="flex-1 flex overflow-hidden relative">
                 <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 bottom-0 left-0 z-[60] md:absolute md:inset-y-0 md:relative md:top-0 md:translate-x-0 md:transform-none transition-transform duration-300 ease-soft h-[calc(100%-4rem)] md:h-full`}>
-                    <Sidebar isOpen={isSidebarOpen} width={sidebarWidth} setWidth={setSidebarWidth} standards={allStandards} standardKey={standardKey} setStandardKey={setStandardKey} auditInfo={auditInfo} setAuditInfo={setAuditInfo} selectedClauses={selectedClauses} setSelectedClauses={setSelectedClauses} onAddNewStandard={() => {}} onUpdateStandard={handleUpdateStandard} onResetStandard={handleResetStandard} onReferenceClause={handleOpenReferenceClause} showIntegrityModal={showIntegrityModal} setShowIntegrityModal={setShowIntegrityModal}/>
+                    <Sidebar key={sessionKey} isOpen={isSidebarOpen} width={sidebarWidth} setWidth={setSidebarWidth} standards={allStandards} standardKey={standardKey} setStandardKey={setStandardKey} auditInfo={auditInfo} setAuditInfo={setAuditInfo} selectedClauses={selectedClauses} setSelectedClauses={setSelectedClauses} onAddNewStandard={() => {}} onUpdateStandard={handleUpdateStandard} onResetStandard={handleResetStandard} onReferenceClause={handleOpenReferenceClause} showIntegrityModal={showIntegrityModal} setShowIntegrityModal={setShowIntegrityModal}/>
                 </div>
                 {isSidebarOpen && <div className="fixed top-16 bottom-0 inset-x-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity duration-300 animate-in fade-in" onClick={() => setIsSidebarOpen(false)} />}
                 

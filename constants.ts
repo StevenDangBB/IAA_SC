@@ -1,13 +1,22 @@
 
-import { StandardsData } from './types';
+import { StandardsData, AuditInfo } from './types';
 import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.9.6"; 
-export const BUILD_TIMESTAMP = "2024-06-28 22:15:00 (GMT+7)";
+export const APP_VERSION = "2.9.7"; 
+export const BUILD_TIMESTAMP = "2024-06-29 10:00:00 (GMT+7)";
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
+
+export const DEFAULT_AUDIT_INFO: AuditInfo = { 
+    company: "", 
+    smo: "", 
+    department: "", 
+    interviewee: "", 
+    auditor: "", 
+    type: "" 
+};
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
 // Paste your 7 fixed keys here to avoid re-entering them.
@@ -56,6 +65,15 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "2.9.7",
+        date: "2024-06-29",
+        features: [
+            "FIX: 'New Session' now completely clears all form data immediately.",
+            "FIX: 'Recall' logic updated to reliably restore saved data without conflicts.",
+            "SAFETY: Added auto-save on browser close to prevent data loss."
+        ]
+    },
     {
         version: "2.9.6",
         date: "2024-06-28",
