@@ -37,7 +37,6 @@ interface UploadedFile {
 
 export default function App() {
     // -- STATE --
-    // sessionKey is used to force re-render components that might hold stale state
     const [sessionKey, setSessionKey] = useState(Date.now());
     
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
@@ -66,8 +65,9 @@ export default function App() {
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false); 
     
-    // SAFETY LOCK: Prevents Auto-Save from overwriting data while a Restore/Recall is in progress
+    // SAFETY LOCKS
     const isRestoring = useRef(false);
+    const isInitialized = useRef(false); // New guard: prevents auto-save on initial mount
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
         isOpen: boolean;
@@ -335,7 +335,13 @@ export default function App() {
                 setLastSavedTime(new Date().toLocaleTimeString());
                 setToastMsg("Previous session restored.");
             }
-        } catch (e) { console.error("Load failed", e); }
+            // Mark as initialized so auto-save can start working
+            isInitialized.current = true;
+        } catch (e) { 
+            console.error("Load failed", e);
+            // Even if load fails, allow auto-save to eventually pick up new edits
+            isInitialized.current = true; 
+        }
     };
 
     const handleUpdateStandard = (std: Standard) => { setCustomStandards(prev => ({ ...prev, [standardKey]: std })); setToastMsg("Standard updated successfully."); };
@@ -343,13 +349,17 @@ export default function App() {
     
     // --- AUTO-SAVE LOGIC ---
     useEffect(() => {
-        // SAFETY GUARD: Do not save if we are currently performing a restoration
-        if (isRestoring.current) return;
+        // SAFETY GUARD: Do not save if we are restoring OR if we haven't loaded initial data yet
+        if (isRestoring.current || !isInitialized.current) return;
 
         // Debounced Auto-Save
         setIsSaving(true);
         const handler = setTimeout(() => {
-            if (isRestoring.current) return; // Double check inside timeout
+            // Double check inside timeout to prevent race conditions
+            if (isRestoring.current || !isInitialized.current) {
+                setIsSaving(false);
+                return; 
+            }
 
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
@@ -369,8 +379,10 @@ export default function App() {
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             // Synchronously save critical data before close to prevent data loss
-            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
-            localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
+            if (!isRestoring.current && isInitialized.current) {
+                const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+                localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
+            }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -416,16 +428,16 @@ export default function App() {
     
     // --- RESTRUCTURED: RECALL LOGIC (With Undo) ---
     const handleRecallSession = () => {
-        let savedData = localStorage.getItem("iso_session_data");
+        // PRIORITY: Check main storage, if empty (post-reset), check backup
+        let savedDataStr = localStorage.getItem("iso_session_data");
         let isBackup = false;
 
-        // FALLBACK: If active data is missing (e.g., after accidental New Session), try backup
-        if (!savedData) {
-            savedData = localStorage.getItem("iso_session_backup");
+        if (!savedDataStr) {
+            savedDataStr = localStorage.getItem("iso_session_backup");
             isBackup = true;
         }
 
-        if (!savedData) { setToastMsg("No auto-saved or backup data found."); return; }
+        if (!savedDataStr) { setToastMsg("No auto-saved or backup data found."); return; }
         
         const confirmMsg = isBackup 
             ? "No active session. Restore the PREVIOUSLY CLEARED session? (Undo New)"
@@ -438,24 +450,22 @@ export default function App() {
             // CRITICAL: Activate Restoration Lock to prevent Auto-save from overwriting backup with empty state
             isRestoring.current = true;
 
-            const data = JSON.parse(savedData);
+            const data = JSON.parse(savedDataStr);
+            
+            // 1. HARD WRITE TO STORAGE FIRST
+            // This ensures that even if React renders are slow, the storage has the data
+            localStorage.setItem("iso_session_data", savedDataStr);
+
+            // 2. RESTORE STATE
             if (data.standardKey) setStandardKey(data.standardKey);
-            
-            // FIX: Completely overwrite auditInfo with defaults + saved data. 
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
-            
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
-            
-            setUploadedFiles([]); // Files cannot be persisted in simple storage
+            setUploadedFiles([]); 
             if (data.analysisResult) setAnalysisResult(data.analysisResult);
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             
-            // If we restored from backup, reinstate it as the active session immediately in LocalStorage
-            // This acts as a "Hard Commit" bypassing the auto-save debounce
-            localStorage.setItem("iso_session_data", savedData);
-
             // Force re-render of child components
             setSessionKey(Date.now());
 
@@ -465,10 +475,12 @@ export default function App() {
 
             setToastMsg(isBackup ? "Undid 'New Session'. Data Restored." : "Recalled auto-saved session.");
 
-            // Release Lock after a safe delay (longer than auto-save debounce)
+            // Release Lock after a LONGER safe delay (2s) to strictly prevent race conditions
+            // Ensure isInitialized is true so auto-save can resume after the lock releases
+            isInitialized.current = true;
             setTimeout(() => {
                 isRestoring.current = false;
-            }, 1200);
+            }, 2000);
 
         } catch (e) {
             console.error("Recall failed", e);
@@ -889,7 +901,7 @@ export default function App() {
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
                             <button 
                                 onClick={handleRecallSession} 
-                                className={`h-10 px-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95 border ${lastSavedTime ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800 shadow-sm' : 'bg-gray-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-gray-200 dark:hover:bg-slate-700'}`} 
+                                className={`h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 border ${lastSavedTime ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`} 
                                 title={lastSavedTime ? `Last Auto-Saved: ${lastSavedTime}. Click to Recall.` : "Recall Auto-Saved Session"}
                             >
                                 <div className="relative">
@@ -905,7 +917,7 @@ export default function App() {
                             </button>
                             <button 
                                 onClick={(e) => handleNewSession(e)} 
-                                className="h-10 w-10 md:w-auto md:px-4 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:border-amber-300 hover:text-amber-700 dark:hover:text-amber-400 duration-300 hover:scale-105 active:scale-95" 
+                                className="h-10 w-10 md:w-auto md:px-4 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:text-amber-700 dark:hover:text-amber-400 duration-300 active:scale-95" 
                                 title="Start New Session (Clears All Data)"
                             >
                                 <Icon name="Session4_FilePlus" size={18}/>
@@ -1180,12 +1192,12 @@ export default function App() {
                                         <input type="file" accept=".txt,.docx" className="hidden" onChange={handleTemplateUpload}/>
                                     </label>
 
-                                    <button onClick={handleGenerateReport} disabled={!isReadyToSynthesize} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyToSynthesize ? "btn-shrimp text-white active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed"}`} title="Synthesize Report">
+                                    <button onClick={handleGenerateReport} disabled={!isReadyToSynthesize} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyToSynthesize ? "btn-shrimp text-white active:scale-95 border-indigo-700" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border-transparent"}`} title="Synthesize Report">
                                         {isReportLoading ? <Icon name="Loader" className="animate-spin text-white" size={20}/> : <Icon name="Wand2" size={20} className="hidden md:block"/>}
                                         <span className="inline text-xs uppercase tracking-wider">Synthesize</span>
                                     </button>
 
-                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
+                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-950 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
                                         <Icon name="Download"/>
                                         <span className="hidden md:inline">Download</span>
                                         <div className="lang-pill-container">
