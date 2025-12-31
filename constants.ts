@@ -4,7 +4,8 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.9.5"; 
+export const APP_VERSION = "2.9.6"; 
+export const BUILD_TIMESTAMP = "2024-06-28 22:15:00 (GMT+7)";
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -55,6 +56,15 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "2.9.6",
+        date: "2024-06-28",
+        features: [
+            "CHECKPOINT SNAPSHOT: System state frozen for deployment stability.",
+            "TIMESTAMP SYNC: Build time localized to Hanoi/Bangkok (GMT+7).",
+            "HOTFIX: Optimized static assets loading and version integrity.",
+        ]
+    },
     {
         version: "2.9.5",
         date: "2024-06-28",

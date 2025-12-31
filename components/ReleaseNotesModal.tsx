@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { Icon } from './UI';
-import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES } from '../constants';
+import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES, BUILD_TIMESTAMP } from '../constants';
 
 const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     // Logic: Try to load 'author.png'. If it fails, strictly show the CSS Fallback with TDLogo.
@@ -16,7 +16,8 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 
     if (!isOpen) return null;
 
-    const currentBuildTime = new Date().toISOString().substring(0, 19).replace('T', ' ');
+    // Use static timestamp for checkpoint consistency
+    const currentBuildTime = BUILD_TIMESTAMP;
 
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 fade-in backdrop-blur-md" onClick={onClose}>
