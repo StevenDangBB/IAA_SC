@@ -41,6 +41,11 @@ describe('App Session Management', () => {
     beforeEach(() => {
         localStorageMock.clear();
         vi.clearAllMocks();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('should initialize with default empty state', () => {
@@ -83,12 +88,12 @@ describe('App Session Management', () => {
         const newButton = screen.getByTitle("Start New Session (Clears All Data)");
         fireEvent.click(newButton);
 
-        // 3. Verify localStorage is cleared, but backup exists
+        // 3. Verify localStorage is cleared immediately, but backup exists
         expect(localStorageMock.getItem("iso_session_data")).toBeNull();
         expect(localStorageMock.getItem("iso_session_backup")).toContain("Old Company");
     });
 
-    it('should allow UNDOing a "New Session" via Recall (Backup Restore)', async () => {
+    it('should allow UNDOing a "New Session" via Recall (Backup Restore) and protect data from premature Auto-save', async () => {
         // 1. Setup backup data (simulating post-New Session state)
         const backupData = {
             standardKey: "ISO 9001:2015",
@@ -110,7 +115,13 @@ describe('App Session Management', () => {
             expect(screen.getByText(/Undid 'New Session'/i)).toBeInTheDocument();
         });
         
-        // 4. Verify data is put back into active session storage
+        // 4. Verify data is put back into active session storage IMMEDIATELY (Hard sync)
+        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Company");
+
+        // 5. Advance time past debounce to ensure Auto-Save doesn't overwrite with empty/stale state
+        vi.advanceTimersByTime(1000); 
+
+        // 6. Verify data is STILL there
         expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Company");
     });
 });

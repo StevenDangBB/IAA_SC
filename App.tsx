@@ -37,7 +37,7 @@ interface UploadedFile {
 
 export default function App() {
     // -- STATE --
-    // sessionKey is used to force re-render components that might hold stale state (like uncontrolled inputs)
+    // sessionKey is used to force re-render components that might hold stale state
     const [sessionKey, setSessionKey] = useState(Date.now());
     
     const [fontSizeScale, setFontSizeScale] = useState(1.0);
@@ -65,6 +65,9 @@ export default function App() {
     const [toastMsg, setToastMsg] = useState<string | null>(null);
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false); 
+    
+    // SAFETY LOCK: Prevents Auto-Save from overwriting data while a Restore/Recall is in progress
+    const isRestoring = useRef(false);
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
         isOpen: boolean;
@@ -340,9 +343,14 @@ export default function App() {
     
     // --- AUTO-SAVE LOGIC ---
     useEffect(() => {
+        // SAFETY GUARD: Do not save if we are currently performing a restoration
+        if (isRestoring.current) return;
+
         // Debounced Auto-Save
         setIsSaving(true);
         const handler = setTimeout(() => {
+            if (isRestoring.current) return; // Double check inside timeout
+
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
@@ -427,6 +435,9 @@ export default function App() {
         if (isBackup && !hasEvidence && !confirm(confirmMsg)) return;
         
         try {
+            // CRITICAL: Activate Restoration Lock to prevent Auto-save from overwriting backup with empty state
+            isRestoring.current = true;
+
             const data = JSON.parse(savedData);
             if (data.standardKey) setStandardKey(data.standardKey);
             
@@ -441,10 +452,9 @@ export default function App() {
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             
-            // If we restored from backup, reinstate it as the active session immediately
-            if (isBackup) {
-                localStorage.setItem("iso_session_data", savedData);
-            }
+            // If we restored from backup, reinstate it as the active session immediately in LocalStorage
+            // This acts as a "Hard Commit" bypassing the auto-save debounce
+            localStorage.setItem("iso_session_data", savedData);
 
             // Force re-render of child components
             setSessionKey(Date.now());
@@ -454,9 +464,16 @@ export default function App() {
             setLastSavedTime(now.toLocaleTimeString());
 
             setToastMsg(isBackup ? "Undid 'New Session'. Data Restored." : "Recalled auto-saved session.");
+
+            // Release Lock after a safe delay (longer than auto-save debounce)
+            setTimeout(() => {
+                isRestoring.current = false;
+            }, 1200);
+
         } catch (e) {
             console.error("Recall failed", e);
             setToastMsg("Failed to recall data.");
+            isRestoring.current = false;
         }
     };
 
@@ -978,7 +995,7 @@ export default function App() {
                                         <span className="inline text-xs uppercase tracking-wider">Analyze</span>
                                     </button>
 
-                                    <button onClick={() => startSmartExport(evidence, 'evidence', evidenceLanguage)} disabled={!evidence || !evidence.trim()} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap">
+                                    <button onClick={() => startSmartExport(evidence, 'evidence', evidenceLanguage)} disabled={!evidence || !evidence.trim()} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
                                         <Icon name="Download"/> 
                                         <span className="hidden md:inline">Export</span>
                                         <div className="lang-pill-container ml-1">
