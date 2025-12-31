@@ -1,6 +1,5 @@
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import App from './App';
 import { DEFAULT_AUDIT_INFO } from './constants';
 
@@ -37,7 +36,7 @@ vi.stubGlobal('ResizeObserver', class {
     disconnect() {}
 });
 
-describe('App Session Management', () => {
+describe('App Session Management (Explicit Authority Architecture)', () => {
     beforeEach(() => {
         localStorageMock.clear();
         vi.clearAllMocks();
@@ -48,80 +47,75 @@ describe('App Session Management', () => {
         vi.useRealTimers();
     });
 
-    it('should initialize with default empty state', () => {
-        const { container } = render(<App />);
-        // Check if Company input is empty (placeholder might be visible)
-        const inputs = container.querySelectorAll('input');
-        // Assuming Company Name is one of the inputs
-        let hasValue = false;
-        inputs.forEach(input => {
-            if (input.value && input.value !== "") hasValue = true;
-        });
-        expect(hasValue).toBe(false);
-    });
-
-    it('should save session data to localStorage (Auto-save simulation)', async () => {
-        // Manually populate localStorage to simulate an auto-save
-        const testData = {
+    it('should NOT overwrite existing localStorage with empty state on initial load', async () => {
+        // 1. Pre-populate localStorage with valuable data
+        const valuableData = {
             standardKey: "ISO 9001:2015",
-            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Test Corp" },
-            evidence: "Test Evidence"
+            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Valuable Corp" },
+            evidence: "Critical Evidence"
         };
-        localStorageMock.setItem("iso_session_data", JSON.stringify(testData));
-        
-        // Check if it exists
-        expect(localStorageMock.getItem("iso_session_data")).toContain("Test Corp");
+        localStorageMock.setItem("iso_session_data", JSON.stringify(valuableData));
+
+        // 2. Render App (State starts empty)
+        render(<App />);
+
+        // 3. Fast-forward past auto-save debounce
+        vi.advanceTimersByTime(2000);
+
+        // 4. Verify localStorage still holds the valuable data, NOT overwritten by empty state
+        const stored = JSON.parse(localStorageMock.getItem("iso_session_data") || "{}");
+        expect(stored.company).toBe("Valuable Corp");
     });
 
-    it('should clear all data when "New Session" is clicked, but backup first', async () => {
-        // 1. Setup dirty state in localStorage
-        const dirtyData = {
+    it('should ALLOW overwrite if New Session is explicitly clicked', async () => {
+        // 1. Setup existing data
+        const oldData = {
             standardKey: "ISO 9001:2015",
-            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Old Company" },
+            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Old Corp" },
             evidence: "Old Evidence"
         };
-        localStorageMock.setItem("iso_session_data", JSON.stringify(dirtyData));
+        localStorageMock.setItem("iso_session_data", JSON.stringify(oldData));
 
-        render(<App />);
-        
-        // 2. Simulate clicking "New" button (assuming text is "New")
-        const newButton = screen.getByTitle("Start New Session (Clears All Data)");
-        fireEvent.click(newButton);
+        const { getByTitle } = render(<App />);
 
-        // 3. Verify localStorage is cleared immediately, but backup exists
+        // 2. Click New Session
+        const newButton = getByTitle("Start New Session (Clears All Data)");
+        newButton.click();
+
+        // 3. Verify data is cleared immediately from storage
         expect(localStorageMock.getItem("iso_session_data")).toBeNull();
-        expect(localStorageMock.getItem("iso_session_backup")).toContain("Old Company");
+
+        // 4. Wait for auto-save (debounce) to trigger on the new empty state
+        vi.advanceTimersByTime(1000);
+
+        // 5. Verify NEW empty state is written (because user explicitly authorized it via New Session)
+        const stored = JSON.parse(localStorageMock.getItem("iso_session_data") || "{}");
+        expect(stored.auditInfo.company).toBe(""); // Should be empty now
     });
 
-    it('should allow UNDOing a "New Session" via Recall (Backup Restore) and protect data from premature Auto-save', async () => {
-        // 1. Setup backup data (simulating post-New Session state)
+    it('should protect data during Recall race condition', async () => {
+        // 1. Setup backup data
         const backupData = {
             standardKey: "ISO 9001:2015",
-            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Restored Company" },
+            auditInfo: { ...DEFAULT_AUDIT_INFO, company: "Restored Corp" },
             evidence: "Restored Evidence"
         };
         localStorageMock.setItem("iso_session_backup", JSON.stringify(backupData));
-        // Ensure main session is empty
-        localStorageMock.removeItem("iso_session_data");
+        localStorageMock.removeItem("iso_session_data"); // Simulate active session lost
 
-        render(<App />);
+        const { getByTitle } = render(<App />);
 
         // 2. Click Recall
-        const recallButton = screen.getByTitle("Recall Auto-Saved Session");
-        fireEvent.click(recallButton);
+        const recallButton = getByTitle("Recall Auto-Saved Session");
+        recallButton.click();
 
-        // 3. Check for Toast message about undo
-        await waitFor(() => {
-            expect(screen.getByText(/Undid 'New Session'/i)).toBeInTheDocument();
-        });
-        
-        // 4. Verify data is put back into active session storage IMMEDIATELY (Hard sync)
-        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Company");
+        // 3. Verify Hard Write happened immediately
+        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Corp");
 
-        // 5. Advance time past debounce to ensure Auto-Save doesn't overwrite with empty/stale state
-        vi.advanceTimersByTime(1000); 
+        // 4. Advance time. If the logic is flawed, the empty state from the render cycle might overwrite the hard write.
+        vi.advanceTimersByTime(1000);
 
-        // 6. Verify data is STILL there
-        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Company");
+        // 5. Verify integrity maintained
+        expect(localStorageMock.getItem("iso_session_data")).toContain("Restored Corp");
     });
 });

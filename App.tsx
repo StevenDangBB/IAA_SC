@@ -65,9 +65,12 @@ export default function App() {
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false); 
     
-    // SAFETY LOCKS
+    // --- ARCHITECTURAL GUARDS (CRITICAL FOR DATA SAFETY) ---
+    // 1. isRestoring: Blocks auto-save while data is being pumped from storage into state.
     const isRestoring = useRef(false);
-    const isInitialized = useRef(false); // New guard: prevents auto-save on initial mount
+    // 2. isManuallyCleared: Allows auto-save to write empty data ONLY if the user explicitly clicked "New Session".
+    //    Otherwise, we assume empty state is a bug/load error and refuse to overwrite disk.
+    const isManuallyCleared = useRef(false);
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
         isOpen: boolean;
@@ -335,30 +338,38 @@ export default function App() {
                 setLastSavedTime(new Date().toLocaleTimeString());
                 setToastMsg("Previous session restored.");
             }
-            // Mark as initialized so auto-save can start working
-            isInitialized.current = true;
         } catch (e) { 
             console.error("Load failed", e);
-            // Even if load fails, allow auto-save to eventually pick up new edits
-            isInitialized.current = true; 
         }
     };
 
     const handleUpdateStandard = (std: Standard) => { setCustomStandards(prev => ({ ...prev, [standardKey]: std })); setToastMsg("Standard updated successfully."); };
     const handleResetStandard = (key: string) => { setCustomStandards(prev => { const next = { ...prev }; delete next[key]; return next; }); setToastMsg("Standard reset to default."); };
     
-    // --- AUTO-SAVE LOGIC ---
+    // --- ROBUST AUTO-SAVE LOGIC ---
     useEffect(() => {
-        // SAFETY GUARD: Do not save if we are restoring OR if we haven't loaded initial data yet
-        if (isRestoring.current || !isInitialized.current) return;
+        // GUARD 1: Block completely if we are in the middle of restoring data
+        if (isRestoring.current) return;
+
+        // GUARD 2: EMPTY STATE PROTECTION
+        // If critical data is empty, check if we actually WANTED it empty (New Session).
+        // If not manually cleared, this means we might be in an initialized/error state,
+        // so we DO NOT overwrite the potentially valid data on disk.
+        const isEmptyState = !evidence && (!selectedClauses || selectedClauses.length === 0);
+        if (isEmptyState && !isManuallyCleared.current) {
+            // Check if disk has data. If yes, don't overwrite with empty.
+            if (localStorage.getItem("iso_session_data")) {
+                return; 
+            }
+        }
 
         // Debounced Auto-Save
         setIsSaving(true);
         const handler = setTimeout(() => {
-            // Double check inside timeout to prevent race conditions
-            if (isRestoring.current || !isInitialized.current) {
+            // Re-check guards inside timeout
+            if (isRestoring.current) {
                 setIsSaving(false);
-                return; 
+                return;
             }
 
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
@@ -366,7 +377,9 @@ export default function App() {
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
             
-            // Update timestamp and status
+            // Reset manual clear flag after a successful save, as we now have valid latest state
+            if (isManuallyCleared.current) isManuallyCleared.current = false;
+
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
             setIsSaving(false);
@@ -379,7 +392,7 @@ export default function App() {
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             // Synchronously save critical data before close to prevent data loss
-            if (!isRestoring.current && isInitialized.current) {
+            if (!isRestoring.current) {
                 const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
                 localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             }
@@ -388,7 +401,7 @@ export default function App() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText]);
 
-    // --- RESTRUCTURED: NEW SESSION LOGIC ---
+    // --- NEW SESSION LOGIC ---
     const handleNewSession = (e?: any) => { 
         if(e) e.stopPropagation(); 
         if(!confirm("Start New Session? This will DELETE all current Audit Data.")) return; 
@@ -399,10 +412,13 @@ export default function App() {
             localStorage.setItem("iso_session_backup", currentData);
         }
 
-        // 2. Force Clear Local Storage immediately
+        // 2. EXPLICIT AUTHORIZATION to overwrite disk with empty data
+        isManuallyCleared.current = true;
+
+        // 3. Force Clear Local Storage immediately
         localStorage.removeItem("iso_session_data");
 
-        // 3. CLEAR STATE (Full Reset)
+        // 4. CLEAR STATE (Full Reset)
         setStandardKey("ISO 9001:2015"); // Reset to default standard
         setAuditInfo(DEFAULT_AUDIT_INFO); 
         setEvidence(""); 
@@ -411,24 +427,19 @@ export default function App() {
         setAnalysisResult(null); 
         setSelectedFindings({}); 
         setFinalReportText(null); 
-        setLastSavedTime(null); // Visual reset of the red dot
+        setLastSavedTime(null); 
         
-        // Force re-render of child components (like Sidebar) to ensure inputs clear
         setSessionKey(Date.now());
-
-        // Switch to Evidence tab
         setLayoutMode('evidence'); 
 
-        // 4. DOM Cleanup (Double Tap)
         if (fileInputRef.current) fileInputRef.current.value = "";
         if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
         
         setToastMsg("New Session Started. (Use Recall to Undo)");
     };
     
-    // --- RESTRUCTURED: RECALL LOGIC (With Undo) ---
+    // --- RECALL LOGIC (Architected for Reliability) ---
     const handleRecallSession = () => {
-        // PRIORITY: Check main storage, if empty (post-reset), check backup
         let savedDataStr = localStorage.getItem("iso_session_data");
         let isBackup = false;
 
@@ -447,16 +458,16 @@ export default function App() {
         if (isBackup && !hasEvidence && !confirm(confirmMsg)) return;
         
         try {
-            // CRITICAL: Activate Restoration Lock to prevent Auto-save from overwriting backup with empty state
+            // STEP 1: LOCK DOWN AUTO-SAVE
             isRestoring.current = true;
 
             const data = JSON.parse(savedDataStr);
             
-            // 1. HARD WRITE TO STORAGE FIRST
-            // This ensures that even if React renders are slow, the storage has the data
+            // STEP 2: HARD WRITE TO DISK FIRST (Source of Truth)
+            // This ensures disk is correct even if React takes time to render
             localStorage.setItem("iso_session_data", savedDataStr);
 
-            // 2. RESTORE STATE
+            // STEP 3: HYDRATE STATE
             if (data.standardKey) setStandardKey(data.standardKey);
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
@@ -466,21 +477,19 @@ export default function App() {
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             
-            // Force re-render of child components
             setSessionKey(Date.now());
-
-            // Update timestamp to show it's "fresh" from memory
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
 
             setToastMsg(isBackup ? "Undid 'New Session'. Data Restored." : "Recalled auto-saved session.");
 
-            // Release Lock after a LONGER safe delay (2s) to strictly prevent race conditions
-            // Ensure isInitialized is true so auto-save can resume after the lock releases
-            isInitialized.current = true;
+            // STEP 4: RELEASE LOCK AFTER SAFETY MARGIN
+            // We use a generous timeout to ensure all React effect flushes are complete
             setTimeout(() => {
                 isRestoring.current = false;
-            }, 2000);
+                // Important: Reset manual clear flag as we now have populated data
+                isManuallyCleared.current = false; 
+            }, 1200);
 
         } catch (e) {
             console.error("Recall failed", e);
