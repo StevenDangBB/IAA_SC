@@ -4,10 +4,8 @@ import { Icon } from './UI';
 import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES, BUILD_TIMESTAMP } from '../constants';
 
 const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    // Logic: Try to load 'author.png'. If it fails, strictly show the CSS Fallback with TDLogo.
     const [imgError, setImgError] = useState(false);
 
-    // Reset state when modal opens
     useEffect(() => {
         if (isOpen) {
             setImgError(false);
@@ -15,9 +13,6 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     }, [isOpen]);
 
     if (!isOpen) return null;
-
-    // Use static timestamp for checkpoint consistency
-    const currentBuildTime = BUILD_TIMESTAMP;
 
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 fade-in backdrop-blur-md" onClick={onClose}>
@@ -35,19 +30,12 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                     <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 p-2 bg-slate-800/50 rounded-full hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><Icon name="X" size={20}/></button>
 
                     <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8 z-10">
-                        {/* Author Image with INTENSIFIED SHRIMP Effect */}
+                        {/* Author Image */}
                         <div className="relative flex-shrink-0">
-                            {/* Layer 1: Wide Deep Aura (Static Base) */}
                             <div className="absolute -inset-10 bg-indigo-600/30 rounded-full blur-3xl"></div>
-
-                            {/* Layer 2: The SHRIMP ROTATOR (High Energy Conic Gradient) */}
-                            {/* Uses a conic gradient mask to create a spinning ring of fire */}
                             <div className="absolute -inset-[6px] rounded-full bg-[conic-gradient(from_0deg,transparent_0_deg,#f472b6_100deg,#8b5cf6_200deg,#06b6d4_300deg,transparent_360deg)] opacity-100 blur-md animate-[spin_4s_linear_infinite]"></div>
-                            
-                            {/* Layer 3: Pulse Core (Heartbeat) */}
                             <div className="absolute -inset-1 bg-gradient-to-br from-amber-400 via-pink-500 to-cyan-500 rounded-full opacity-60 blur-lg animate-pulse"></div>
 
-                            {/* Main Avatar Container */}
                             <div className="relative w-24 h-24 rounded-full p-0.5 bg-slate-900 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl">
                                 {!imgError ? (
                                     <img 
@@ -57,32 +45,22 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                                         onError={() => setImgError(true)}
                                     />
                                 ) : (
-                                    /* FALLBACK: SUPER HIGH CONTRAST TD Logo */
                                     <div className="w-full h-full rounded-full flex items-center justify-center bg-black relative overflow-hidden border-2 border-slate-800/50">
-                                        {/* Deep Space Background */}
                                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1e1b4b_0%,_#000000_100%)]"></div>
-                                        
-                                        {/* Grid Noise */}
                                         <div className="absolute inset-0 opacity-30 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
-
-                                        {/* Scanning Laser Effect */}
                                         <div className="absolute inset-[-100%] bg-gradient-to-tr from-transparent via-cyan-400/30 to-transparent rotate-45 animate-[spinReverse_6s_linear_infinite]"></div>
-                                        
-                                        {/* The Logo: Pushed forward with heavy neon shadow */}
                                         <div className="relative z-10 transform scale-110 drop-shadow-[0_0_25px_rgba(0,242,195,0.8)]">
                                             <Icon name="TDLogo" size={56} />
                                         </div>
                                     </div>
                                 )}
                             </div>
-                            
-                            {/* Verified Badge */}
                             <div className="absolute bottom-0 right-0 z-20 bg-blue-500 text-white p-1 rounded-full border-4 border-slate-900 shadow-sm" title="Verified Creator">
                                 <Icon name="CheckLineart" size={12}/> 
                             </div>
                         </div>
 
-                        {/* Author Info - Higher Z-Index to sit over the Halo */}
+                        {/* Author Info */}
                         <div className="flex-1 min-w-0 text-center md:text-left relative z-10">
                             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1">
                                 <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[0.6rem] font-bold text-amber-500 uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.15)]">
@@ -98,9 +76,6 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                             <p className="text-slate-400 text-sm font-medium flex items-center justify-center md:justify-start gap-2">
                                 Creator of <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400 font-bold">ISO Audit Pro</span>
                             </p>
-                            <p className="text-slate-500 text-xs mt-2 italic max-w-lg mx-auto md:mx-0">
-                                "Pioneering the intersection of International Standards and Artificial Intelligence to empower the next generation of auditors."
-                            </p>
                         </div>
                     </div>
                 </div>
@@ -109,90 +84,99 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 bg-gray-50 dark:bg-slate-950">
                     
                     <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* System Core - ALIGNED GRID */}
                         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
                                 <Icon name="Cpu" size={14}/> System Core
                             </h4>
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-600 dark:text-slate-300">Application Version</span>
-                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">v{APP_VERSION}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-600 dark:text-slate-300">Build Timestamp</span>
-                                    <span className="font-mono text-xs text-slate-500">{currentBuildTime}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-600 dark:text-slate-300">AI Engine</span>
-                                    <span className="font-mono text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded">Gemini 1.5 Pro Vision</span>
-                                </div>
+                            <div className="grid grid-cols-[120px_1fr] gap-y-3 gap-x-4 items-center">
+                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">App Version</span>
+                                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm tabular-nums">v{APP_VERSION}</span>
+                                
+                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">Build Time</span>
+                                <span className="font-mono text-[10px] text-slate-500 tabular-nums leading-tight">{BUILD_TIMESTAMP}</span>
+                                
+                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">Engine</span>
+                                <span className="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded inline-block w-fit">Gemini 3.0 Pro</span>
                             </div>
                         </div>
 
+                        {/* Capabilities - ALIGNED LIST */}
                         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
                                 <Icon name="Sparkle" size={14}/> Capabilities
                             </h4>
-                            <ul className="space-y-2">
+                            <div className="space-y-3">
                                 {KEY_CAPABILITIES.map((cap, idx) => (
-                                    <li key={idx} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-                                        <strong className="text-slate-800 dark:text-white">{cap.title}:</strong> {cap.desc}
-                                    </li>
+                                    <div key={idx} className="flex items-start gap-3">
+                                        <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0"></div>
+                                        <div className="flex-1">
+                                            <span className="text-xs font-bold text-slate-800 dark:text-white block mb-0.5">{cap.title}</span>
+                                            <span className="text-xs text-slate-500 dark:text-slate-400 leading-tight block">{cap.desc}</span>
+                                        </div>
+                                    </div>
                                 ))}
-                            </ul>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="mb-8">
-                        <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <Icon name="Info" size={14}/> Workflow Process
+                    {/* Release History - STRICT TIMELINE ALIGNMENT */}
+                    <div>
+                        <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+                            <Icon name="History" size={14}/> Release History
                         </h4>
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative">
-                                {['1. Select Standard', '2. Input Evidence', '3. AI Analysis', '4. Report Synthesis'].map((step, idx) => {
-                                    const icons = ['Book', 'Keyboard', 'Wand2', 'FileText'];
-                                    const colors = ['blue', 'purple', 'pink', 'emerald'];
-                                    return (
-                                        <div key={idx} className="flex flex-col items-center text-center z-10 w-full sm:w-1/4 group/step">
-                                            <div className={`w-10 h-10 rounded-full bg-${colors[idx]}-50 dark:bg-${colors[idx]}-900/20 text-${colors[idx]}-600 dark:text-${colors[idx]}-400 flex items-center justify-center mb-2 shadow-sm border border-${colors[idx]}-100 dark:border-${colors[idx]}-800 ring-2 ring-white dark:ring-slate-900`}>
-                                                <Icon name={icons[idx]} size={18}/>
-                                            </div>
-                                            <div className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{step}</div>
+                        
+                        <div className="ml-2 border-l-2 border-slate-200 dark:border-slate-800 space-y-8 pl-6 relative">
+                            {RELEASE_NOTES.map((release, index) => (
+                                <div key={index} className="relative group">
+                                    {/* Timeline Dot */}
+                                    <div className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 transition-colors duration-300 ${index === 0 ? 'bg-indigo-500 shadow-[0_0_0_4px_rgba(99,102,241,0.2)]' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+                                    
+                                    {/* Header Row: Version and Date perfectly aligned */}
+                                    <div className="flex flex-row items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className={`text-sm font-bold tabular-nums ${index === 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                                                v{release.version}
+                                            </h4>
+                                            {index === 0 && <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1.5 py-0.5 rounded uppercase">Latest</span>}
                                         </div>
-                                    );
-                                })}
-                                {/* Connector Line */}
-                                <div className="absolute top-5 left-10 right-10 h-0.5 bg-gray-100 dark:bg-slate-800 -z-0 hidden sm:block"></div>
-                            </div>
+                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded tabular-nums">
+                                            {release.date}
+                                        </span>
+                                    </div>
+                                    
+                                    {/* Content Features */}
+                                    <ul className="space-y-1.5">
+                                        {release.features.map((feature, idx) => {
+                                            const [tag, ...rest] = feature.split(':');
+                                            const hasTag = rest.length > 0;
+                                            return (
+                                                <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2 leading-relaxed">
+                                                    {hasTag ? (
+                                                        <>
+                                                            <span className="font-bold text-[9px] min-w-[50px] text-right uppercase text-slate-400 dark:text-slate-500 mt-0.5">{tag}</span>
+                                                            <span className="text-slate-300 dark:text-slate-600">|</span>
+                                                            <span>{rest.join(':')}</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className="w-1 h-1 bg-slate-400 rounded-full mt-1.5 flex-shrink-0"></span>
+                                                            <span>{feature}</span>
+                                                        </>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
+                            ))}
                         </div>
                     </div>
                     
-                    <div>
-                        <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Release History</h4>
-                        {RELEASE_NOTES.map((release, index) => (
-                            <div key={index} className="mb-4 pl-4 border-l-2 border-slate-200 dark:border-slate-700 relative">
-                                <div className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 ring-4 ring-gray-50 dark:ring-slate-950"></div>
-                                <div className="flex justify-between items-baseline mb-1">
-                                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">v{release.version}</h4>
-                                    <span className="text-[0.625rem] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{release.date}</span>
-                                </div>
-                                <ul className="space-y-1">
-                                    {release.features.map((feature, idx) => (
-                                        <li key={idx} className="text-xs text-slate-500 dark:text-slate-400 flex items-start gap-2">
-                                            <span className="text-indigo-400">•</span>
-                                            {feature}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ))}
-                    </div>
-                    
-                    <div className="mt-8 pt-6 border-t border-gray-100 dark:border-slate-800 text-center">
+                    <div className="mt-10 pt-6 border-t border-gray-100 dark:border-slate-800 text-center">
                         <p className="text-[10px] text-slate-400">
-                            © {new Date().getFullYear()} Trung DANGHOANG. All rights reserved. <br/>
-                            Designed for high-performance ISO Compliance Auditing.
+                            © 2025 Trung DANGHOANG. All rights reserved. <br/>
+                            Built for ISO Audit Professional Compliance.
                         </p>
                     </div>
                 </div>

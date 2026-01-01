@@ -33,11 +33,10 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
     const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
     
-    // UI State: Collapse Audit Info to save space
-    const [isInfoExpanded, setIsInfoExpanded] = useState(false);
-    
     // UI State: Scroll-aware Header Visibility
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+    // UI State: Manual Toggle for Audit Mission
+    const [isMissionExpanded, setIsMissionExpanded] = useState(true);
 
     // Auto-repair states
     const [isRepairing, setIsRepairing] = useState(false);
@@ -97,10 +96,8 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (isResizing) return;
-
         const target = e.currentTarget;
         const scrollTop = target.scrollTop;
-        
         const SCROLL_THRESHOLD = 50; 
         
         if (scrollTop > SCROLL_THRESHOLD && isHeaderVisible) {
@@ -452,6 +449,16 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         return [...unique, {value: "ADD_NEW", label: "+ Add New Standard..."}];
     })();
 
+    // Workflow Completion Calculation
+    const infoCompletion = (() => {
+        let score = 0;
+        if (standardKey) score++;
+        if (auditInfo.type) score++;
+        if (auditInfo.company) score++;
+        if (auditInfo.auditor) score++;
+        return Math.min(4, score); // Max 4 items tracked for progress bar
+    })();
+
     return (
         <div 
             ref={sidebarRef}
@@ -460,56 +467,78 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
         >
              {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
             
-            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col gap-3 transition-all duration-400 ease-soft overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
+            {/* --- REFACTORED: AUDIT MISSION CHARTER --- */}
+            <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col transition-all duration-400 ease-soft overflow-hidden will-change-auto ${isHeaderVisible ? 'max-h-[1000px] opacity-100 p-5 border-b border-gray-100 dark:border-slate-800' : 'max-h-0 opacity-0 p-0 border-none'}`}>
                 
-                {/* Standard Selector - Clean & Prominent */}
-                <div className="relative">
-                    <IconSelect 
-                        icon="Book" 
-                        iconColor={auditFieldIconColor} 
-                        value={standardKey} 
-                        onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} 
-                        options={standardOptions} 
-                        defaultText="Select ISO Standard" 
-                    />
-                    {standardKey && (
-                        <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-2 -right-2 p-1.5 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 text-white ring-4 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Standard Integrity Status">
-                            <Icon name={health.isHealthy ? "CheckCircle2" : "AlertCircle"} size={14}/>
-                        </button>
-                    )}
+                {/* Header: Audit Mission - TOGGLEABLE */}
+                <div 
+                    className="flex items-center justify-between mb-3 cursor-pointer group select-none"
+                    onClick={() => setIsMissionExpanded(!isMissionExpanded)}
+                    title={isMissionExpanded ? "Collapse Mission Charter" : "Expand Mission Charter"}
+                >
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-hover:text-indigo-500 transition-colors">
+                        <Icon name="Session8_Flag" size={14} className="text-indigo-500"/>
+                        Audit Mission Charter
+                        <Icon name="ChevronDown" size={12} className={`transition-transform duration-300 text-slate-300 group-hover:text-indigo-400 ${isMissionExpanded ? 'rotate-180' : ''}`}/>
+                    </h3>
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex gap-0.5 items-center">
+                            {[1, 2, 3, 4].map(step => (
+                                <div key={step} className={`w-3 h-1 rounded-full ${step <= infoCompletion ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-slate-700'}`}></div>
+                            ))}
+                        </div>
+                        {/* RESET BUTTON REMOVED HERE */}
+                    </div>
                 </div>
 
-                {/* Audit Context - Collapsible Accordion to save visual space */}
-                <div className={`border rounded-xl overflow-hidden transition-all duration-300 dark:shadow-md ${
-                    !isInfoExpanded 
-                    ? 'border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900' 
-                    : 'border-indigo-100 dark:border-slate-700 shadow-sm'
-                }`}>
-                    <button 
-                        onClick={() => setIsInfoExpanded(!isInfoExpanded)}
-                        className="w-full flex items-center justify-between p-3 transition-colors duration-300 hover:bg-gray-50 dark:hover:bg-slate-800/50"
-                    >
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                             <div className={`transition-all duration-300 ${isInfoExpanded ? 'text-indigo-500' : 'text-slate-400'}`}>
-                                <Icon name="Info" size={14} />
-                            </div>
-                            Context & Details
-                        </span>
-                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isInfoExpanded ? 'rotate-180' : ''}`}/>
-                    </button>
-                    
-                    <div className={`grid transition-all duration-300 ease-in-out ${isInfoExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                        <div className="overflow-hidden">
-                             <div className="p-3 bg-gray-50/50 dark:bg-slate-900/50 space-y-3 border-t border-gray-100 dark:border-slate-800">
-                                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="# SMO" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                {/* Setup Card - COLLAPSIBLE CONTENT */}
+                <div className={`grid transition-all duration-300 ease-in-out ${isMissionExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="bg-gray-50/80 dark:bg-slate-900/50 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-3 space-y-4">
+                            
+                            {/* SECTION 1: SCOPE */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Scope Definition</label>
+                                <div className="relative">
+                                    <IconSelect 
+                                        icon="Book" 
+                                        iconColor={auditFieldIconColor} 
+                                        value={standardKey} 
+                                        onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} 
+                                        options={standardOptions} 
+                                        defaultText="Select ISO Standard" 
+                                    />
+                                    {standardKey && (
+                                        <button onClick={() => setShowIntegrityModal(true)} className={`absolute -top-1.5 -right-1.5 p-1 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95 text-white ring-2 ring-white dark:ring-slate-900 ${health.isHealthy ? 'bg-emerald-500' : 'bg-orange-500'}`} title="Integrity Check">
+                                            <Icon name={health.isHealthy ? "CheckCircle2" : "AlertCircle"} size={10}/>
+                                        </button>
+                                    )}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
-                                    <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Auditee/Auditor" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
-                                    <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
+                            </div>
+
+                            {/* SEPARATOR */}
+                            <div className="h-px bg-gray-200 dark:bg-slate-700/50"></div>
+
+                            {/* SECTION 2: ENTITY DETAILS */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Target Entity</label>
+                                <div className="grid grid-cols-[1.5fr_1fr] gap-2">
+                                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
+                                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="SMO/ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                                </div>
+                                <IconInput icon="Users" iconColor={auditFieldIconColor} placeholder="Department / Site" value={auditInfo.department} onChange={(e: any) => setAuditInfo({...auditInfo, department: e.target.value})} />
+                            </div>
+
+                            {/* SEPARATOR */}
+                            <div className="h-px bg-gray-200 dark:bg-slate-700/50"></div>
+
+                            {/* SECTION 3: PERSONNEL */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Personnel</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                     <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                                     <IconInput icon="User" iconColor={auditFieldIconColor} placeholder="Interviewee" value={auditInfo.interviewee} onChange={(e: any) => setAuditInfo({...auditInfo, interviewee: e.target.value})} />
                                 </div>
                             </div>
                         </div>
@@ -522,7 +551,7 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1 flex items-center gap-1 bg-gray-100 dark:bg-slate-950 rounded-xl px-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                             <span className="text-blue-700 dark:text-blue-400 font-bold pl-1"><Icon name="Search" size={14}/></span>
-                            <input className="w-full bg-transparent py-2 px-1 text-xs font-medium outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search content..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
+                            <input className="w-full bg-transparent py-2 px-1 text-xs font-medium outline-none text-slate-800 dark:text-slate-200 placeholder-gray-400" placeholder="Search clauses..." value={searchQueryRaw} onChange={e => setSearchQueryRaw(e.target.value)}/>
                             
                             <button 
                                 onClick={toggleExpandAll} 
@@ -570,7 +599,6 @@ const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardK
                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">{health.isHealthy ? 'Excellent! Data is accurate, clean, and complete for professional use.' : 'Standard data is incomplete or contains errors. Please review.'}</p>
                         </div>
                     </div>
-                    {/* ... (Existing check items) ... */}
                      <div className="space-y-3">
                         <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Integrity Checklist</h5>
                         {health.integrity.map((item, idx) => (

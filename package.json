@@ -1,7 +1,8 @@
+
 {
   "name": "iso-audit-assistant",
   "private": true,
-  "version": "2.9.6",
+  "version": "3.0.0",
   "type": "commonjs",
   "main": "electron/main.js",
   "homepage": "./",
@@ -17,7 +18,9 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "electron:pack": "npm run build && electron-builder --dir",
-    "electron:dist": "npm run build && electron-builder"
+    "electron:dist": "npm run build && electron-builder",
+    "release": "node scripts/update-build.js",
+    "checkpoint": "node scripts/update-build.js"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",

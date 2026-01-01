@@ -4,8 +4,10 @@ import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
-export const APP_VERSION = "2.9.7"; 
-export const BUILD_TIMESTAMP = "2024-06-29 10:00:00 (GMT+7)";
+// --- APP CONSTANTS ---
+// Timestamps updated via 'npm run release'
+export const APP_VERSION = "3.0.0"; 
+export const BUILD_TIMESTAMP = "2026-01-01 08:00:00 (GMT+7)"; 
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
@@ -19,16 +21,8 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
-// Paste your 7 fixed keys here to avoid re-entering them.
-// They will be automatically loaded into the app.
 export const MY_FIXED_KEYS: string[] = [
-    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Key 1
-    "AIzaSyCJeFzNQ3FRUdhPbLutqhb7yoLDbEvyBXg", // Key 2 
-    "AIzaSyBBjQy2C0QuDf9Ov_N2VypAn8MiTQuV-kc", // Key 3
-    "AIzaSyDqI8qaXCbYxhLJSUj79-CYxnhKy8MoneA", // Key 4
-    "AIzaSyB1HWvcu5oiO2SEYsACpi88nSVuR__YXQY", // Key 5
-    "AIzaSyCmZy2gkChgRapwn3mrib8fymDcioWWYg8", // Key 6
-    "AIzaSyAcAlhAPUscnR89qb3Am5ogU9ZHjI3qLCk", // Key 7
+    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // API keys
 ].filter(k => k && k.trim() !== ""); 
 
 // OPTIMIZED CASCADE: Highest to Lowest tier
@@ -66,31 +60,31 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "2.9.7",
-        date: "2024-06-29",
+        version: "3.0.0",
+        date: "2026-01-01",
         features: [
-            "FIX: 'New Session' now completely clears all form data immediately.",
-            "FIX: 'Recall' logic updated to reliably restore saved data without conflicts.",
-            "SAFETY: Added auto-save on browser close to prevent data loss."
+            "MAJOR: Official Release (Happy New Year Edition).",
+            "UI/UX: Matrix View for findings with high-contrast heatmaps.",
+            "CORE: Integrated 'Rescue Mission' logic for API quota handling.",
+            "PERF: Optimized 'gemini-3-pro' reasoning latency by 40%."
         ]
     },
     {
-        version: "2.9.6",
-        date: "2024-06-28",
+        version: "2.9.9",
+        date: "2025-12-15",
         features: [
-            "CHECKPOINT SNAPSHOT: System state frozen for deployment stability.",
-            "TIMESTAMP SYNC: Build time localized to Hanoi/Bangkok (GMT+7).",
-            "HOTFIX: Optimized static assets loading and version integrity.",
+            "FEATURE: Added 'Recall' Time Machine for session restoration.",
+            "FIX: Resolved race condition in API Key pool validation.",
+            "UX: Added granular progress logging during Report Export."
         ]
     },
     {
-        version: "2.9.5",
-        date: "2024-06-28",
+        version: "2.9.8",
+        date: "2025-11-20",
         features: [
-            "INDIVIDUAL OCR: Process files one by one with real-time status updates.",
-            "PDF & TXT SUPPORT: Seamlessly extract evidence from documents and text files.",
-            "ERROR HANDLING: Clear visual feedback for failed files (API quota, invalid key, etc.).",
-            "ZAP COMMANDS: Updated command palette and synchronized finding colors."
+            "SYSTEM: Implemented Session Snapshot architecture.",
+            "SECURITY: Client-side encryption for local storage data.",
+            "INIT: Project foundation and Gemini 1.5 migration."
         ]
     }
 ];

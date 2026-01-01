@@ -47,10 +47,11 @@ export default function App() {
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showIntegrityModal, setShowIntegrityModal] = useState(false);
-    const [showRecallModal, setShowRecallModal] = useState(false); // NEW: Recall Modal State
+    const [showRecallModal, setShowRecallModal] = useState(false); 
     
     const [isCmdPaletteOpen, setIsCmdPaletteOpen] = useState(false);
     const [findingsViewMode, setFindingsViewMode] = useState<FindingsViewMode>('list');
+    const [focusedFindingIndex, setFocusedFindingIndex] = useState<number>(0); 
     
     const [apiKeys, setApiKeys] = useState<ApiKeyProfile[]>([]);
     const [activeKeyId, setActiveKeyId] = useState<string>("");
@@ -67,10 +68,7 @@ export default function App() {
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false); 
     
-    // --- ARCHITECTURAL GUARDS (CRITICAL FOR DATA SAFETY) ---
-    // 1. isRestoring: Blocks auto-save while data is being pumped from storage into state.
     const isRestoring = useRef(false);
-    // 2. isManuallyCleared: Allows auto-save to write empty data ONLY if the user explicitly clicked "New Session".
     const isManuallyCleared = useRef(false);
 
     const [referenceClauseState, setReferenceClauseState] = useState<{
@@ -94,7 +92,8 @@ export default function App() {
     const [templateFileName, setTemplateFileName] = useState<string>("");
     
     const [customStandards, setCustomStandards] = useState<StandardsData>({});
-    const [standardKey, setStandardKey] = useState<string>("ISO 9001:2015");
+    // UPDATED: Default to empty string to show "Select ISO Standard" on init
+    const [standardKey, setStandardKey] = useState<string>("");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
@@ -152,7 +151,6 @@ export default function App() {
     const isReadyForAnalysis = !isAnalyzeLoading && selectedClauses.length > 0 && hasEvidence;
     const isReadyToSynthesize = !isReportLoading && analysisResult && Object.values(selectedFindings).some(v => v);
 
-    // Compute Pool Health Statistics
     const poolStats = useMemo(() => {
         const total = apiKeys.length;
         const valid = apiKeys.filter(k => k.status === 'valid').length;
@@ -176,6 +174,7 @@ export default function App() {
     const activeKeyProfile = useMemo(() => apiKeys.find(k => k.id === activeKeyId), [apiKeys, activeKeyId]);
     const isSystemHealthy = activeKeyProfile?.status === 'valid';
 
+    // ... (Keep existing key management and auto-save logic same as before) ...
     // --- KEY LOADING LOGIC ---
     const loadKeyData = (): ApiKeyProfile[] => {
         try {
@@ -329,7 +328,6 @@ export default function App() {
             if (session) {
                 const data = JSON.parse(session);
                 if (data.standardKey) setStandardKey(data.standardKey);
-                // FIX: Ensure we don't accidentally load partial undefineds
                 if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
                 if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
                 if (data.evidence) setEvidence(data.evidence);
@@ -349,44 +347,31 @@ export default function App() {
     
     // --- ROBUST AUTO-SAVE LOGIC ---
     useEffect(() => {
-        // GUARD 1: Block completely if we are in the middle of restoring data
         if (isRestoring.current) return;
-
-        // GUARD 2: EMPTY STATE PROTECTION
-        // If critical data is empty, check if we actually WANTED it empty (New Session).
         const isEmptyState = !evidence && (!selectedClauses || selectedClauses.length === 0);
         if (isEmptyState && !isManuallyCleared.current) {
             if (localStorage.getItem("iso_session_data")) {
                 return; 
             }
         }
-
-        // Debounced Auto-Save
         setIsSaving(true);
         const handler = setTimeout(() => {
-            // Re-check guards inside timeout
             if (isRestoring.current) {
                 setIsSaving(false);
                 return;
             }
-
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
-            
-            // Reset manual clear flag after a successful save
             if (isManuallyCleared.current) isManuallyCleared.current = false;
-
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
             setIsSaving(false);
         }, 800); 
-
         return () => clearTimeout(handler);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
 
-    // --- DATA SAFETY: BEFORE UNLOAD ---
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (!isRestoring.current) {
@@ -398,17 +383,12 @@ export default function App() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText]);
 
-    // --- NEW ARCHITECTURE: HANDLE NEW SESSION (TIME MACHINE TRIGGER) ---
     const handleNewSession = (e?: any) => { 
         if(e) e.stopPropagation(); 
         if(!confirm("Start New Session? Current data will be moved to 'Backup Vault'.")) return; 
-        
         try {
-            // 1. CREATE SNAPSHOT (Time Machine)
-            // Save current state to history stack before wiping
             const currentData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
             const hasData = evidence.trim().length > 0 || selectedClauses.length > 0;
-            
             if (hasData) {
                 const snapshot: SessionSnapshot = {
                     id: `backup_${Date.now()}`,
@@ -417,22 +397,15 @@ export default function App() {
                     triggerType: "MANUAL_BACKUP",
                     data: currentData
                 };
-
                 const historyRaw = localStorage.getItem("iso_session_history");
                 const history = historyRaw ? JSON.parse(historyRaw) : [];
-                // Add new snapshot to top, limit to 5
                 const newHistory = [snapshot, ...history].slice(0, 5);
                 localStorage.setItem("iso_session_history", JSON.stringify(newHistory));
             }
-
-            // 2. EXPLICIT AUTHORIZATION to overwrite disk with empty data
             isManuallyCleared.current = true;
-
-            // 3. Force Clear Local Storage immediately
             localStorage.removeItem("iso_session_data");
-
-            // 4. CLEAR STATE (Full Reset)
-            setStandardKey("ISO 9001:2015");
+            // UPDATED: Reset Standard to empty
+            setStandardKey("");
             setAuditInfo(DEFAULT_AUDIT_INFO); 
             setEvidence(""); 
             setSelectedClauses([]); 
@@ -441,57 +414,39 @@ export default function App() {
             setSelectedFindings({}); 
             setFinalReportText(null); 
             setLastSavedTime(null); 
-            
             setSessionKey(Date.now());
             setLayoutMode('evidence'); 
-
             if (fileInputRef.current) fileInputRef.current.value = "";
             if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
-            
             setToastMsg("New Session Started. (Previous session archived in Recall)");
-
         } catch (error) {
             console.error("New Session Error", error);
             setToastMsg("Error creating backup. Session reset anyway.");
         }
     };
     
-    // --- NEW ARCHITECTURE: ATOMIC RESTORE FROM SNAPSHOT ---
     const handleRestoreSnapshot = (snapshot: SessionSnapshot) => {
         try {
-            // 1. LOCK DOWN AUTO-SAVE
             isRestoring.current = true;
             setShowRecallModal(false);
-
             const data = snapshot.data;
-            
-            // 2. HARD WRITE TO DISK (Atomic Persistence)
-            // Crucial: We write the restored data to disk immediately so if the browser crashes
-            // during React rendering, the data is safe on next load.
             localStorage.setItem("iso_session_data", JSON.stringify(data));
-
-            // 3. HYDRATE STATE (Update UI)
             if (data.standardKey) setStandardKey(data.standardKey);
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
-            setUploadedFiles([]); // Files are not persisted in snapshots to save space
+            setUploadedFiles([]); 
             if (data.analysisResult) setAnalysisResult(data.analysisResult);
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
-            
             setSessionKey(Date.now());
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
-
             setToastMsg(`Restored session from: ${new Date(snapshot.timestamp).toLocaleTimeString()}`);
-
-            // 4. RELEASE LOCK AFTER SAFETY MARGIN
             setTimeout(() => {
                 isRestoring.current = false;
                 isManuallyCleared.current = false; 
             }, 1200);
-
         } catch (e) {
             console.error("Restore failed", e);
             setToastMsg("Failed to restore session snapshot.");
@@ -760,6 +715,107 @@ export default function App() {
 
     const commandActions = useMemo(() => {
         const baseActions: any[] = [
+            { 
+                label: "Debug: Load UAT Mock Data", 
+                desc: "Simulate full audit flow: Info, Evidence & Findings (TechGlobal Case)", 
+                icon: "Cpu", 
+                action: () => {
+                    // 1. Setup Audit Info
+                    setAuditInfo({
+                        company: "TechGlobal Manufacturing Solutions Ltd.",
+                        smo: "24-UAT-TEST-001",
+                        department: "Production, QC, and Supply Chain",
+                        interviewee: "Mr. Sarah Connors (Plant Mgr), Dave Bowman (QC)",
+                        auditor: "T-800 Model 101 (Lead Auditor)",
+                        type: "Stage 2 Certification Audit"
+                    });
+
+                    // 2. Setup Standard & Scope
+                    setStandardKey("ISO 9001:2015");
+                    // IDs match the IDs in iso9001Data.ts
+                    const mockClauses = ["4.1", "5.2", "6.1", "7.1.3", "8.5.1", "9.2"];
+                    setSelectedClauses(mockClauses);
+
+                    // 3. Setup Raw Evidence
+                    const mockEvidence = `--- AUDIT INTERVIEW NOTES ---
+Date: 2024-06-15
+Location: Factory Floor B & Admin Building
+
+1. Context (4.1): Reviewed SWOT analysis dated Jan 2024. Mentions supply chain risks but no action plan visible for semiconductor shortage.
+
+2. Policy (5.2): Quality Policy is displayed in the lobby and canteen. Interviewed 3 staff members; they understood the core intent.
+
+3. Infrastructure (7.1.3): Tour of Factory Floor B. HVAC system in the server room was leaking water near the rack. Maintenance log shows last check was 6 months ago (required monthly).
+
+4. Production (8.5.1): Work Instruction WI-PROD-05 (Assembly) revision 3 is in use. Operators were following steps correctly. However, the calibrated vernier caliper (ID: QC-099) used for final check had an expired calibration sticker (Exp: Dec 2023).
+
+5. Internal Audit (9.2): Audit program for 2024 is approved. Q1 and Q2 audits completed. Reports showed NCs were raised and closed effectively.`;
+                    
+                    setEvidence(mockEvidence);
+
+                    // 4. Setup Analysis Findings
+                    const mockResults: AnalysisResult[] = [
+                        { 
+                            clauseId: "4.1", 
+                            status: "OFI", 
+                            reason: "Risk assessment is present but lacks specific mitigation plans for identified supply chain issues.", 
+                            suggestion: "Develop specific action plans for high-risk supply chain items.", 
+                            evidence: "SWOT analysis dated Jan 2024 identifies semiconductor shortage but no corresponding action plan found.", 
+                            conclusion_report: "Opportunity for improvement regarding risk mitigation planning." 
+                        },
+                        { 
+                            clauseId: "5.2", 
+                            status: "COMPLIANT", 
+                            reason: "Quality Policy is established, communicated, and understood.", 
+                            suggestion: "None.", 
+                            evidence: "Policy displayed in common areas; staff interviews confirmed understanding.", 
+                            conclusion_report: "Compliant." 
+                        },
+                        { 
+                            clauseId: "6.1", 
+                            status: "COMPLIANT", 
+                            reason: "Actions to address risks are generally planned.", 
+                            suggestion: "Consider integrating risk register with strategic planning software.", 
+                            evidence: "Risk register available and aligned with context.", 
+                            conclusion_report: "Compliant." 
+                        },
+                        { 
+                            clauseId: "7.1.3", 
+                            status: "NC_MINOR", 
+                            reason: "Infrastructure maintenance is not carried out as per schedule.", 
+                            suggestion: "Immediate maintenance of HVAC and review of maintenance scheduling process.", 
+                            evidence: "HVAC leak in server room. Maintenance log shows last check 6 months ago vs monthly requirement.", 
+                            conclusion_report: "Minor Non-Conformity: Maintenance schedule adherence." 
+                        },
+                        { 
+                            clauseId: "8.5.1", 
+                            status: "NC_MAJOR", 
+                            reason: "Use of expired monitoring and measuring resources in production.", 
+                            suggestion: "Quarantine affected products and recalibrate equipment immediately.", 
+                            evidence: "Vernier caliper QC-099 used for final release has expired calibration (Dec 2023).", 
+                            conclusion_report: "Major Non-Conformity: Control of monitoring and measuring resources." 
+                        },
+                        { 
+                            clauseId: "9.2", 
+                            status: "COMPLIANT", 
+                            reason: "Internal audit program is effectively implemented.", 
+                            suggestion: "None.", 
+                            evidence: "2024 Program approved, Q1/Q2 audits completed with closed NCs.", 
+                            conclusion_report: "Compliant." 
+                        }
+                    ];
+                    setAnalysisResult(mockResults);
+                    
+                    // 5. Select all findings for report generation
+                    const mockSelection = mockResults.reduce((acc: any, curr) => ({...acc, [curr.clauseId]: true}), {});
+                    setSelectedFindings(mockSelection);
+
+                    // 6. Switch UI View
+                    setLayoutMode('findings');
+                    setToastMsg("UAT Data Loaded: Ready for Report Synthesis.");
+                    setIsCmdPaletteOpen(false);
+                } 
+            },
             { label: "Analyze Compliance", desc: `Start AI analysis (Turbo: ${Math.max(2, Math.min(6, poolStats.valid + 2))} threads)`, icon: "Wand2", shortcut: "AI", action: handleAnalyze },
             { label: "Validate API Key Pool", desc: "Check connection health", icon: "RefreshCw", action: () => { checkAllKeys(apiKeys); setToastMsg("Validating Neural Pool..."); } },
             { label: "Standard Health & Changes", desc: "View integrity & repair options", icon: "Session10_Pulse", action: () => setShowIntegrityModal(true) },
@@ -821,14 +877,90 @@ export default function App() {
         return missing.length > 0 ? `Missing: ${missing.join(" & ")}` : "Click to Start AI Analysis";
     };
 
-    const getFindingColorClass = (status: FindingStatus) => {
+    const getFindingColorStyles = (status: FindingStatus) => {
         switch (status) {
-            case 'COMPLIANT': return 'bg-emerald-500 text-white';
-            case 'NC_MAJOR': return 'bg-red-600 text-white';
-            case 'NC_MINOR': return 'bg-orange-500 text-white';
-            case 'OFI': return 'bg-blue-500 text-white';
-            default: return 'bg-gray-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400';
+            case 'COMPLIANT': return { bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500', headerText: 'text-emerald-600 dark:text-emerald-400 border-emerald-600 dark:border-emerald-400' };
+            case 'NC_MAJOR': return { bg: 'bg-red-600', text: 'text-red-700 dark:text-red-300', pill: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', border: 'border-red-600', headerText: 'text-red-600 dark:text-red-400 border-red-600 dark:border-red-400' };
+            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300', border: 'border-orange-500', headerText: 'text-orange-500 dark:text-orange-400 border-orange-500 dark:border-orange-400' };
+            case 'OFI': return { bg: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', border: 'border-blue-500', headerText: 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400' };
+            default: return { bg: 'bg-slate-500', text: 'text-slate-600', pill: 'bg-slate-100 text-slate-500', border: 'border-slate-300', headerText: 'text-slate-500 border-slate-300' };
         }
+    };
+
+    // --- REUSABLE CARD RENDERER (For List & Matrix Modal) ---
+    const renderFindingCard = (res: AnalysisResult, idx: number, isCondensed = false) => {
+        const styles = getFindingColorStyles(res.status as FindingStatus);
+        
+        return (
+            <div 
+                key={idx} 
+                ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
+                className={`group relative bg-white dark:bg-slate-900 rounded-lg p-3 border-y border-r border-l-[6px] transition-all duration-200 hover:shadow-md dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'border-r-indigo-500 ring-1 ring-indigo-500/20' : 'border-r-gray-100 dark:border-r-transparent'}`}
+                // FIX 1: Allow selection in condensed mode (Matrix detail view)
+                onClick={() => setSelectedFindings(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
+            >
+                {/* FIX 2: Green Stick Checkmark (No border, larger) */}
+                <div className="absolute top-3 right-3 z-10">
+                    {selectedFindings[res.clauseId] ? (
+                        <div className="animate-in zoom-in spin-in-180 duration-300">
+                            <Icon name="CheckThick" size={22} className="text-emerald-500 drop-shadow-sm" />
+                        </div>
+                    ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-gray-200 dark:border-slate-700 group-hover:border-indigo-300 transition-colors"></div>
+                    )}
+                </div>
+
+                <div className="pr-8">
+                    {/* Header Row: Clause ID + Integrated Status Dropdown Badge */}
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{res.clauseId}</span>
+                        
+                        <div className="relative group/badge" onClick={e => e.stopPropagation()}>
+                            <select 
+                                value={res.status}
+                                onChange={(e) => handleUpdateFinding(idx, 'status', e.target.value)}
+                                className={`appearance-none cursor-pointer text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${styles.pill} border-none outline-none hover:brightness-95 text-center transition-all text-slate-900 dark:text-white`}
+                            >
+                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="COMPLIANT">COMPLIANT</option>
+                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="NC_MINOR">MINOR</option>
+                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="NC_MAJOR">MAJOR</option>
+                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OFI">OFI</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    {/* Evidence Block (Read-Only) */}
+                    <div className="mb-3">
+                        <div className="bg-gray-50 dark:bg-slate-950/50 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
+                            <strong className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">Evidence:</strong>
+                            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                {res.evidence}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Conclusion Block (Editable) */}
+                    <div className="mb-3">
+                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors group-focus-within:border-indigo-500 shadow-sm" onClick={e => e.stopPropagation()}>
+                            <strong className="block text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1">Conclusion:</strong>
+                            <textarea 
+                                value={res.reason}
+                                onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
+                                className="w-full bg-transparent outline-none text-xs text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
+                                placeholder="Enter conclusion..."
+                            />
+                        </div>
+                    </div>
+
+                    {res.suggestion && (
+                        <div className="flex gap-1.5 items-start">
+                            <Icon name="Lightbulb" size={12} className="text-amber-500 mt-0.5 shrink-0"/>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic leading-tight">{res.suggestion}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -1045,64 +1177,70 @@ export default function App() {
                                         </div>
                                     )}
                                     {analysisResult && (
-                                        <div className={findingsViewMode === 'matrix' ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-4"}>
-                                            {analysisResult.map((res, idx) => (
-                                                <div 
-                                                    key={idx} 
-                                                    ref={el => { findingRefs.current[idx] = el; }}
-                                                    className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 border transition-all duration-300 hover:shadow-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${selectedFindings[res.clauseId] ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-gray-100 dark:border-transparent opacity-70 hover:opacity-100'}`}
-                                                    onClick={() => setSelectedFindings(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
-                                                >
-                                                    <div className="absolute top-4 right-4 z-10">
-                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedFindings[res.clauseId] ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300 dark:border-slate-600 bg-transparent'}`}>
-                                                            {selectedFindings[res.clauseId] && <Icon name="CheckLineart" size={12} className="text-white" />}
-                                                        </div>
+                                        findingsViewMode === 'list' ? (
+                                            <div className="space-y-3">
+                                                {analysisResult.map((res, idx) => renderFindingCard(res, idx))}
+                                            </div>
+                                        ) : (
+                                            /* ROW-BASED HEATMAP MATRIX */
+                                            /* HEIGHT OPTIMIZED: Matrix shrinks, Detail expands */
+                                            <div className="flex flex-col h-full gap-4">
+                                                {/* Matrix Section - Flex Shrink allowed, Max Height limited to ~40% */}
+                                                <div className="flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800 overflow-hidden max-h-[40vh]">
+                                                    {/* Vibe Header: Minimal Text */}
+                                                    <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-2 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
+                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Clause</div>
+                                                        <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
+                                                        <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
+                                                        <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
+                                                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
                                                     </div>
-
-                                                    <div className="flex items-start gap-4 pr-10">
-                                                        <div className={`p-2 rounded-xl shrink-0 ${getFindingColorClass(res.status as FindingStatus)}`}>
-                                                            <span className="text-xs font-black uppercase">{res.status.replace('NC_', '')}</span>
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 mb-2">
-                                                                <span className="text-xs font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">{res.clauseId}</span>
-                                                            </div>
-                                                            <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-2">{res.reason}</h4>
-                                                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed bg-gray-50 dark:bg-slate-950/50 p-3 rounded-lg border border-gray-100 dark:border-white/5 shadow-inner">
-                                                                <strong className="block mb-1 text-indigo-600 dark:text-indigo-400">Evidence:</strong>
-                                                                {res.evidence}
-                                                            </p>
-                                                            {res.suggestion && (
-                                                                <div className="mt-3 flex gap-2 items-start">
-                                                                    <Icon name="Lightbulb" size={14} className="text-amber-500 mt-0.5 shrink-0"/>
-                                                                    <p className="text-xs text-slate-500 dark:text-slate-400 italic">{res.suggestion}</p>
-                                                                </div>
-                                                            )}
-                                                            
-                                                            {/* Manual Edit Controls (Visible on Hover/Focus) */}
-                                                            <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-3 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                                <select 
-                                                                    value={res.status}
-                                                                    onChange={(e) => handleUpdateFinding(idx, 'status', e.target.value)}
-                                                                    className="w-full text-xs p-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg outline-none focus:border-indigo-500"
+                                                    
+                                                    {/* Scrollable Matrix Rows */}
+                                                    <div className="overflow-y-auto custom-scrollbar">
+                                                        {analysisResult.map((item, idx) => {
+                                                            const isSelected = focusedFindingIndex === idx;
+                                                            return (
+                                                                <div 
+                                                                    key={idx}
+                                                                    onClick={() => setFocusedFindingIndex(idx)}
+                                                                    className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-1.5 border-b border-gray-100 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-white dark:hover:bg-slate-800'}`}
                                                                 >
-                                                                    <option value="COMPLIANT">Compliant</option>
-                                                                    <option value="NC_MINOR">Minor NC</option>
-                                                                    <option value="NC_MAJOR">Major NC</option>
-                                                                    <option value="OFI">OFI</option>
-                                                                </select>
-                                                                <textarea 
-                                                                    value={res.reason}
-                                                                    onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
-                                                                    className="w-full text-xs p-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg outline-none focus:border-indigo-500 resize-none h-8 focus:h-20 transition-all"
-                                                                    placeholder="Edit finding reason..."
-                                                                />
-                                                            </div>
-                                                        </div>
+                                                                    {/* Clause Code Column */}
+                                                                    <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                                        {item.clauseId}
+                                                                    </div>
+                                                                    
+                                                                    {/* Status Indicators (Centered) */}
+                                                                    {/* FIX 3: Ensure strict centering */}
+                                                                    <div className="flex items-center justify-center h-full w-full">
+                                                                        {item.status === 'NC_MAJOR' && <div className="w-3 h-3 rounded bg-red-500 shadow-sm ring-1 ring-red-300 dark:ring-red-900"></div>}
+                                                                    </div>
+                                                                    <div className="flex items-center justify-center h-full w-full">
+                                                                        {item.status === 'NC_MINOR' && <div className="w-3 h-3 rounded bg-orange-500 shadow-sm ring-1 ring-orange-300 dark:ring-orange-900"></div>}
+                                                                    </div>
+                                                                    <div className="flex items-center justify-center h-full w-full">
+                                                                        {item.status === 'OFI' && <div className="w-3 h-3 rounded bg-blue-500 shadow-sm ring-1 ring-blue-300 dark:ring-blue-900"></div>}
+                                                                    </div>
+                                                                    <div className="flex items-center justify-center h-full w-full">
+                                                                        {item.status === 'COMPLIANT' && <div className="w-3 h-3 rounded bg-emerald-500 shadow-sm ring-1 ring-emerald-300 dark:ring-emerald-900"></div>}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                                
+                                                {/* Active Detail Editor - Takes Remaining Space */}
+                                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-2 shadow-inner">
+                                                    {analysisResult[focusedFindingIndex] ? (
+                                                        renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true)
+                                                    ) : (
+                                                        <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">Select a row above to view details</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
                                     )}
                                 </div>
                                 <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
@@ -1124,30 +1262,6 @@ export default function App() {
                                         >
                                             <Icon name="Grid" size={18}/>
                                             <span className="hidden md:inline text-xs font-bold">Matrix</span>
-                                        </button>
-                                    </div>
-
-                                    {/* PILL 2: Selection Toggle */}
-                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
-                                        <button 
-                                            onClick={() => { 
-                                                const allIds = analysisResult?.reduce((acc: any, r) => ({...acc, [r.clauseId]: true}), {});
-                                                if(allIds) setSelectedFindings(allIds);
-                                            }} 
-                                            className="flex-1 md:flex-none md:w-auto h-full px-3 rounded-lg flex items-center justify-center gap-2 text-slate-500 hover:text-indigo-600 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-all whitespace-nowrap"
-                                            title="Select All"
-                                        >
-                                            <Icon name="CheckSquare" size={18}/>
-                                            <span className="hidden md:inline text-xs font-bold">All</span>
-                                        </button>
-                                        <div className="w-px h-6 bg-gray-200 dark:bg-slate-700"></div>
-                                        <button 
-                                            onClick={() => setSelectedFindings({})} 
-                                            className="flex-1 md:flex-none md:w-auto h-full px-3 rounded-lg flex items-center justify-center gap-2 text-slate-500 hover:text-red-500 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-all whitespace-nowrap"
-                                            title="Deselect All"
-                                        >
-                                            <Icon name="Square" size={18}/>
-                                            <span className="hidden md:inline text-xs font-bold">None</span>
                                         </button>
                                     </div>
 
@@ -1235,6 +1349,80 @@ export default function App() {
                 onClose={() => setShowRecallModal(false)}
                 onRestore={handleRestoreSnapshot}
             />
+
+            {/* --- EXPORT PROGRESS MODAL --- */}
+            {exportState.isOpen && (
+                <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 p-6 animate-zoom-in-spring">
+                        {/* Header */}
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+                            {exportState.isFinished ? <Icon name="CheckCircle2" className="text-emerald-500" size={24}/> : <Icon name="Loader" className="animate-spin text-indigo-500" size={24}/>}
+                            {exportState.isFinished ? "Export Complete" : "Processing Export..."}
+                        </h3>
+
+                        {/* Error Handling State */}
+                        {exportState.error ? (
+                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800 mb-4 animate-shake">
+                                <p className="text-sm text-red-600 dark:text-red-400 font-bold mb-2 flex items-center gap-2">
+                                    <Icon name="AlertCircle" size={16}/> Process Paused: Limit Reached
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
+                                    Your existing API keys have hit their quota limits. Add a backup key to resume immediately without losing progress.
+                                </p>
+                                <input
+                                    type="password"
+                                    placeholder="Paste Emergency Google AI Key..."
+                                    className="w-full p-2 text-xs rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-950 mb-3 outline-none focus:border-red-500"
+                                    value={rescueKey}
+                                    onChange={(e) => setRescueKey(e.target.value)}
+                                />
+                                <div className="flex gap-2 justify-end">
+                                    <button onClick={() => setExportState(prev => ({...prev, isOpen: false}))} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button onClick={handleResumeExport} disabled={isRescuing || !rescueKey.trim()} className="px-3 py-2 text-xs font-bold bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100">
+                                        {isRescuing ? <Icon name="Loader" className="animate-spin" size={12}/> : <Icon name="Zap" size={12}/>}
+                                        Rescue & Resume
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Progress Bar State */
+                            <div className="space-y-5">
+                                <div className="relative pt-1">
+                                    <div className="flex mb-2 items-center justify-between">
+                                        <div>
+                                            <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200 dark:text-indigo-200 dark:bg-indigo-900/50">
+                                                {exportState.isFinished ? "Done" : "Translating"}
+                                            </span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-xs font-semibold inline-block text-indigo-600 dark:text-indigo-400">
+                                                {Math.round((exportState.processedChunksCount / Math.max(exportState.totalChunks, 1)) * 100)}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-100 dark:bg-slate-800">
+                                        <div 
+                                            style={{ width: `${Math.round((exportState.processedChunksCount / Math.max(exportState.totalChunks, 1)) * 100)}%` }} 
+                                            className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-500 ease-out"
+                                        ></div>
+                                    </div>
+                                </div>
+                                
+                                <div className="text-center space-y-1">
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                                        Processing Chunk {Math.min(exportState.processedChunksCount + 1, exportState.totalChunks)} of {exportState.totalChunks}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 italic">
+                                        Target Language: {exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <Modal isOpen={showSettingsModal} title="Settings & Neural Network" onClose={() => setShowSettingsModal(false)}>
                 <div className="space-y-6">
