@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL, MODEL_HIERARCHY } from "../constants";
 import { cleanAndParseJSON } from "../utils";
@@ -42,14 +41,14 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // 2. STABLE Probe List
-    // We prioritize models that are known to be universally available to standard API keys.
-    // Experimental models (2.0/3.0) often return 404 for standard keys, causing false negatives.
+    // 2. COMPLIANT PROBE LIST
+    // We utilize the allowed aliases which map to stable models.
+    // 'gemini-flash-latest' is the most reliable entry point for standard keys.
     const probeModels = [
-        "gemini-1.5-flash",      // Gold Standard for Availability
-        "gemini-1.5-pro",        // High Tier
-        "gemini-1.0-pro",        // Legacy Stable
-        "gemini-2.0-flash-exp"   // Experimental (Only try if others fail or specifically requested)
+        "gemini-flash-latest",       // Standard Flash Alias
+        "gemini-flash-lite-latest",  // Lite Alias (fallback)
+        "gemini-3-flash-preview",    // Next Gen
+        "gemini-3-pro-preview"       // Pro Tier
     ];
 
     if (preferredModel && !probeModels.includes(preferredModel)) {
@@ -63,10 +62,11 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     for (const modelId of probeModels) {
         const start = performance.now();
         try {
-            // 3. Simplified Probe Call
+            // 3. Strict SDK Compliant Probe
+            // Using an object with 'parts' to ensure maximum compatibility with the new SDK parser
             await ai.models.generateContent({
                 model: modelId,
-                contents: "Hi", 
+                contents: { parts: [{ text: "Hello" }] }, 
             });
             const end = performance.now();
             
@@ -79,6 +79,11 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             
             console.warn(`[ISO-AUDIT] Probe failed for ${modelId}:`, msg);
 
+            // Special handling for the known key if it fails - log it specifically
+            if (key.startsWith("AIzaSy")) {
+                console.error(`[ISO-AUDIT] Known Google Key failed on ${modelId}. Reason: ${msg}`);
+            }
+
             if (msg.includes("api key not valid") || (status === 400 && msg.includes("key"))) {
                 // Definitive Invalid Key
                 return { isValid: false, latency: 0, errorType: 'invalid' };
@@ -87,10 +92,11 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
                 lastErrorType = 'quota_exceeded';
             } else if (status === 404 || msg.includes("not found") || msg.includes("404")) {
-                // 404 means THIS model is not found/enabled for this key. 
+                // 404 means THIS model alias is not found/enabled for this key/project. 
                 // We do NOT fail the key yet, we just try the next model.
                 lastErrorType = 'invalid'; 
             } else if (msg.includes("permission denied") || msg.includes("403")) {
+                // 403 can be referrer restrictions (e.g. running on localhost vs github)
                 lastErrorType = 'invalid'; 
             } else {
                 lastErrorType = 'unknown';
