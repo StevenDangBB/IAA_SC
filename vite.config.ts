@@ -7,14 +7,14 @@ import process from 'node:process';
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
-  // The third argument '' allows loading all env vars, regardless of prefix.
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
     plugins: [react()],
     base: './', 
     define: {
-      // Inject VITE_API_KEY or API_KEY into process.env.API_KEY for the app to use safely.
+      // Inject VITE_API_KEY or API_KEY into process.env.API_KEY.
+      // We rely on the index.html window.process polyfill to prevent ReferenceErrors if replacement fails.
       'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY || env.API_KEY || '')
     },
     test: {

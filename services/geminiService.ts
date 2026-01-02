@@ -7,13 +7,13 @@ import { cleanAndParseJSON } from "../utils";
 const getAiClient = (overrideKey?: string) => {
     // Check order: 
     // 1. Explicit Override
-    // 2. Process Env (Defined in vite.config.ts)
+    // 2. Process Env (Injected by Vite + Polyfilled by index.html)
     // 3. Local Storage
     const apiKey = overrideKey || process.env.API_KEY || localStorage.getItem("iso_api_key") || "";
     
     if (!apiKey) {
-        console.error("Gemini API Key is missing. Environment checks:", { 
-            processEnv: !!process.env.API_KEY, 
+        console.error("Gemini API Key is missing. Checks:", { 
+            processEnv: !!process.env.API_KEY,
             override: !!overrideKey,
             storage: !!localStorage.getItem("iso_api_key")
         });
@@ -58,7 +58,6 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
 
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
     const ai = getAiClient(apiKey);
-    // ENHANCED PROMPT: Explicitly asking for structured document formatting
     const prompt = `Provide the EXACT verbatim text for ISO clause: ${standardName} - [${clause.code}] ${clause.title}. 
     FORMATTING RULES:
     1. Use clear line breaks between paragraphs.

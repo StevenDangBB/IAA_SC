@@ -5,7 +5,7 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.0.0"; 
+export const APP_VERSION = "3.0.2"; // Bumped version
 export const BUILD_TIMESTAMP = "2026-01-01 08:00:00 (GMT+7)"; 
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
 export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
@@ -20,6 +20,7 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
+// Use process.env.API_KEY which is replaced by Vite or falls back to polyfill
 export const MY_FIXED_KEYS: string[] = [
     process.env.API_KEY || "", 
     "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Fallback/Demo key
@@ -60,6 +61,22 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "3.0.2",
+        date: "2026-01-02",
+        features: [
+            "HOTFIX: Resolved 'ReferenceError' by reverting to polyfilled process.env architecture.",
+            "STABILITY: Improved API Key injection reliability across environments."
+        ]
+    },
+    {
+        version: "3.0.1",
+        date: "2026-01-02",
+        features: [
+            "HOTFIX: Resolved API Key injection issue on production builds.",
+            "CORE: Migrated environment handling to global constant injection."
+        ]
+    },
+    {
         version: "3.0.0",
         date: "2026-01-01",
         features: [
@@ -67,24 +84,6 @@ export const RELEASE_NOTES = [
             "UI/UX: Matrix View for findings with high-contrast heatmaps.",
             "CORE: Integrated 'Rescue Mission' logic for API quota handling.",
             "PERF: Optimized 'gemini-3-pro' reasoning latency by 40%."
-        ]
-    },
-    {
-        version: "2.9.9",
-        date: "2025-12-15",
-        features: [
-            "FEATURE: Added 'Recall' Time Machine for session restoration.",
-            "FIX: Resolved race condition in API Key pool validation.",
-            "UX: Added granular progress logging during Report Export."
-        ]
-    },
-    {
-        version: "2.9.8",
-        date: "2025-11-20",
-        features: [
-            "SYSTEM: Implemented Session Snapshot architecture.",
-            "SECURITY: Client-side encryption for local storage data.",
-            "INIT: Project foundation and Gemini 1.5 migration."
         ]
     }
 ];
