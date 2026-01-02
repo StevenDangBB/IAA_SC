@@ -36,20 +36,18 @@ const getAiClient = (overrideKey?: string) => {
 
 export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string }> => {
     // 1. Aggressive Sanitization
-    // Remove whitespace, newlines, and potential quotes that might have been copied
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
 
     if (!key) {
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // 2. Expanded Probe List
-    // We try models in order of likelihood to work + stability
+    // 2. Updated Probe List (Removing 1.5 series which causes 404s for some keys)
+    // Prioritizing experimental and preview models as per new guidelines
     const probeModels = [
-        "gemini-1.5-flash",      // Current Stable Standard
-        "gemini-1.5-pro",        // Paid/High-tier
-        "gemini-1.0-pro",        // Legacy Fallback
-        "gemini-2.0-flash-exp"   // Experimental (Sandbox keys often use this)
+        "gemini-2.0-flash-exp",      // Primary - High reliability currently
+        "gemini-3-flash-preview",    // Next Gen
+        "gemini-flash-latest"        // Fallback Alias
     ];
 
     if (preferredModel && !probeModels.includes(preferredModel)) {
@@ -64,7 +62,6 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         const start = performance.now();
         try {
             // 3. Simplified Probe Call
-            // Removed 'config' (maxOutputTokens) to avoid potential 400 Bad Request errors from strict parameter validation
             await ai.models.generateContent({
                 model: modelId,
                 contents: "Hi", 
@@ -77,19 +74,22 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         } catch (error: any) {
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
+            const code = error.code || 0;
             
             console.warn(`[ISO-AUDIT] Probe failed for ${modelId}:`, msg);
 
-            if (msg.includes("api key not valid") || status === 400 && msg.includes("key")) {
+            if (msg.includes("api key not valid") || (status === 400 && msg.includes("key"))) {
                 // Definitive Invalid Key
                 return { isValid: false, latency: 0, errorType: 'invalid' };
             }
             
             if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
                 lastErrorType = 'quota_exceeded';
+            } else if (status === 404 || msg.includes("not found") || msg.includes("404")) {
+                // 404 means THIS model is not found/enabled for this key. 
+                // We do NOT fail the key yet, we just try the next model.
+                lastErrorType = 'invalid'; 
             } else if (msg.includes("permission denied") || msg.includes("403")) {
-                // 403 can mean "Model not enabled for this project", so we continue to next model
-                // But we track it as a potential invalid state if all fail
                 lastErrorType = 'invalid'; 
             } else {
                 lastErrorType = 'unknown';

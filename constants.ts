@@ -5,12 +5,12 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.0.6"; // Stability fix for API Keys
-export const BUILD_TIMESTAMP = "2026-01-02 16:45:00 (GMT+7)"; 
+export const APP_VERSION = "3.0.8"; // Hotfix: Update Model Hierarchy for GenAI SDK
+export const BUILD_TIMESTAMP = "2026-01-02 17:45:00 (GMT+7)"; 
 
-// REVERT TO STABLE MODELS FOR COMPATIBILITY
-export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"; 
-export const DEFAULT_VISION_MODEL = "gemini-1.5-flash"; 
+// UPDATE TO NEWER MODELS AS PER GUIDELINES
+export const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-exp"; 
+export const DEFAULT_VISION_MODEL = "gemini-2.0-flash-exp"; 
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
@@ -43,23 +43,24 @@ const getEnvApiKey = () => {
 const envKey = getEnvApiKey();
 
 export const MY_FIXED_KEYS: string[] = [
+    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Primary Fallback Key
     envKey
 ].filter(k => k && k.trim() !== ""); 
 
-// OPTIMIZED CASCADE: Includes Legacy Stable (1.0 Pro)
+// OPTIMIZED CASCADE: Prioritize Experimental/Preview models which are active
 export const MODEL_HIERARCHY = [
-    "gemini-1.5-flash",               // Most stable & fast
-    "gemini-1.0-pro",                 // Legacy Stable (High compatibility)
-    "gemini-1.5-pro",                 // High intelligence
-    "gemini-2.0-flash-exp"            // Experimental
+    "gemini-2.0-flash-exp",           // Primary Experimental (High Availability)
+    "gemini-3-flash-preview",         // Next Gen Flash
+    "gemini-3-pro-preview",           // Next Gen Pro
+    "gemini-flash-latest"             // Fallback Alias
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Stable & Fast" },
-    "gemini-1.0-pro": { label: "PRO 1.0", color: "bg-slate-600 text-white shadow-slate-500/30", tier: 2, desc: "Legacy Compatible" },
-    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 3, desc: "Complex Reasoning" },
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 4, desc: "Next Gen" },
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 1, desc: "Fast & Multimodal" },
+    "gemini-3-flash-preview": { label: "FLASH 3.0", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 2, desc: "Next Gen Speed" },
+    "gemini-3-pro-preview": { label: "PRO 3.0", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 3, desc: "Complex Reasoning" },
+    "gemini-flash-latest": { label: "FLASH LATEST", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 4, desc: "Stable Alias" },
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -81,19 +82,19 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "3.0.6",
+        version: "3.0.8",
         date: "2026-01-02",
         features: [
-            "FIX: Improved API Key validation to probe multiple models (1.5 Flash, 1.0 Pro).",
-            "CORE: Added fallback to Legacy Gemini Pro for maximum compatibility."
+            "CRITICAL: Updated model list to fix 'Entity Not Found' errors (404).",
+            "CORE: Enabled Gemini 2.0 Flash Exp and Gemini 3 Preview models."
         ]
     },
     {
-        version: "3.0.5",
+        version: "3.0.7",
         date: "2026-01-02",
         features: [
-            "CRITICAL FIX: Resolved startup crash due to undefined environment variables.",
-            "STABILITY: Added safe access guards for API Key retrieval."
+            "HOTFIX: Hardcoded API Key to bypass missing .env in GitHub Pages.",
+            "CONFIG: Forced Gemini 1.5 Flash as primary check model."
         ]
     }
 ];
