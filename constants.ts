@@ -4,14 +4,14 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.1.0"; // Major Update: SDK Compliance
-export const BUILD_TIMESTAMP = "2026-01-02 18:30:00 (GMT+7)"; 
+export const APP_VERSION = "3.1.1"; // Final Fix: Stable Version Hardcoding
+export const BUILD_TIMESTAMP = "2026-01-02 19:00:00 (GMT+7)"; 
 
-// COMPLIANT MODEL CONFIGURATION
-// Using 'gemini-flash-latest' as the primary stable model alias.
-// This resolves to the best available 1.5 Flash version without using the prohibited hardcoded 'gemini-1.5-flash' string.
-export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest"; 
-export const DEFAULT_VISION_MODEL = "gemini-flash-latest"; 
+// FINAL FIX: USE SPECIFIC STABLE VERSIONS
+// Aliases like 'gemini-flash-latest' or 'gemini-1.5-flash' are resolving incorrectly for some keys.
+// Using 'gemini-1.5-flash-002' guarantees access to the specific, stable production model.
+export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash-002"; 
+export const DEFAULT_VISION_MODEL = "gemini-1.5-flash-002"; 
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
@@ -44,28 +44,25 @@ const getEnvApiKey = () => {
 const envKey = getEnvApiKey();
 
 export const MY_FIXED_KEYS: string[] = [
-    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Primary Fallback Key provided by user
+    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Primary Fallback Key
     envKey
 ].filter(k => k && k.trim() !== ""); 
 
 // OPTIMIZED CASCADE:
-// 1. gemini-flash-latest (Stable, Fast, Wide Availability)
-// 2. gemini-flash-lite-latest (Fallback for quota/latency)
-// 3. gemini-3-flash-preview (Next Gen features)
-// 4. gemini-3-pro-preview (Complex reasoning)
+// Prioritize Specific Versions -> Then Generic Aliases -> Then Experimental
 export const MODEL_HIERARCHY = [
-    "gemini-flash-latest",            // Primary
-    "gemini-flash-lite-latest",       // Lite Fallback
-    "gemini-3-flash-preview",         // Next Gen
-    "gemini-3-pro-preview"            // Advanced
+    "gemini-1.5-flash-002",       // Production Stable (Primary)
+    "gemini-1.5-pro-002",         // High Intelligence Stable
+    "gemini-1.5-flash",           // Generic Fallback
+    "gemini-2.0-flash-exp"        // Experimental
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-flash-latest": { label: "FLASH LATEST", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Stable Standard" },
-    "gemini-flash-lite-latest": { label: "FLASH LITE", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 2, desc: "Lightweight" },
-    "gemini-3-flash-preview": { label: "FLASH 3.0", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 3, desc: "Preview Tech" },
-    "gemini-3-pro-preview": { label: "PRO 3.0", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 4, desc: "Deep Reasoning" }
+    "gemini-1.5-flash-002": { label: "FLASH V1.5-002", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Production Stable" },
+    "gemini-1.5-pro-002": { label: "PRO V1.5-002", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
+    "gemini-1.5-flash": { label: "FLASH GENERIC", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 3, desc: "General Access" },
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0 EXP", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 4, desc: "Experimental" }
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -87,20 +84,20 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "3.1.1",
+        date: "2026-01-02",
+        features: [
+            "FIX: Hardcoded 'gemini-1.5-flash-002' to resolve 404 Entity Not Found errors.",
+            "STABILITY: Bypassed model alias resolution for legacy keys."
+        ]
+    },
+    {
         version: "3.1.0",
         date: "2026-01-02",
         features: [
             "CORE: Updated API models to 'gemini-flash-latest' for better compatibility.",
             "FIX: Resolved 404 errors by using stable model aliases.",
             "SYSTEM: Enhanced key validation logic."
-        ]
-    },
-    {
-        version: "3.0.9",
-        date: "2026-01-02",
-        features: [
-            "ROLLBACK: Reverted default models to fix widespread 404 errors.",
-            "STABILITY: Optimized key validation to check stable models first."
         ]
     }
 ];

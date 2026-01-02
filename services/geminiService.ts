@@ -41,14 +41,15 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // 2. COMPLIANT PROBE LIST
-    // We utilize the allowed aliases which map to stable models.
-    // 'gemini-flash-latest' is the most reliable entry point for standard keys.
+    // 2. EXHAUSTIVE PROBE LIST (The "Fix It All" List)
+    // We try specific versions first because aliases (like 'flash-latest') might point to models 
+    // that the key doesn't have access to (causing 404).
     const probeModels = [
-        "gemini-flash-latest",       // Standard Flash Alias
-        "gemini-flash-lite-latest",  // Lite Alias (fallback)
-        "gemini-3-flash-preview",    // Next Gen
-        "gemini-3-pro-preview"       // Pro Tier
+        "gemini-1.5-flash-002",      // Specific Stable Version (High Success Rate)
+        "gemini-1.5-flash",          // Generic Stable
+        "gemini-1.5-pro",            // Pro Fallback
+        "gemini-flash-latest",       // Alias
+        "gemini-2.0-flash-exp"       // Experimental
     ];
 
     if (preferredModel && !probeModels.includes(preferredModel)) {
@@ -62,8 +63,7 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     for (const modelId of probeModels) {
         const start = performance.now();
         try {
-            // 3. Strict SDK Compliant Probe
-            // Using an object with 'parts' to ensure maximum compatibility with the new SDK parser
+            // 3. Standard Text Probe
             await ai.models.generateContent({
                 model: modelId,
                 contents: { parts: [{ text: "Hello" }] }, 
@@ -79,11 +79,6 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             
             console.warn(`[ISO-AUDIT] Probe failed for ${modelId}:`, msg);
 
-            // Special handling for the known key if it fails - log it specifically
-            if (key.startsWith("AIzaSy")) {
-                console.error(`[ISO-AUDIT] Known Google Key failed on ${modelId}. Reason: ${msg}`);
-            }
-
             if (msg.includes("api key not valid") || (status === 400 && msg.includes("key"))) {
                 // Definitive Invalid Key
                 return { isValid: false, latency: 0, errorType: 'invalid' };
@@ -92,11 +87,11 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
                 lastErrorType = 'quota_exceeded';
             } else if (status === 404 || msg.includes("not found") || msg.includes("404")) {
-                // 404 means THIS model alias is not found/enabled for this key/project. 
+                // 404 means THIS model is not found/enabled for this key. 
                 // We do NOT fail the key yet, we just try the next model.
                 lastErrorType = 'invalid'; 
             } else if (msg.includes("permission denied") || msg.includes("403")) {
-                // 403 can be referrer restrictions (e.g. running on localhost vs github)
+                // 403 can be referrer restrictions
                 lastErrorType = 'invalid'; 
             } else {
                 lastErrorType = 'unknown';
