@@ -37,45 +37,61 @@ export const validateApiKey = async (key: string, preferredModel?: string): Prom
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // List of models to try for validation. 
-    // If the preferred one fails, we fallback to others to check if the KEY is valid generally.
-    const modelsToCheck = preferredModel 
-        ? [preferredModel, ...MODEL_HIERARCHY.filter(m => m !== preferredModel)]
-        : MODEL_HIERARCHY;
-    
-    // We only try the top 3 to save time, ensuring at least one stable model is checked
-    const probeModels = modelsToCheck.slice(0, 3);
+    // CRITICAL FIX: Explicitly define the probe list to include Legacy Stable models.
+    // Sometimes new keys work with 1.0 but fail with 1.5 due to region/project settings.
+    const probeModels = [
+        "gemini-1.5-flash", // Speed & Cost efficient (Priority 1)
+        "gemini-1.0-pro",   // Legacy Stable (Priority 2 - High compatibility)
+        "gemini-1.5-pro"    // High Intelligence (Priority 3)
+    ];
+
+    if (preferredModel && !probeModels.includes(preferredModel)) {
+        probeModels.unshift(preferredModel);
+    }
 
     const ai = new GoogleGenAI({ apiKey: key });
     
+    let lastErrorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
+
     for (const modelId of probeModels) {
         const start = performance.now();
         try {
+            // Use a very simple prompt to minimize token usage and latency
             await ai.models.generateContent({
                 model: modelId,
-                contents: "Hi",
-                config: { maxOutputTokens: 1 }
+                contents: "Test",
+                config: { maxOutputTokens: 5 }
             });
             const end = performance.now();
-            // If any model works, the key is valid.
+            
+            // If we reach here, this model works for this key!
+            console.log(`[ISO-AUDIT] Key validation passed on ${modelId}`);
             return { isValid: true, latency: Math.round(end - start), activeModel: modelId };
+            
         } catch (error: any) {
             const msg = (error.message || "").toLowerCase();
-            console.warn(`Validation probe failed for model ${modelId}:`, msg);
+            console.warn(`[ISO-AUDIT] Key validation failed for ${modelId}:`, msg);
 
-            if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
-                return { isValid: false, latency: 0, errorType: 'quota_exceeded' };
-            }
-            if (msg.includes("api key not valid") || msg.includes("permission denied")) {
-                // If explicit invalid key error, stop immediately.
+            if (msg.includes("api key not valid")) {
+                // This is the ONLY definitive error meaning the string is wrong. Stop immediately.
                 return { isValid: false, latency: 0, errorType: 'invalid' };
             }
-            // If 404 (Model not found) or other errors, continue loop to try next model
+            
+            if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
+                lastErrorType = 'quota_exceeded';
+            } else if (msg.includes("permission denied") || msg.includes("403")) {
+                // 403 often means the model is not enabled for this key, NOT that the key is invalid.
+                // We mark last error as invalid but CONTINUE to try other models.
+                lastErrorType = 'invalid'; 
+            } else {
+                lastErrorType = 'unknown';
+            }
+            // Continue loop to try next model...
         }
     }
 
-    // If all probes failed
-    return { isValid: false, latency: 0, errorType: 'unknown' };
+    // If loop finishes without returning true, all models failed.
+    return { isValid: false, latency: 0, errorType: lastErrorType };
 };
 
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {

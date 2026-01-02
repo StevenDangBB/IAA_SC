@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.0.5"; // Fix undefined env error
-export const BUILD_TIMESTAMP = "2026-01-02 14:30:00 (GMT+7)"; 
+export const APP_VERSION = "3.0.6"; // Stability fix for API Keys
+export const BUILD_TIMESTAMP = "2026-01-02 16:45:00 (GMT+7)"; 
 
 // REVERT TO STABLE MODELS FOR COMPATIBILITY
 export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"; 
@@ -22,7 +22,6 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
-// Safely retrieve API Key to prevent crash if import.meta.env is undefined
 const getEnvApiKey = () => {
     try {
         // @ts-ignore
@@ -30,9 +29,7 @@ const getEnvApiKey = () => {
             // @ts-ignore
             return import.meta.env.VITE_API_KEY;
         }
-    } catch (e) {
-        // Ignore access errors
-    }
+    } catch (e) {}
     
     try {
         if (typeof process !== 'undefined' && process.env) {
@@ -49,20 +46,20 @@ export const MY_FIXED_KEYS: string[] = [
     envKey
 ].filter(k => k && k.trim() !== ""); 
 
-// OPTIMIZED CASCADE: Stable first, then experimental
+// OPTIMIZED CASCADE: Includes Legacy Stable (1.0 Pro)
 export const MODEL_HIERARCHY = [
     "gemini-1.5-flash",               // Most stable & fast
+    "gemini-1.0-pro",                 // Legacy Stable (High compatibility)
     "gemini-1.5-pro",                 // High intelligence
-    "gemini-2.0-flash-exp",           // Experimental (Next Gen)
-    "gemini-1.0-pro"                  // Legacy fallback
+    "gemini-2.0-flash-exp"            // Experimental
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Stable & Fast (Recommended)" },
-    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0 (EXP)", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 3, desc: "Experimental Features" },
-    "gemini-1.0-pro": { label: "PRO 1.0", color: "bg-slate-600 text-white shadow-slate-500/30", tier: 4, desc: "Legacy Stable" },
+    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Stable & Fast" },
+    "gemini-1.0-pro": { label: "PRO 1.0", color: "bg-slate-600 text-white shadow-slate-500/30", tier: 2, desc: "Legacy Compatible" },
+    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 3, desc: "Complex Reasoning" },
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 4, desc: "Next Gen" },
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -84,28 +81,19 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "3.0.6",
+        date: "2026-01-02",
+        features: [
+            "FIX: Improved API Key validation to probe multiple models (1.5 Flash, 1.0 Pro).",
+            "CORE: Added fallback to Legacy Gemini Pro for maximum compatibility."
+        ]
+    },
+    {
         version: "3.0.5",
         date: "2026-01-02",
         features: [
             "CRITICAL FIX: Resolved startup crash due to undefined environment variables.",
             "STABILITY: Added safe access guards for API Key retrieval."
-        ]
-    },
-    {
-        version: "3.0.4",
-        date: "2026-01-02",
-        features: [
-            "HOTFIX: Reverted default models to Gemini 1.5 Flash for stability.",
-            "FIX: Improved API Key detection using Vite standards.",
-            "CORE: Enhanced validation to try multiple models before failing."
-        ]
-    },
-    {
-        version: "3.0.3",
-        date: "2026-01-02",
-        features: [
-            "FIX: Removed invalid fallback API keys.",
-            "UPDATE: Upgraded UI components."
         ]
     }
 ];
