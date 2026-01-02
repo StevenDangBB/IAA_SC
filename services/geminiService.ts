@@ -7,11 +7,18 @@ import { cleanAndParseJSON } from "../utils";
 const getAiClient = (overrideKey?: string) => {
     // Check order: 
     // 1. Explicit Override
-    // 2. Vite Standard Env (VITE_API_KEY) - via process.env polyfill
-    // 3. Legacy Env (API_KEY via define)
-    // 4. Local Storage
+    // 2. Process Env (Defined in vite.config.ts)
+    // 3. Local Storage
     const apiKey = overrideKey || process.env.API_KEY || localStorage.getItem("iso_api_key") || "";
-    if (!apiKey) throw new Error("API Key is missing. Please set it in Settings or Configure VITE_API_KEY.");
+    
+    if (!apiKey) {
+        console.error("Gemini API Key is missing. Environment checks:", { 
+            processEnv: !!process.env.API_KEY, 
+            override: !!overrideKey,
+            storage: !!localStorage.getItem("iso_api_key")
+        });
+        throw new Error("API Key is missing. Please check your .env file or Settings.");
+    }
     return new GoogleGenAI({ apiKey });
 };
 
@@ -27,6 +34,7 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
             contents: "Hi",
             config: {
                 maxOutputTokens: 1,
+                thinkingConfig: { thinkingBudget: 0 }
             }
         });
         const end = performance.now();
@@ -35,7 +43,6 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
         let errorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
         const msg = (error.message || "").toLowerCase();
         
-        // Extended error detection for newer Google GenAI SDK
         if (msg.includes("403") || msg.includes("api key not valid") || msg.includes("permission denied") || msg.includes("invalid argument")) {
             errorType = 'invalid';
         } else if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {

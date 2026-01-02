@@ -5,7 +5,6 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-// Timestamps updated via 'npm run release'
 export const APP_VERSION = "3.0.0"; 
 export const BUILD_TIMESTAMP = "2026-01-01 08:00:00 (GMT+7)"; 
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview";
@@ -21,7 +20,6 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
-// Includes keys from Env Variables (VITE_API_KEY) and hardcoded fallbacks
 export const MY_FIXED_KEYS: string[] = [
     process.env.API_KEY || "", 
     "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Fallback/Demo key
