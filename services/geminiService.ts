@@ -1,11 +1,17 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
 import { Clause } from "../types";
 import { cleanAndParseJSON } from "../utils";
 
 const getAiClient = (overrideKey?: string) => {
+    // Check order: 
+    // 1. Explicit Override
+    // 2. Vite Standard Env (VITE_API_KEY) - via process.env polyfill
+    // 3. Legacy Env (API_KEY via define)
+    // 4. Local Storage
     const apiKey = overrideKey || process.env.API_KEY || localStorage.getItem("iso_api_key") || "";
-    if (!apiKey) throw new Error("API Key is missing. Please set it in Settings.");
+    if (!apiKey) throw new Error("API Key is missing. Please set it in Settings or Configure VITE_API_KEY.");
     return new GoogleGenAI({ apiKey });
 };
 

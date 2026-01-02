@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
@@ -24,7 +25,7 @@ interface SidebarProps {
     setShowIntegrityModal: (show: boolean) => void;
 }
 
-const Sidebar = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause, showIntegrityModal, setShowIntegrityModal }: SidebarProps) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, width, setWidth, standards, standardKey, setStandardKey, auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause, showIntegrityModal, setShowIntegrityModal }) => {
     const sidebarRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null); 
     const [isResizing, setIsResizing] = useState(false);

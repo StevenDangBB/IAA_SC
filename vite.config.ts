@@ -6,6 +6,7 @@ import process from 'node:process';
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
+  // The third argument '' allows loading all env vars, regardless of prefix, for the config context.
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
@@ -13,8 +14,9 @@ export default defineConfig(({ mode }) => {
     // Use relative base path for compatibility with any deployment subpath
     base: './', 
     define: {
-      // Ensure API_KEY is always a string (empty if missing) to prevent crash
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
+      // Ensure API_KEY is always a string.
+      // PRIORITIZE: VITE_API_KEY (Standard Vite) -> API_KEY (Legacy .env)
+      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY || env.API_KEY || '')
     },
     test: {
       globals: true,

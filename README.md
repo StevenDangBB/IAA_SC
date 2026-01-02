@@ -16,14 +16,15 @@ npm install
 Chờ một chút để nó tải các thư viện về (bạn sẽ thấy thư mục `node_modules` xuất hiện).
 
 ### Bước 3: Cấu hình API Key (Quan trọng)
-Ứng dụng cần Key của Google Gemini để hoạt động.
+Ứng dụng cần Key của Google Gemini để hoạt động. **LƯU Ý QUAN TRỌNG:** Vite yêu cầu biến môi trường phải bắt đầu bằng `VITE_`.
+
 1. Chuột phải vào khoảng trống ở thanh bên trái (nơi hiện danh sách file), chọn **New File**.
 2. Đặt tên file là `.env`.
 3. Mở file `.env` đó và dán nội dung sau (thay thế bằng Key của bạn):
 ```env
-API_KEY=AIzaSy...KEY_CUA_BAN_O_DAY
+VITE_API_KEY=AIzaSy...KEY_CUA_BAN_O_DAY
 ```
-*Lưu ý: Không chia sẻ file .env này cho người khác.*
+*Nếu bạn deploy lên GitHub Pages/Actions, hãy vào Settings -> Secrets và tạo secret tên là `VITE_API_KEY`.*
 
 ### Bước 4: Chạy ứng dụng (Chế độ Test)
 Gõ lệnh sau vào Terminal:

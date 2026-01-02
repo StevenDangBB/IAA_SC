@@ -21,8 +21,10 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
+// Includes keys from Env Variables (VITE_API_KEY) and hardcoded fallbacks
 export const MY_FIXED_KEYS: string[] = [
-    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // API keys
+    process.env.API_KEY || "", 
+    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Fallback/Demo key
 ].filter(k => k && k.trim() !== ""); 
 
 // OPTIMIZED CASCADE: Highest to Lowest tier
