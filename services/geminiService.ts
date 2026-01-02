@@ -1,7 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
-import { Clause } from "../types";
 import { cleanAndParseJSON } from "../utils";
 
 const getAiClient = (overrideKey?: string) => {
@@ -12,29 +11,25 @@ const getAiClient = (overrideKey?: string) => {
     const apiKey = overrideKey || process.env.API_KEY || localStorage.getItem("iso_api_key") || "";
     
     if (!apiKey) {
-        console.error("Gemini API Key is missing. Checks:", { 
-            processEnv: !!process.env.API_KEY,
-            override: !!overrideKey,
-            storage: !!localStorage.getItem("iso_api_key")
-        });
+        console.warn("Gemini API Key is missing.");
         throw new Error("API Key is missing. Please check your .env file or Settings.");
     }
     return new GoogleGenAI({ apiKey });
 };
 
-export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMINI_MODEL): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
+export const validateApiKey = async (key: string, modelId: string = "gemini-1.5-flash"): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
     if (!key || key.trim() === "") {
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
     const start = performance.now();
     try {
         const ai = new GoogleGenAI({ apiKey: key });
+        // Use a lightweight model for validation to save quota and latency
         await ai.models.generateContent({
             model: modelId,
             contents: "Hi",
             config: {
-                maxOutputTokens: 1,
-                thinkingConfig: { thinkingBudget: 0 }
+                maxOutputTokens: 1
             }
         });
         const end = performance.now();
@@ -43,12 +38,16 @@ export const validateApiKey = async (key: string, modelId: string = DEFAULT_GEMI
         let errorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
         const msg = (error.message || "").toLowerCase();
         
+        console.log(`Validation failed for key [${key.substring(0,6)}...] on model ${modelId}: ${msg}`);
+
         if (msg.includes("403") || msg.includes("api key not valid") || msg.includes("permission denied") || msg.includes("invalid argument")) {
             errorType = 'invalid';
         } else if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
             errorType = 'quota_exceeded';
         } else if (msg.includes("not found") || msg.includes("404")) {
-             // Model not found often means key doesn't have access to it, treated as invalid for that model
+             // Model not found might mean the key is valid but the model isn't available to it.
+             // We return 'unknown' or 'invalid' but log it.
+             // Often means the key is valid for other things, but we treat strictly here.
              errorType = 'invalid';
         }
         

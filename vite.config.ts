@@ -9,13 +9,18 @@ export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
   const env = loadEnv(mode, process.cwd(), '');
 
+  const apiKey = env.VITE_API_KEY || env.API_KEY || '';
+  if (mode === 'production' && !apiKey) {
+      console.warn("⚠️ WARNING: API_KEY is missing in production build. Application will require manual key entry.");
+  }
+
   return {
     plugins: [react()],
     base: './', 
     define: {
       // Inject VITE_API_KEY or API_KEY into process.env.API_KEY.
       // We rely on the index.html window.process polyfill to prevent ReferenceErrors if replacement fails.
-      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY || env.API_KEY || '')
+      'process.env.API_KEY': JSON.stringify(apiKey)
     },
     test: {
       globals: true,
