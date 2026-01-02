@@ -6,8 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ISO Audit Pro</title>
     <script>
-        // Polyfill process for browser environment to prevent crashes
-        window.process = { env: { NODE_ENV: 'development' } };
+        // Robust polyfill for process.env
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        if (!window.process.env.NODE_ENV) {
+            window.process.env.NODE_ENV = 'production';
+        }
+        // Placeholder for API_KEY if needed for runtime injection
+        window.process.env.API_KEY = window.process.env.API_KEY || ''; 
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -213,7 +219,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-HcrVhFRt.js"></script>
+  <script type="module" crossorigin src="./assets/index-CtMRbueN.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
