@@ -41,7 +41,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             placeholder="Enter Google Gemini API Key..."
                             className="flex-1 p-2.5 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-600 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 transition-all dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
                             value={newKeyInput}
-                            onChange={(e) => setNewKeyInput(e.target.value)}
+                            onChange={(e) => setNewKeyInput(e.target.value.trim())} // Auto-trim on input
+                            onBlur={() => setNewKeyInput(newKeyInput.trim())} // Ensure trimmed on blur
                         />
                         <button onClick={handleAddKey} disabled={isCheckingKey} className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs disabled:opacity-50 transition-colors shadow-sm">
                             {isCheckingKey ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Plus" />}

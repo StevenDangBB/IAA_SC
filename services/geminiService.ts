@@ -23,7 +23,9 @@ const getAiClient = (overrideKey?: string) => {
         envKey = process.env.API_KEY || "";
     }
 
-    const apiKey = overrideKey || envKey || localStorage.getItem("iso_api_key") || "";
+    const rawKey = overrideKey || envKey || localStorage.getItem("iso_api_key") || "";
+    // Sanitize key immediately
+    const apiKey = rawKey.trim();
     
     if (!apiKey) {
         console.warn("Gemini API Key is missing.");
@@ -32,17 +34,22 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-export const validateApiKey = async (key: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string }> => {
-    if (!key || key.trim() === "") {
+export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string }> => {
+    // 1. Aggressive Sanitization
+    // Remove whitespace, newlines, and potential quotes that might have been copied
+    const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
+
+    if (!key) {
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // CRITICAL FIX: Explicitly define the probe list to include Legacy Stable models.
-    // Sometimes new keys work with 1.0 but fail with 1.5 due to region/project settings.
+    // 2. Expanded Probe List
+    // We try models in order of likelihood to work + stability
     const probeModels = [
-        "gemini-1.5-flash", // Speed & Cost efficient (Priority 1)
-        "gemini-1.0-pro",   // Legacy Stable (Priority 2 - High compatibility)
-        "gemini-1.5-pro"    // High Intelligence (Priority 3)
+        "gemini-1.5-flash",      // Current Stable Standard
+        "gemini-1.5-pro",        // Paid/High-tier
+        "gemini-1.0-pro",        // Legacy Fallback
+        "gemini-2.0-flash-exp"   // Experimental (Sandbox keys often use this)
     ];
 
     if (preferredModel && !probeModels.includes(preferredModel)) {
@@ -56,41 +63,41 @@ export const validateApiKey = async (key: string, preferredModel?: string): Prom
     for (const modelId of probeModels) {
         const start = performance.now();
         try {
-            // Use a very simple prompt to minimize token usage and latency
+            // 3. Simplified Probe Call
+            // Removed 'config' (maxOutputTokens) to avoid potential 400 Bad Request errors from strict parameter validation
             await ai.models.generateContent({
                 model: modelId,
-                contents: "Test",
-                config: { maxOutputTokens: 5 }
+                contents: "Hi", 
             });
             const end = performance.now();
             
-            // If we reach here, this model works for this key!
             console.log(`[ISO-AUDIT] Key validation passed on ${modelId}`);
             return { isValid: true, latency: Math.round(end - start), activeModel: modelId };
             
         } catch (error: any) {
             const msg = (error.message || "").toLowerCase();
-            console.warn(`[ISO-AUDIT] Key validation failed for ${modelId}:`, msg);
+            const status = error.status || 0;
+            
+            console.warn(`[ISO-AUDIT] Probe failed for ${modelId}:`, msg);
 
-            if (msg.includes("api key not valid")) {
-                // This is the ONLY definitive error meaning the string is wrong. Stop immediately.
+            if (msg.includes("api key not valid") || status === 400 && msg.includes("key")) {
+                // Definitive Invalid Key
                 return { isValid: false, latency: 0, errorType: 'invalid' };
             }
             
             if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
                 lastErrorType = 'quota_exceeded';
             } else if (msg.includes("permission denied") || msg.includes("403")) {
-                // 403 often means the model is not enabled for this key, NOT that the key is invalid.
-                // We mark last error as invalid but CONTINUE to try other models.
+                // 403 can mean "Model not enabled for this project", so we continue to next model
+                // But we track it as a potential invalid state if all fail
                 lastErrorType = 'invalid'; 
             } else {
                 lastErrorType = 'unknown';
             }
-            // Continue loop to try next model...
+            // Continue to next model in loop
         }
     }
 
-    // If loop finishes without returning true, all models failed.
     return { isValid: false, latency: 0, errorType: lastErrorType };
 };
 
