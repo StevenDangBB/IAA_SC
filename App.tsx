@@ -92,7 +92,6 @@ export default function App() {
     const [templateFileName, setTemplateFileName] = useState<string>("");
     
     const [customStandards, setCustomStandards] = useState<StandardsData>({});
-    // UPDATED: Default to empty string to show "Select ISO Standard" on init
     const [standardKey, setStandardKey] = useState<string>("");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
@@ -404,7 +403,6 @@ export default function App() {
             }
             isManuallyCleared.current = true;
             localStorage.removeItem("iso_session_data");
-            // UPDATED: Reset Standard to empty
             setStandardKey("");
             setAuditInfo(DEFAULT_AUDIT_INFO); 
             setEvidence(""); 
@@ -896,10 +894,8 @@ Location: Factory Floor B & Admin Building
                 key={idx} 
                 ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
                 className={`group relative bg-white dark:bg-slate-900 rounded-lg p-3 border-y border-r border-l-[6px] transition-all duration-200 hover:shadow-md dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'border-r-indigo-500 ring-1 ring-indigo-500/20' : 'border-r-gray-100 dark:border-r-transparent'}`}
-                // FIX 1: Allow selection in condensed mode (Matrix detail view)
                 onClick={() => setSelectedFindings(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
             >
-                {/* FIX 2: Green Stick Checkmark (No border, larger) */}
                 <div className="absolute top-3 right-3 z-10">
                     {selectedFindings[res.clauseId] ? (
                         <div className="animate-in zoom-in spin-in-180 duration-300">
@@ -999,7 +995,6 @@ Location: Factory Floor B & Admin Building
                     <div className="hidden lg:block"><FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir: 'increase' | 'decrease') => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} /></div>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition-all"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                     <button onClick={() => setShowSettingsModal(true)} className="group relative w-8 h-8 flex items-center justify-center transition-all" title="Connection Status">
-                        {/* FIX: Status Indicator now reflects REAL status of the active key */}
                         <div className={`absolute inset-0 rounded-full opacity-20 animate-ping ${isSystemHealthy ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                         <div className={`relative w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white dark:ring-slate-900 ${isSystemHealthy ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                     </button>
@@ -1028,7 +1023,6 @@ Location: Factory Floor B & Admin Building
                             </div>
                         </div>
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
-                            {/* RECALL BUTTON: NOW OPENS TIME MACHINE MODAL */}
                             <button 
                                 onClick={() => setShowRecallModal(true)} 
                                 className={`h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 border ${lastSavedTime ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`} 
@@ -1182,12 +1176,8 @@ Location: Factory Floor B & Admin Building
                                                 {analysisResult.map((res, idx) => renderFindingCard(res, idx))}
                                             </div>
                                         ) : (
-                                            /* ROW-BASED HEATMAP MATRIX */
-                                            /* HEIGHT OPTIMIZED: Matrix shrinks, Detail expands */
                                             <div className="flex flex-col h-full gap-4">
-                                                {/* Matrix Section - Flex Shrink allowed, Max Height limited to ~40% */}
                                                 <div className="flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800 overflow-hidden max-h-[40vh]">
-                                                    {/* Vibe Header: Minimal Text */}
                                                     <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-2 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
                                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Clause</div>
                                                         <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
@@ -1196,7 +1186,6 @@ Location: Factory Floor B & Admin Building
                                                         <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
                                                     </div>
                                                     
-                                                    {/* Scrollable Matrix Rows */}
                                                     <div className="overflow-y-auto custom-scrollbar">
                                                         {analysisResult.map((item, idx) => {
                                                             const isSelected = focusedFindingIndex === idx;
@@ -1206,13 +1195,10 @@ Location: Factory Floor B & Admin Building
                                                                     onClick={() => setFocusedFindingIndex(idx)}
                                                                     className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-1.5 border-b border-gray-100 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-white dark:hover:bg-slate-800'}`}
                                                                 >
-                                                                    {/* Clause Code Column */}
                                                                     <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
                                                                         {item.clauseId}
                                                                     </div>
                                                                     
-                                                                    {/* Status Indicators (Centered) */}
-                                                                    {/* FIX 3: Ensure strict centering */}
                                                                     <div className="flex items-center justify-center h-full w-full">
                                                                         {item.status === 'NC_MAJOR' && <div className="w-3 h-3 rounded bg-red-500 shadow-sm ring-1 ring-red-300 dark:ring-red-900"></div>}
                                                                     </div>
@@ -1231,7 +1217,6 @@ Location: Factory Floor B & Admin Building
                                                     </div>
                                                 </div>
                                                 
-                                                {/* Active Detail Editor - Takes Remaining Space */}
                                                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-2 shadow-inner">
                                                     {analysisResult[focusedFindingIndex] ? (
                                                         renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true)
@@ -1245,7 +1230,6 @@ Location: Factory Floor B & Admin Building
                                 </div>
                                 <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                                     
-                                    {/* PILL 1: View Mode Toggle */}
                                     <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
                                         <button 
                                             onClick={() => setFindingsViewMode('list')} 
@@ -1265,7 +1249,6 @@ Location: Factory Floor B & Admin Building
                                         </button>
                                     </div>
 
-                                    {/* Export Button */}
                                     <button onClick={() => startSmartExport(analysisResult?.map(r => `[${r.clauseId}] ${r.status}: ${r.reason}\n${r.evidence}`).join('\n\n') || "", 'notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
                                         <Icon name="Download"/>
                                         <span className="hidden md:inline">Export</span>
@@ -1350,17 +1333,14 @@ Location: Factory Floor B & Admin Building
                 onRestore={handleRestoreSnapshot}
             />
 
-            {/* --- EXPORT PROGRESS MODAL --- */}
             {exportState.isOpen && (
                 <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 p-6 animate-zoom-in-spring">
-                        {/* Header */}
                         <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
                             {exportState.isFinished ? <Icon name="CheckCircle2" className="text-emerald-500" size={24}/> : <Icon name="Loader" className="animate-spin text-indigo-500" size={24}/>}
                             {exportState.isFinished ? "Export Complete" : "Processing Export..."}
                         </h3>
 
-                        {/* Error Handling State */}
                         {exportState.error ? (
                             <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800 mb-4 animate-shake">
                                 <p className="text-sm text-red-600 dark:text-red-400 font-bold mb-2 flex items-center gap-2">
@@ -1387,7 +1367,6 @@ Location: Factory Floor B & Admin Building
                                 </div>
                             </div>
                         ) : (
-                            /* Progress Bar State */
                             <div className="space-y-5">
                                 <div className="relative pt-1">
                                     <div className="flex mb-2 items-center justify-between">
@@ -1444,7 +1423,16 @@ Location: Factory Floor B & Admin Building
                             {apiKeys.map(k => (
                                 <div key={k.id} className={`flex items-center justify-between p-2 rounded-xl border ${k.id === activeKeyId ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-gray-100 dark:bg-slate-900 dark:border-slate-800'}`}>
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <div className={`w-2 h-2 rounded-full ${k.status === 'valid' ? 'bg-emerald-500' : k.status === 'checking' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                        <div className="relative group/status">
+                                            <div className={`w-2 h-2 rounded-full ${k.status === 'valid' ? 'bg-emerald-500' : k.status === 'checking' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                            {k.status === 'invalid' && (
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover/status:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
+                                                    <div className="p-2 bg-slate-800 text-white text-[10px] rounded-lg shadow-lg w-48 whitespace-normal leading-relaxed">
+                                                        Key is invalid or restricted. For published apps, check your Google Cloud Console for <strong className="text-amber-400">HTTP referrer</strong> limitations.
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="flex flex-col min-w-0">
                                             {editingKeyId === k.id ? (
                                                 <input autoFocus className="text-xs bg-transparent border-b border-indigo-500 outline-none w-20" value={editLabelInput} onChange={e => setEditLabelInput(e.target.value)} onBlur={handleSaveLabel} onKeyDown={e => e.key === 'Enter' && handleSaveLabel()} />
@@ -1462,18 +1450,23 @@ Location: Factory Floor B & Admin Building
                                 </div>
                             ))}
                         </div>
+                         <div className="mt-4 text-xs text-slate-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-800/50 p-2 rounded-lg text-center leading-relaxed">
+                            <Icon name="Info" size={14} className="inline mr-1"/>
+                            For published apps, ensure your key allows your domain in Google Cloud Console's <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="font-bold text-indigo-500 underline">HTTP Referrer</a> settings.
+                        </div>
                     </div>
                     <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 dark:shadow-md">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl"><Icon name="Session10_Pulse" size={18}/></div>
+                            <Icon name="Session10_Pulse" size={20} className="text-cyan-500"/>
                             <div>
-                                <h4 className="text-sm font-bold text-slate-800 dark:text-white">Auto Health Check</h4>
-                                <p className="text-xs text-slate-500">Periodically validate API keys in background</p>
+                                <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">Auto Health Check</h5>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Periodically validate API keys in background.</p>
                             </div>
                         </div>
-                        <button onClick={() => toggleAutoCheck(!isAutoCheckEnabled)} className={`w-10 h-5 rounded-full transition-colors relative ${isAutoCheckEnabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}>
-                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm ${isAutoCheckEnabled ? 'left-6' : 'left-1'}`}></div>
-                        </button>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={isAutoCheckEnabled} onChange={(e) => toggleAutoCheck(e.target.checked)} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
+                        </label>
                     </div>
                 </div>
             </Modal>
