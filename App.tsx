@@ -149,7 +149,6 @@ export default function App() {
     const activeKeyProfile = useMemo(() => apiKeys.find(k => k.id === activeKeyId), [apiKeys, activeKeyId]);
     const isSystemHealthy = activeKeyProfile?.status === 'valid';
 
-    // ... (Keep existing key management and auto-save logic same as before) ...
     // --- KEY LOADING LOGIC ---
     const loadKeyData = (): ApiKeyProfile[] => {
         try {
@@ -157,23 +156,30 @@ export default function App() {
             const loadedKeys: ApiKeyProfile[] = stored ? JSON.parse(stored) : [];
             const existingKeySet = new Set(loadedKeys.map(k => k.key));
             let hasChanges = false;
+            
+            // Only add Fixed Keys if they are not empty
             MY_FIXED_KEYS.forEach((fixedKey, index) => {
-                if (!existingKeySet.has(fixedKey)) {
-                    loadedKeys.push({ id: `fixed_key_${index}_${Math.random().toString(36).substr(2, 5)}`, label: `Fixed Key ${index + 1}`, key: fixedKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
+                if (fixedKey && !existingKeySet.has(fixedKey)) {
+                    loadedKeys.push({ id: `fixed_key_${index}_${Math.random().toString(36).substr(2, 5)}`, label: `Environment Key ${index + 1}`, key: fixedKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
                     hasChanges = true;
                 }
             });
+
             if (hasChanges) localStorage.setItem("iso_api_keys", JSON.stringify(loadedKeys));
+            
+            // Legacy key migration
             const legacyKey = localStorage.getItem("iso_api_key");
             if (loadedKeys.length === 0 && legacyKey && !MY_FIXED_KEYS.includes(legacyKey)) {
                 const newId = Date.now().toString();
-                loadedKeys.push({ id: newId, label: "Default Key", key: legacyKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
+                loadedKeys.push({ id: newId, label: "Legacy Key", key: legacyKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
                 setActiveKeyId(newId);
                 localStorage.setItem("iso_active_key_id", newId);
             }
+            
             const savedActiveId = localStorage.getItem("iso_active_key_id");
             if (savedActiveId && loadedKeys.some(k => k.id === savedActiveId)) setActiveKeyId(savedActiveId);
             else if (loadedKeys.length > 0 && !activeKeyId) setActiveKeyId(loadedKeys[0].id);
+            
             return loadedKeys;
         } catch (e) { console.error("Failed to load keys", e); return []; }
     };
@@ -193,7 +199,7 @@ export default function App() {
         setApiKeys(prev => prev.map(k => k.id === candidate.id ? { ...k, status: 'checking' } : k));
         const cap = await determineKeyCapabilities(candidate.key);
         const today = new Date().toISOString().split('T')[0];
-        setApiKeys(prev => prev.map(k => k.id === candidate.id ? { ...k, status: cap.status, activeModel: cap.bestModel || k.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: today } : k));
+        setApiKeys(prev => prev.map(k => k.id === candidate.id ? { ...k, status: cap.status, activeModel: cap.activeModel || k.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: today } : k));
     };
 
     const dismissError = () => { setIsErrorClosing(true); setTimeout(() => { setAiError(null); setIsErrorClosing(false); }, 300); };
@@ -220,27 +226,26 @@ export default function App() {
         }
     };
 
-    const determineKeyCapabilities = async (key: string): Promise<{ status: 'valid' | 'invalid' | 'quota_exceeded' | 'unknown', bestModel?: string, latency: number }> => {
-        let lastErrorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
-        for (const model of MODEL_HIERARCHY) {
-            const result = await validateApiKey(key, model);
-            if (result.isValid) return { status: 'valid', bestModel: model, latency: result.latency };
-            if (result.errorType) lastErrorType = result.errorType;
-            if (result.errorType === 'invalid') return { status: 'invalid', latency: 0 };
-            await new Promise(r => setTimeout(r, 600));
-        }
-        return { status: lastErrorType, latency: 0 };
+    const determineKeyCapabilities = async (key: string): Promise<{ status: 'valid' | 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string, latency: number }> => {
+        // Smart Validation: Tries default model first, then fallbacks
+        const result = await validateApiKey(key);
+        return { status: result.isValid ? 'valid' : (result.errorType || 'unknown'), activeModel: result.activeModel, latency: result.latency };
     };
 
     const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
         setIsCheckingKey(true); setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
         const today = new Date().toISOString().split('T')[0]; const updatedKeys = [...initialKeys];
+        
+        let hasAtLeastOneValid = false;
+
         for (let i = 0; i < updatedKeys.length; i++) {
             const profile = updatedKeys[i]; const cap = await determineKeyCapabilities(profile.key);
-            updatedKeys[i] = { ...profile, status: cap.status, activeModel: cap.bestModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: today };
+            updatedKeys[i] = { ...profile, status: cap.status, activeModel: cap.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: today };
             setApiKeys(prev => prev.map(k => k.id === profile.id ? updatedKeys[i] : k));
-            await new Promise(r => setTimeout(r, 500)); 
+            if(cap.status === 'valid') hasAtLeastOneValid = true;
+            await new Promise(r => setTimeout(r, 200)); 
         }
+
         setApiKeys(currentKeys => {
             const currentActiveProfile = currentKeys.find(k => k.id === activeKeyId);
             if (!currentActiveProfile || currentActiveProfile.status !== 'valid') {
@@ -249,6 +254,12 @@ export default function App() {
             }
             return currentKeys;
         });
+
+        if (!hasAtLeastOneValid && updatedKeys.length > 0) {
+            setAiError("All detected API Keys are invalid or expired. Please update settings.");
+            setShowSettingsModal(true);
+        }
+
         setIsCheckingKey(false);
     };
 
@@ -256,17 +267,19 @@ export default function App() {
         const keyProfile = apiKeys.find(k => k.id === id); if (!keyProfile) return;
         setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
         const cap = await determineKeyCapabilities(keyProfile.key);
-        setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: cap.status, activeModel: cap.bestModel || k.activeModel, latency: cap.latency, lastChecked: new Date().toISOString() } : k));
+        setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: cap.status, activeModel: cap.activeModel || k.activeModel, latency: cap.latency, lastChecked: new Date().toISOString() } : k));
     };
 
     const handleAddKey = async () => {
         if (!newKeyInput.trim()) return;
         if (apiKeys.some(k => k.key === newKeyInput.trim())) { setToastMsg("This API Key is already in your pool!"); setNewKeyInput(""); return; }
         setIsCheckingKey(true); const tempId = Date.now().toString(); const cap = await determineKeyCapabilities(newKeyInput);
-        const newProfile: ApiKeyProfile = { id: tempId, label: newKeyLabel || `Key ${apiKeys.length + 1}`, key: newKeyInput, status: cap.status, activeModel: cap.bestModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: new Date().toISOString().split('T')[0] };
+        const newProfile: ApiKeyProfile = { id: tempId, label: newKeyLabel || `Key ${apiKeys.length + 1}`, key: newKeyInput, status: cap.status, activeModel: cap.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: new Date().toISOString().split('T')[0] };
         setApiKeys(prev => [...prev, newProfile]);
         if (apiKeys.length === 0 || (activeKeyProfile?.status !== 'valid' && cap.status === 'valid')) setActiveKeyId(tempId);
         setNewKeyInput(""); setNewKeyLabel(""); setIsCheckingKey(false);
+        if(cap.status === 'valid') setToastMsg("Key added successfully!");
+        else setAiError("The key you added appears invalid. Please check.");
     };
 
     const executeWithSmartFailover = async <T,>(operation: (apiKey: string, model: string) => Promise<T>): Promise<T> => {
@@ -507,7 +520,10 @@ export default function App() {
         loadSessionData();
         const loadedKeys = loadKeyData();
         setApiKeys(loadedKeys);
-        if (!hasStartupChecked.current && loadedKeys.length > 0) { hasStartupChecked.current = true; checkAllKeys(loadedKeys); }
+        if (!hasStartupChecked.current && loadedKeys.length > 0) { 
+            hasStartupChecked.current = true; 
+            checkAllKeys(loadedKeys); 
+        }
         const savedAutoCheck = localStorage.getItem('iso_auto_check'); if (savedAutoCheck !== null) setIsAutoCheckEnabled(savedAutoCheck === 'true');
         const savedDarkMode = localStorage.getItem('iso_dark_mode'); if (savedDarkMode !== null) setIsDarkMode(savedDarkMode === 'true'); else setIsDarkMode(true); 
         if (window.innerWidth < 768) setIsSidebarOpen(false);
@@ -654,7 +670,7 @@ export default function App() {
             const cap = await determineKeyCapabilities(rescueKey);
             if (cap.status === 'valid') {
                  const newId = Date.now().toString();
-                 setApiKeys(prev => [...prev, { id: newId, label: `Rescue Key`, key: rescueKey, status: 'valid', activeModel: cap.bestModel, latency: cap.latency, lastChecked: new Date().toISOString() }]);
+                 setApiKeys(prev => [...prev, { id: newId, label: `Rescue Key`, key: rescueKey, status: 'valid', activeModel: cap.activeModel, latency: cap.latency, lastChecked: new Date().toISOString() }]);
                  setActiveKeyId(newId);
                  setRescueKey("");
                  setExportState(prev => ({ ...prev, isPaused: false, error: null }));

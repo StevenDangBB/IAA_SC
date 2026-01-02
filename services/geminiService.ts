@@ -1,14 +1,29 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL } from "../constants";
+import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL, MODEL_HIERARCHY } from "../constants";
 import { cleanAndParseJSON } from "../utils";
 
 const getAiClient = (overrideKey?: string) => {
     // Check order: 
     // 1. Explicit Override
-    // 2. Process Env (Injected by Vite + Polyfilled by index.html)
-    // 3. Local Storage
-    const apiKey = overrideKey || process.env.API_KEY || localStorage.getItem("iso_api_key") || "";
+    // 2. Vite Env (Standard) - Safe Access
+    // 3. Process Env (Polyfill/Legacy)
+    // 4. Local Storage
+    
+    let envKey = "";
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // @ts-ignore
+            envKey = import.meta.env.VITE_API_KEY;
+        }
+    } catch (e) {}
+
+    if (!envKey && typeof process !== 'undefined' && process.env) {
+        envKey = process.env.API_KEY || "";
+    }
+
+    const apiKey = overrideKey || envKey || localStorage.getItem("iso_api_key") || "";
     
     if (!apiKey) {
         console.warn("Gemini API Key is missing.");
@@ -17,42 +32,50 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-export const validateApiKey = async (key: string, modelId: string = "gemini-1.5-flash"): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown' }> => {
+export const validateApiKey = async (key: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string }> => {
     if (!key || key.trim() === "") {
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
-    const start = performance.now();
-    try {
-        const ai = new GoogleGenAI({ apiKey: key });
-        // Use a lightweight model for validation to save quota and latency
-        await ai.models.generateContent({
-            model: modelId,
-            contents: "Hi",
-            config: {
-                maxOutputTokens: 1
-            }
-        });
-        const end = performance.now();
-        return { isValid: true, latency: Math.round(end - start) };
-    } catch (error: any) {
-        let errorType: 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
-        const msg = (error.message || "").toLowerCase();
-        
-        console.log(`Validation failed for key [${key.substring(0,6)}...] on model ${modelId}: ${msg}`);
 
-        if (msg.includes("403") || msg.includes("api key not valid") || msg.includes("permission denied") || msg.includes("invalid argument")) {
-            errorType = 'invalid';
-        } else if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
-            errorType = 'quota_exceeded';
-        } else if (msg.includes("not found") || msg.includes("404")) {
-             // Model not found might mean the key is valid but the model isn't available to it.
-             // We return 'unknown' or 'invalid' but log it.
-             // Often means the key is valid for other things, but we treat strictly here.
-             errorType = 'invalid';
+    // List of models to try for validation. 
+    // If the preferred one fails, we fallback to others to check if the KEY is valid generally.
+    const modelsToCheck = preferredModel 
+        ? [preferredModel, ...MODEL_HIERARCHY.filter(m => m !== preferredModel)]
+        : MODEL_HIERARCHY;
+    
+    // We only try the top 3 to save time, ensuring at least one stable model is checked
+    const probeModels = modelsToCheck.slice(0, 3);
+
+    const ai = new GoogleGenAI({ apiKey: key });
+    
+    for (const modelId of probeModels) {
+        const start = performance.now();
+        try {
+            await ai.models.generateContent({
+                model: modelId,
+                contents: "Hi",
+                config: { maxOutputTokens: 1 }
+            });
+            const end = performance.now();
+            // If any model works, the key is valid.
+            return { isValid: true, latency: Math.round(end - start), activeModel: modelId };
+        } catch (error: any) {
+            const msg = (error.message || "").toLowerCase();
+            console.warn(`Validation probe failed for model ${modelId}:`, msg);
+
+            if (msg.includes("429") || msg.includes("quota") || msg.includes("resource exhausted")) {
+                return { isValid: false, latency: 0, errorType: 'quota_exceeded' };
+            }
+            if (msg.includes("api key not valid") || msg.includes("permission denied")) {
+                // If explicit invalid key error, stop immediately.
+                return { isValid: false, latency: 0, errorType: 'invalid' };
+            }
+            // If 404 (Model not found) or other errors, continue loop to try next model
         }
-        
-        return { isValid: false, latency: 0, errorType };
     }
+
+    // If all probes failed
+    return { isValid: false, latency: 0, errorType: 'unknown' };
 };
 
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {

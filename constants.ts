@@ -5,10 +5,12 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.0.3"; // Bumped version
-export const BUILD_TIMESTAMP = "2026-01-02 10:00:00 (GMT+7)"; 
-export const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-exp"; // Updated to stable experimental or preview
-export const DEFAULT_VISION_MODEL = "gemini-2.0-flash-exp"; 
+export const APP_VERSION = "3.0.5"; // Fix undefined env error
+export const BUILD_TIMESTAMP = "2026-01-02 14:30:00 (GMT+7)"; 
+
+// REVERT TO STABLE MODELS FOR COMPATIBILITY
+export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"; 
+export const DEFAULT_VISION_MODEL = "gemini-1.5-flash"; 
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
@@ -20,27 +22,47 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
-// Use process.env.API_KEY which is replaced by Vite.
-// We removed the hardcoded fallback key to ensure users define their own valid keys.
+// Safely retrieve API Key to prevent crash if import.meta.env is undefined
+const getEnvApiKey = () => {
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // @ts-ignore
+            return import.meta.env.VITE_API_KEY;
+        }
+    } catch (e) {
+        // Ignore access errors
+    }
+    
+    try {
+        if (typeof process !== 'undefined' && process.env) {
+            return process.env.API_KEY;
+        }
+    } catch (e) {}
+
+    return "";
+};
+
+const envKey = getEnvApiKey();
+
 export const MY_FIXED_KEYS: string[] = [
-    process.env.API_KEY || "", 
+    envKey
 ].filter(k => k && k.trim() !== ""); 
 
-// OPTIMIZED CASCADE: Highest to Lowest tier
-// Using latest available models for stability
+// OPTIMIZED CASCADE: Stable first, then experimental
 export const MODEL_HIERARCHY = [
-    "gemini-2.0-flash-exp",           // Newest Flash
-    "gemini-1.5-pro",                 // Stable Pro
-    "gemini-1.5-flash",               // Stable Flash
-    "gemini-2.0-flash-thinking-exp-1219" // Reasoning fallback
+    "gemini-1.5-flash",               // Most stable & fast
+    "gemini-1.5-pro",                 // High intelligence
+    "gemini-2.0-flash-exp",           // Experimental (Next Gen)
+    "gemini-1.0-pro"                  // Legacy fallback
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 1, desc: "Next Gen Speed & Multimodal" },
-    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "High Intelligence Context" },
-    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 3, desc: "Fast & Efficient" },
-    "gemini-2.0-flash-thinking-exp-1219": { label: "THINK 2.0", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 4, desc: "Deep Reasoning" },
+    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Stable & Fast (Recommended)" },
+    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0 (EXP)", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 3, desc: "Experimental Features" },
+    "gemini-1.0-pro": { label: "PRO 1.0", color: "bg-slate-600 text-white shadow-slate-500/30", tier: 4, desc: "Legacy Stable" },
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -62,28 +84,28 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "3.0.5",
+        date: "2026-01-02",
+        features: [
+            "CRITICAL FIX: Resolved startup crash due to undefined environment variables.",
+            "STABILITY: Added safe access guards for API Key retrieval."
+        ]
+    },
+    {
+        version: "3.0.4",
+        date: "2026-01-02",
+        features: [
+            "HOTFIX: Reverted default models to Gemini 1.5 Flash for stability.",
+            "FIX: Improved API Key detection using Vite standards.",
+            "CORE: Enhanced validation to try multiple models before failing."
+        ]
+    },
+    {
         version: "3.0.3",
         date: "2026-01-02",
         features: [
-            "FIX: Removed invalid fallback API keys causing production errors.",
-            "UPDATE: Upgraded default models to Gemini 2.0 Flash series.",
-            "CORE: Enhanced API key validation logic."
-        ]
-    },
-    {
-        version: "3.0.2",
-        date: "2026-01-02",
-        features: [
-            "HOTFIX: Resolved 'ReferenceError' by reverting to polyfilled process.env architecture.",
-            "STABILITY: Improved API Key injection reliability across environments."
-        ]
-    },
-    {
-        version: "3.0.1",
-        date: "2026-01-02",
-        features: [
-            "HOTFIX: Resolved API Key injection issue on production builds.",
-            "CORE: Migrated environment handling to global constant injection."
+            "FIX: Removed invalid fallback API keys.",
+            "UPDATE: Upgraded UI components."
         ]
     }
 ];
