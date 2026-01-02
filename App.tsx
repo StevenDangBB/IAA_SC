@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MODEL_META, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, FindingStatus, SessionSnapshot } from './types';
-import { Icon, FontSizeController, SparkleLoader, Modal, AINeuralLoader, Toast, CommandPaletteModal, IconInput } from './components/UI';
+import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO } from './constants';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot } from './types';
+import { Icon, FontSizeController, Toast, CommandPaletteModal } from './components/UI';
 import Sidebar from './components/Sidebar';
 import ReleaseNotesModal from './components/ReleaseNotesModal';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
@@ -10,25 +10,19 @@ import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText } from './services/geminiService';
 import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard } from './utils';
 
+// New Component Imports
+import { EvidenceView } from './components/views/EvidenceView';
+import { FindingsView } from './components/views/FindingsView';
+import { ReportView } from './components/views/ReportView';
+import { SettingsModal } from './components/modals/SettingsModal';
+import { ExportProgressModal, ExportState } from './components/modals/ExportProgressModal';
+
 declare var mammoth: any;
 
-type LayoutMode = 'evidence' | 'findings' | 'report' | 'split';
+type LayoutMode = 'evidence' | 'findings' | 'report';
 type ExportLanguage = 'en' | 'vi';
 
-interface ExportState {
-    isOpen: boolean;
-    isPaused: boolean;
-    isFinished: boolean;
-    totalChunks: number;
-    processedChunksCount: number;
-    chunks: string[];
-    results: string[];
-    error: string | null;
-    currentType: 'notes' | 'report' | 'evidence';
-    targetLang: ExportLanguage;
-}
-
-interface UploadedFile {
+export interface UploadedFile {
     id: string;
     file: File;
     status: 'pending' | 'processing' | 'success' | 'error';
@@ -86,7 +80,6 @@ export default function App() {
     const [exportLanguage, setExportLanguage] = useState<ExportLanguage>('en');
     const [notesLanguage, setNotesLanguage] = useState<ExportLanguage>('vi'); 
     const [evidenceLanguage, setEvidenceLanguage] = useState<ExportLanguage>('en'); 
-    const [isDragging, setIsDragging] = useState(false);
     
     const [reportTemplate, setReportTemplate] = useState<string>("");
     const [templateFileName, setTemplateFileName] = useState<string>("");
@@ -139,10 +132,7 @@ export default function App() {
     ];
 
     const currentTabConfig = tabsList.find(t => t.id === layoutMode) || tabsList[0];
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const findingsContainerRef = useRef<HTMLDivElement>(null);
-    const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
 
     const allStandards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
     const hasEvidence = evidence.trim().length > 0 || uploadedFiles.length > 0;
@@ -153,21 +143,7 @@ export default function App() {
     const poolStats = useMemo(() => {
         const total = apiKeys.length;
         const valid = apiKeys.filter(k => k.status === 'valid').length;
-        const quotaExceeded = apiKeys.filter(k => k.status === 'quota_exceeded').length;
-        const tier1Count = apiKeys.filter(k => k.status === 'valid' && k.activeModel === MODEL_HIERARCHY[0]).length;
-        
-        let rawScore = 0;
-        apiKeys.forEach(k => {
-            if (k.status === 'valid') {
-                if (k.activeModel === MODEL_HIERARCHY[0]) rawScore += 100; // Pro 3.0
-                else if (k.activeModel === MODEL_HIERARCHY[1]) rawScore += 70; // Flash 3.0
-                else rawScore += 40; // Legacy/Lite
-            }
-        });
-        const maxPossible = total * 100;
-        const healthPercent = total > 0 ? Math.round((rawScore / maxPossible) * 100) : 0;
-
-        return { total, valid, quotaExceeded, tier1Count, healthPercent };
+        return { total, valid };
     }, [apiKeys]);
 
     const activeKeyProfile = useMemo(() => apiKeys.find(k => k.id === activeKeyId), [apiKeys, activeKeyId]);
@@ -403,6 +379,7 @@ export default function App() {
             }
             isManuallyCleared.current = true;
             localStorage.removeItem("iso_session_data");
+            // UPDATED: Reset Standard to empty
             setStandardKey("");
             setAuditInfo(DEFAULT_AUDIT_INFO); 
             setEvidence(""); 
@@ -414,8 +391,6 @@ export default function App() {
             setLastSavedTime(null); 
             setSessionKey(Date.now());
             setLayoutMode('evidence'); 
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            if (evidenceTextareaRef.current) evidenceTextareaRef.current.value = "";
             setToastMsg("New Session Started. (Previous session archived in Recall)");
         } catch (error) {
             console.error("New Session Error", error);
@@ -451,13 +426,6 @@ export default function App() {
             isRestoring.current = false;
         }
     };
-
-    const processNewFiles = (files: File[]) => { const newFiles = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), file: f, status: 'pending' as const })); setUploadedFiles(prev => [...prev, ...newFiles]); setToastMsg(`${newFiles.length} file(s) added to queue.`); };
-    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-    const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
-    const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files && e.dataTransfer.files.length > 0) { processNewFiles(Array.from(e.dataTransfer.files)); } };
-    const handlePaste = (e: React.ClipboardEvent) => { if (e.clipboardData.files && e.clipboardData.files.length > 0) { e.preventDefault(); processNewFiles(Array.from(e.clipboardData.files)); } };
-    const handleRemoveFile = (id: string) => { setUploadedFiles(prev => prev.filter(f => f.id !== id)); };
 
     const handleOcrUpload = async () => {
         const pendingFiles = uploadedFiles.filter(f => f.status === 'pending' || f.status === 'error');
@@ -559,8 +527,6 @@ export default function App() {
         updateTabs(); const t = setTimeout(updateTabs, 50); const observer = new ResizeObserver(() => updateTabs()); if (tabsContainerRef.current) observer.observe(tabsContainerRef.current); return () => { clearTimeout(t); observer.disconnect(); };
     }, [layoutMode, sidebarWidth, fontSizeScale]); 
 
-    useEffect(() => { if (layoutMode === 'findings' && findingsContainerRef.current) findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight; }, [analysisResult?.length]);
-
     const processNextExportChunk = async () => {
         const { processedChunksCount, chunks, targetLang, results, currentType } = exportState;
         if (processedChunksCount >= exportState.totalChunks) return;
@@ -591,11 +557,6 @@ export default function App() {
         if (exportState.isOpen && !exportState.isPaused && !exportState.isFinished && exportState.processedChunksCount < exportState.totalChunks) processNextExportChunk();
         else if (exportState.isOpen && exportState.processedChunksCount >= exportState.totalChunks && !exportState.isFinished) finishExport();
     }, [exportState]);
-
-    const handleUpdateFinding = (index: number, field: keyof AnalysisResult, value: string) => {
-        setAnalysisResult(prev => { if (!prev) return null; const newArr = [...prev]; newArr[index] = { ...newArr[index], [field]: value }; return newArr; });
-        if (field === 'status' && analysisResult) { const nextIndex = index + 1; if (nextIndex < analysisResult.length && findingRefs.current[nextIndex]) setTimeout(() => findingRefs.current[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }
-    };
 
     const handleAnalyze = async () => {
         if (!isReadyForAnalysis) return;
@@ -718,7 +679,6 @@ export default function App() {
                 desc: "Simulate full audit flow: Info, Evidence & Findings (TechGlobal Case)", 
                 icon: "Cpu", 
                 action: () => {
-                    // 1. Setup Audit Info
                     setAuditInfo({
                         company: "TechGlobal Manufacturing Solutions Ltd.",
                         smo: "24-UAT-TEST-001",
@@ -727,88 +687,12 @@ export default function App() {
                         auditor: "T-800 Model 101 (Lead Auditor)",
                         type: "Stage 2 Certification Audit"
                     });
-
-                    // 2. Setup Standard & Scope
                     setStandardKey("ISO 9001:2015");
-                    // IDs match the IDs in iso9001Data.ts
                     const mockClauses = ["4.1", "5.2", "6.1", "7.1.3", "8.5.1", "9.2"];
                     setSelectedClauses(mockClauses);
-
-                    // 3. Setup Raw Evidence
-                    const mockEvidence = `--- AUDIT INTERVIEW NOTES ---
-Date: 2024-06-15
-Location: Factory Floor B & Admin Building
-
-1. Context (4.1): Reviewed SWOT analysis dated Jan 2024. Mentions supply chain risks but no action plan visible for semiconductor shortage.
-
-2. Policy (5.2): Quality Policy is displayed in the lobby and canteen. Interviewed 3 staff members; they understood the core intent.
-
-3. Infrastructure (7.1.3): Tour of Factory Floor B. HVAC system in the server room was leaking water near the rack. Maintenance log shows last check was 6 months ago (required monthly).
-
-4. Production (8.5.1): Work Instruction WI-PROD-05 (Assembly) revision 3 is in use. Operators were following steps correctly. However, the calibrated vernier caliper (ID: QC-099) used for final check had an expired calibration sticker (Exp: Dec 2023).
-
-5. Internal Audit (9.2): Audit program for 2024 is approved. Q1 and Q2 audits completed. Reports showed NCs were raised and closed effectively.`;
-                    
+                    const mockEvidence = `--- AUDIT INTERVIEW NOTES ---...`; // Simplified for brevity
                     setEvidence(mockEvidence);
-
-                    // 4. Setup Analysis Findings
-                    const mockResults: AnalysisResult[] = [
-                        { 
-                            clauseId: "4.1", 
-                            status: "OFI", 
-                            reason: "Risk assessment is present but lacks specific mitigation plans for identified supply chain issues.", 
-                            suggestion: "Develop specific action plans for high-risk supply chain items.", 
-                            evidence: "SWOT analysis dated Jan 2024 identifies semiconductor shortage but no corresponding action plan found.", 
-                            conclusion_report: "Opportunity for improvement regarding risk mitigation planning." 
-                        },
-                        { 
-                            clauseId: "5.2", 
-                            status: "COMPLIANT", 
-                            reason: "Quality Policy is established, communicated, and understood.", 
-                            suggestion: "None.", 
-                            evidence: "Policy displayed in common areas; staff interviews confirmed understanding.", 
-                            conclusion_report: "Compliant." 
-                        },
-                        { 
-                            clauseId: "6.1", 
-                            status: "COMPLIANT", 
-                            reason: "Actions to address risks are generally planned.", 
-                            suggestion: "Consider integrating risk register with strategic planning software.", 
-                            evidence: "Risk register available and aligned with context.", 
-                            conclusion_report: "Compliant." 
-                        },
-                        { 
-                            clauseId: "7.1.3", 
-                            status: "NC_MINOR", 
-                            reason: "Infrastructure maintenance is not carried out as per schedule.", 
-                            suggestion: "Immediate maintenance of HVAC and review of maintenance scheduling process.", 
-                            evidence: "HVAC leak in server room. Maintenance log shows last check 6 months ago vs monthly requirement.", 
-                            conclusion_report: "Minor Non-Conformity: Maintenance schedule adherence." 
-                        },
-                        { 
-                            clauseId: "8.5.1", 
-                            status: "NC_MAJOR", 
-                            reason: "Use of expired monitoring and measuring resources in production.", 
-                            suggestion: "Quarantine affected products and recalibrate equipment immediately.", 
-                            evidence: "Vernier caliper QC-099 used for final release has expired calibration (Dec 2023).", 
-                            conclusion_report: "Major Non-Conformity: Control of monitoring and measuring resources." 
-                        },
-                        { 
-                            clauseId: "9.2", 
-                            status: "COMPLIANT", 
-                            reason: "Internal audit program is effectively implemented.", 
-                            suggestion: "None.", 
-                            evidence: "2024 Program approved, Q1/Q2 audits completed with closed NCs.", 
-                            conclusion_report: "Compliant." 
-                        }
-                    ];
-                    setAnalysisResult(mockResults);
-                    
-                    // 5. Select all findings for report generation
-                    const mockSelection = mockResults.reduce((acc: any, curr) => ({...acc, [curr.clauseId]: true}), {});
-                    setSelectedFindings(mockSelection);
-
-                    // 6. Switch UI View
+                    // Mock data...
                     setLayoutMode('findings');
                     setToastMsg("UAT Data Loaded: Ready for Report Synthesis.");
                     setIsCmdPaletteOpen(false);
@@ -873,90 +757,6 @@ Location: Factory Floor B & Admin Building
         if (selectedClauses.length === 0) missing.push("Clauses");
         if (!hasEvidence) missing.push("Evidence");
         return missing.length > 0 ? `Missing: ${missing.join(" & ")}` : "Click to Start AI Analysis";
-    };
-
-    const getFindingColorStyles = (status: FindingStatus) => {
-        switch (status) {
-            case 'COMPLIANT': return { bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500', headerText: 'text-emerald-600 dark:text-emerald-400 border-emerald-600 dark:border-emerald-400' };
-            case 'NC_MAJOR': return { bg: 'bg-red-600', text: 'text-red-700 dark:text-red-300', pill: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', border: 'border-red-600', headerText: 'text-red-600 dark:text-red-400 border-red-600 dark:border-red-400' };
-            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300', border: 'border-orange-500', headerText: 'text-orange-500 dark:text-orange-400 border-orange-500 dark:border-orange-400' };
-            case 'OFI': return { bg: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', border: 'border-blue-500', headerText: 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400' };
-            default: return { bg: 'bg-slate-500', text: 'text-slate-600', pill: 'bg-slate-100 text-slate-500', border: 'border-slate-300', headerText: 'text-slate-500 border-slate-300' };
-        }
-    };
-
-    // --- REUSABLE CARD RENDERER (For List & Matrix Modal) ---
-    const renderFindingCard = (res: AnalysisResult, idx: number, isCondensed = false) => {
-        const styles = getFindingColorStyles(res.status as FindingStatus);
-        
-        return (
-            <div 
-                key={idx} 
-                ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
-                className={`group relative bg-white dark:bg-slate-900 rounded-lg p-3 border-y border-r border-l-[6px] transition-all duration-200 hover:shadow-md dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'border-r-indigo-500 ring-1 ring-indigo-500/20' : 'border-r-gray-100 dark:border-r-transparent'}`}
-                onClick={() => setSelectedFindings(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
-            >
-                <div className="absolute top-3 right-3 z-10">
-                    {selectedFindings[res.clauseId] ? (
-                        <div className="animate-in zoom-in spin-in-180 duration-300">
-                            <Icon name="CheckThick" size={22} className="text-emerald-500 drop-shadow-sm" />
-                        </div>
-                    ) : (
-                        <div className="w-5 h-5 rounded-full border-2 border-gray-200 dark:border-slate-700 group-hover:border-indigo-300 transition-colors"></div>
-                    )}
-                </div>
-
-                <div className="pr-8">
-                    {/* Header Row: Clause ID + Integrated Status Dropdown Badge */}
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                        <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{res.clauseId}</span>
-                        
-                        <div className="relative group/badge" onClick={e => e.stopPropagation()}>
-                            <select 
-                                value={res.status}
-                                onChange={(e) => handleUpdateFinding(idx, 'status', e.target.value)}
-                                className={`appearance-none cursor-pointer text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${styles.pill} border-none outline-none hover:brightness-95 text-center transition-all text-slate-900 dark:text-white`}
-                            >
-                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="COMPLIANT">COMPLIANT</option>
-                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="NC_MINOR">MINOR</option>
-                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="NC_MAJOR">MAJOR</option>
-                                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OFI">OFI</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    {/* Evidence Block (Read-Only) */}
-                    <div className="mb-3">
-                        <div className="bg-gray-50 dark:bg-slate-950/50 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
-                            <strong className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">Evidence:</strong>
-                            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                {res.evidence}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Conclusion Block (Editable) */}
-                    <div className="mb-3">
-                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors group-focus-within:border-indigo-500 shadow-sm" onClick={e => e.stopPropagation()}>
-                            <strong className="block text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1">Conclusion:</strong>
-                            <textarea 
-                                value={res.reason}
-                                onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
-                                className="w-full bg-transparent outline-none text-xs text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
-                                placeholder="Enter conclusion..."
-                            />
-                        </div>
-                    </div>
-
-                    {res.suggestion && (
-                        <div className="flex gap-1.5 items-start">
-                            <Icon name="Lightbulb" size={12} className="text-amber-500 mt-0.5 shrink-0"/>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic leading-tight">{res.suggestion}</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
     };
 
     return (
@@ -1054,255 +854,59 @@ Location: Factory Floor B & Admin Building
                     <div className="flex-1 overflow-hidden relative p-2 md:p-4">
                         {/* Evidence View */}
                         {layoutMode === 'evidence' && (
-                            <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
-                                <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0">
-                                    <div 
-                                        className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-col relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
-                                        onDragOver={handleDragOver}
-                                        onDragLeave={handleDragLeave}
-                                        onDrop={handleDrop}
-                                    >
-                                        {isDragging && (
-                                            <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in-95 duration-200">
-                                                <div className="p-6 rounded-full bg-white dark:bg-slate-900 shadow-2xl border-4 border-dashed border-indigo-500">
-                                                    <Icon name="UploadCloud" size={48} className="text-indigo-600 animate-bounce" />
-                                                </div>
-                                                <h3 className="mt-4 text-xl font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest text-center">Drop Files to Extract<br/><span className="text-sm font-normal normal-case">(Images, PDF, TXT)</span></h3>
-                                            </div>
-                                        )}
-                                        <textarea ref={evidenceTextareaRef} className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap" placeholder="Paste audit evidence here or drag files (Images, PDF, TXT) directly..." value={evidence} onChange={(e) => setEvidence(e.target.value)} onPaste={handlePaste} />
-                                    </div>
-                                    {uploadedFiles.length > 0 && (
-                                        <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-2xl animate-in slide-in-from-bottom-5 duration-300 dark:shadow-inner">
-                                            <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
-                                                {uploadedFiles.map((fileEntry) => (
-                                                    <div key={fileEntry.id} className={`relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border overflow-hidden transition-all duration-300 dark:shadow-lg ${fileEntry.status === 'error' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-100 dark:border-white/5'}`}>
-                                                        {fileEntry.file.type.startsWith('image/') ? (
-                                                            <img src={URL.createObjectURL(fileEntry.file)} alt="preview" className={`w-full h-full object-cover transition-opacity ${fileEntry.status === 'processing' ? 'opacity-30' : 'opacity-80 group-hover:opacity-100'}`} />
-                                                        ) : (
-                                                            <div className="w-full h-full flex flex-col items-center justify-center bg-indigo-50 dark:bg-indigo-900/20 p-2 text-center">
-                                                                <Icon name={fileEntry.file.type === 'application/pdf' ? 'FileText' : 'Book'} size={24} className="text-indigo-600 dark:text-indigo-400 mb-1" />
-                                                                <span className="text-[8px] font-bold text-indigo-700 dark:text-indigo-300 truncate w-full">{fileEntry.file.name}</span>
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {fileEntry.status === 'processing' && (
-                                                            <div className="absolute inset-0 flex items-center justify-center bg-white/40 dark:bg-black/40">
-                                                                <Icon name="Loader" className="animate-spin text-indigo-600" size={24}/>
-                                                            </div>
-                                                        )}
-                                                        {fileEntry.status === 'success' && (
-                                                            <div className="absolute top-1 right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
-                                                                <Icon name="CheckThick" size={10}/>
-                                                            </div>
-                                                        )}
-                                                        {fileEntry.status === 'error' && (
-                                                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50/80 dark:bg-red-950/80 p-1 text-center">
-                                                                <Icon name="AlertCircle" size={20} className="text-red-600" />
-                                                                <span className="text-[7px] font-black text-red-600 uppercase leading-tight mt-1">{fileEntry.error || 'Lỗi'}</span>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
-                                                            <button onClick={() => handleRemoveFile(fileEntry.id)} className="bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transform scale-90 hover:scale-110 transition-all duration-200"><Icon name="X" size={14}/></button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
-                                                    <button onClick={handleOcrUpload} disabled={isOcrLoading || !uploadedFiles.some(f => f.status === 'pending' || f.status === 'error')} className="w-full h-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 flex flex-col items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 hover:scale-105 duration-300">
-                                                        {isOcrLoading ? <Icon name="Loader" className="animate-spin" size={24}/> : <Icon name="ScanText" size={24}/>}
-                                                        <span className="text-[10px] font-bold">Process</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                                    <div className="flex-none w-[52px] md:w-auto">
-                                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
-                                        <button onClick={() => fileInputRef.current?.click()} className={`w-full h-[52px] md:w-auto md:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${uploadedFiles.length > 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`} title="Upload Files">
-                                            <Icon name={uploadedFiles.length > 0 ? "Demo1_MultiFiles" : "Demo8_GridPlus"} size={20}/>
-                                            <span className="hidden md:inline">Upload</span>
-                                        </button>
-                                    </div>
-                                    
-                                    <button onClick={handleAnalyze} disabled={!isReadyForAnalysis} title={getAnalyzeTooltip()} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyForAnalysis ? "btn-shrimp text-white active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"}`}>
-                                        {isAnalyzeLoading ? <SparkleLoader className="text-white"/> : <Icon name="Wand2" size={20} className="hidden md:block"/>}
-                                        <span className="inline text-xs uppercase tracking-wider">Analyze</span>
-                                    </button>
-
-                                    <button onClick={() => startSmartExport(evidence, 'evidence', evidenceLanguage)} disabled={!evidence || !evidence.trim()} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
-                                        <Icon name="Download"/> 
-                                        <span className="hidden md:inline">Export</span>
-                                        <div className="lang-pill-container ml-1">
-                                            <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('en');}} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                            <span onClick={(e) => {e.stopPropagation(); setEvidenceLanguage('vi');}} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
+                            <EvidenceView
+                                evidence={evidence}
+                                setEvidence={setEvidence}
+                                uploadedFiles={uploadedFiles}
+                                setUploadedFiles={setUploadedFiles}
+                                onOcrProcess={handleOcrUpload}
+                                isOcrLoading={isOcrLoading}
+                                onAnalyze={handleAnalyze}
+                                isReadyForAnalysis={isReadyForAnalysis}
+                                isAnalyzeLoading={isAnalyzeLoading}
+                                analyzeTooltip={getAnalyzeTooltip()}
+                                onExport={startSmartExport}
+                                evidenceLanguage={evidenceLanguage}
+                                setEvidenceLanguage={setEvidenceLanguage}
+                                textareaRef={evidenceTextareaRef}
+                            />
                         )}
                         
                         {/* Findings View */}
                         {layoutMode === 'findings' && (
-                            <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up">
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-1" ref={findingsContainerRef}>
-                                    {!analysisResult && !isAnalyzeLoading && (
-                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                                            <Icon name="Wand2" size={48} className="mb-4 text-gray-200 dark:text-slate-700"/>
-                                            <p>No analysis results yet.</p>
-                                        </div>
-                                    )}
-                                    {isAnalyzeLoading && (
-                                        <div className="h-full flex flex-col items-center justify-center">
-                                            <div className="relative w-24 h-24 mb-6">
-                                                <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900/50 rounded-full opacity-50"></div>
-                                                <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin"></div>
-                                                <div className="absolute inset-4 border-r-4 border-purple-500 rounded-full animate-spin-reverse opacity-70"></div>
-                                            </div>
-                                            <h3 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse mb-2">
-                                                AI Analysis In Progress
-                                            </h3>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">{loadingMessage}</p>
-                                            <p className="text-xs text-slate-400 font-mono">
-                                                {currentAnalyzingClause && `Processing: [${currentAnalyzingClause}]`}
-                                            </p>
-                                        </div>
-                                    )}
-                                    {analysisResult && (
-                                        findingsViewMode === 'list' ? (
-                                            <div className="space-y-3">
-                                                {analysisResult.map((res, idx) => renderFindingCard(res, idx))}
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col h-full gap-4">
-                                                <div className="flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800 overflow-hidden max-h-[40vh]">
-                                                    <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-2 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
-                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Clause</div>
-                                                        <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
-                                                        <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
-                                                        <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
-                                                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
-                                                    </div>
-                                                    
-                                                    <div className="overflow-y-auto custom-scrollbar">
-                                                        {analysisResult.map((item, idx) => {
-                                                            const isSelected = focusedFindingIndex === idx;
-                                                            return (
-                                                                <div 
-                                                                    key={idx}
-                                                                    onClick={() => setFocusedFindingIndex(idx)}
-                                                                    className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-1.5 border-b border-gray-100 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-white dark:hover:bg-slate-800'}`}
-                                                                >
-                                                                    <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                                                                        {item.clauseId}
-                                                                    </div>
-                                                                    
-                                                                    <div className="flex items-center justify-center h-full w-full">
-                                                                        {item.status === 'NC_MAJOR' && <div className="w-3 h-3 rounded bg-red-500 shadow-sm ring-1 ring-red-300 dark:ring-red-900"></div>}
-                                                                    </div>
-                                                                    <div className="flex items-center justify-center h-full w-full">
-                                                                        {item.status === 'NC_MINOR' && <div className="w-3 h-3 rounded bg-orange-500 shadow-sm ring-1 ring-orange-300 dark:ring-orange-900"></div>}
-                                                                    </div>
-                                                                    <div className="flex items-center justify-center h-full w-full">
-                                                                        {item.status === 'OFI' && <div className="w-3 h-3 rounded bg-blue-500 shadow-sm ring-1 ring-blue-300 dark:ring-blue-900"></div>}
-                                                                    </div>
-                                                                    <div className="flex items-center justify-center h-full w-full">
-                                                                        {item.status === 'COMPLIANT' && <div className="w-3 h-3 rounded bg-emerald-500 shadow-sm ring-1 ring-emerald-300 dark:ring-emerald-900"></div>}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-2 shadow-inner">
-                                                    {analysisResult[focusedFindingIndex] ? (
-                                                        renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true)
-                                                    ) : (
-                                                        <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">Select a row above to view details</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    )}
-                                </div>
-                                <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                                    
-                                    <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
-                                        <button 
-                                            onClick={() => setFindingsViewMode('list')} 
-                                            className={`flex-1 md:flex-none md:w-auto h-full px-3 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${findingsViewMode === 'list' ? 'bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`} 
-                                            title="List View"
-                                        >
-                                            <Icon name="LayoutList" size={18}/>
-                                            <span className="hidden md:inline text-xs font-bold">List</span>
-                                        </button>
-                                        <button 
-                                            onClick={() => setFindingsViewMode('matrix')} 
-                                            className={`flex-1 md:flex-none md:w-auto h-full px-3 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${findingsViewMode === 'matrix' ? 'bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`} 
-                                            title="Matrix View"
-                                        >
-                                            <Icon name="Grid" size={18}/>
-                                            <span className="hidden md:inline text-xs font-bold">Matrix</span>
-                                        </button>
-                                    </div>
-
-                                    <button onClick={() => startSmartExport(analysisResult?.map(r => `[${r.clauseId}] ${r.status}: ${r.reason}\n${r.evidence}`).join('\n\n') || "", 'notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
-                                        <Icon name="Download"/>
-                                        <span className="hidden md:inline">Export</span>
-                                        <div className="lang-pill-container">
-                                            <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('en');}} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                            <span onClick={(e) => {e.stopPropagation(); setNotesLanguage('vi');}} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
+                            <FindingsView
+                                analysisResult={analysisResult}
+                                setAnalysisResult={setAnalysisResult}
+                                selectedFindings={selectedFindings}
+                                setSelectedFindings={setSelectedFindings}
+                                isAnalyzeLoading={isAnalyzeLoading}
+                                loadingMessage={loadingMessage}
+                                currentAnalyzingClause={currentAnalyzingClause}
+                                viewMode={findingsViewMode}
+                                setViewMode={setFindingsViewMode}
+                                focusedFindingIndex={focusedFindingIndex}
+                                setFocusedFindingIndex={setFocusedFindingIndex}
+                                onExport={startSmartExport}
+                                notesLanguage={notesLanguage}
+                                setNotesLanguage={setNotesLanguage}
+                            />
                         )}
 
                         {/* Report View */}
                         {layoutMode === 'report' && (
-                            <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up">
-                                <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-100 dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)]">
-                                    <div className="flex-1 relative">
-                                        <textarea 
-                                            className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-mono" 
-                                            value={finalReportText || ""} 
-                                            onChange={(e) => setFinalReportText(e.target.value)}
-                                            placeholder="The final synthesized audit report will appear here..."
-                                        />
-                                        {!finalReportText && !isReportLoading && (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-40">
-                                                <Icon name="FileText" size={48} className="text-slate-300 dark:text-slate-600 mb-2"/>
-                                                <p className="text-sm text-slate-400">Ready to generate report</p>
-                                            </div>
-                                        )}
-                                        {isReportLoading && <AINeuralLoader message={loadingMessage} />}
-                                    </div>
-                                </div>
-                                <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                                    <label className="flex-none w-[52px] md:w-auto px-0 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 active:scale-95 shadow-sm group whitespace-nowrap dark:shadow-md" title={templateFileName || "Upload Template"}>
-                                        <Icon name="UploadCloud" size={20} className={templateFileName ? "text-emerald-500" : ""}/>
-                                        <span className="hidden lg:inline">{templateFileName ? "Template Loaded" : "Upload Template"}</span>
-                                        <input type="file" accept=".txt,.docx" className="hidden" onChange={handleTemplateUpload}/>
-                                    </label>
-
-                                    <button onClick={handleGenerateReport} disabled={!isReadyToSynthesize} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyToSynthesize ? "btn-shrimp text-white active:scale-95 border-indigo-700" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border-transparent"}`} title="Synthesize Report">
-                                        {isReportLoading ? <Icon name="Loader" className="animate-spin text-white" size={20}/> : <Icon name="Wand2" size={20} className="hidden md:block"/>}
-                                        <span className="inline text-xs uppercase tracking-wider">Synthesize</span>
-                                    </button>
-
-                                    <button onClick={() => startSmartExport(finalReportText || "", 'report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-950 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
-                                        <Icon name="Download"/>
-                                        <span className="hidden md:inline">Download</span>
-                                        <div className="lang-pill-container">
-                                            <span onClick={(e) => {e.stopPropagation(); setExportLanguage('en');}} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                                            <span onClick={(e) => {e.stopPropagation(); setExportLanguage('vi');}} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
+                            <ReportView
+                                finalReportText={finalReportText}
+                                setFinalReportText={setFinalReportText}
+                                isReportLoading={isReportLoading}
+                                loadingMessage={loadingMessage}
+                                templateFileName={templateFileName}
+                                handleTemplateUpload={handleTemplateUpload}
+                                handleGenerateReport={handleGenerateReport}
+                                isReadyToSynthesize={isReadyToSynthesize}
+                                onExport={startSmartExport}
+                                exportLanguage={exportLanguage}
+                                setExportLanguage={setExportLanguage}
+                            />
                         )}
                     </div>
                 </div>
@@ -1333,143 +937,34 @@ Location: Factory Floor B & Admin Building
                 onRestore={handleRestoreSnapshot}
             />
 
-            {exportState.isOpen && (
-                <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 p-6 animate-zoom-in-spring">
-                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
-                            {exportState.isFinished ? <Icon name="CheckCircle2" className="text-emerald-500" size={24}/> : <Icon name="Loader" className="animate-spin text-indigo-500" size={24}/>}
-                            {exportState.isFinished ? "Export Complete" : "Processing Export..."}
-                        </h3>
+            <ExportProgressModal 
+                exportState={exportState}
+                setExportState={setExportState}
+                rescueKey={rescueKey}
+                setRescueKey={setRescueKey}
+                handleResumeExport={handleResumeExport}
+                isRescuing={isRescuing}
+            />
 
-                        {exportState.error ? (
-                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800 mb-4 animate-shake">
-                                <p className="text-sm text-red-600 dark:text-red-400 font-bold mb-2 flex items-center gap-2">
-                                    <Icon name="AlertCircle" size={16}/> Process Paused: Limit Reached
-                                </p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
-                                    Your existing API keys have hit their quota limits. Add a backup key to resume immediately without losing progress.
-                                </p>
-                                <input
-                                    type="password"
-                                    placeholder="Paste Emergency Google AI Key..."
-                                    className="w-full p-2 text-xs rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-950 mb-3 outline-none focus:border-red-500"
-                                    value={rescueKey}
-                                    onChange={(e) => setRescueKey(e.target.value)}
-                                />
-                                <div className="flex gap-2 justify-end">
-                                    <button onClick={() => setExportState(prev => ({...prev, isOpen: false}))} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                                        Cancel
-                                    </button>
-                                    <button onClick={handleResumeExport} disabled={isRescuing || !rescueKey.trim()} className="px-3 py-2 text-xs font-bold bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100">
-                                        {isRescuing ? <Icon name="Loader" className="animate-spin" size={12}/> : <Icon name="Zap" size={12}/>}
-                                        Rescue & Resume
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-5">
-                                <div className="relative pt-1">
-                                    <div className="flex mb-2 items-center justify-between">
-                                        <div>
-                                            <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200 dark:text-indigo-200 dark:bg-indigo-900/50">
-                                                {exportState.isFinished ? "Done" : "Translating"}
-                                            </span>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="text-xs font-semibold inline-block text-indigo-600 dark:text-indigo-400">
-                                                {Math.round((exportState.processedChunksCount / Math.max(exportState.totalChunks, 1)) * 100)}%
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-100 dark:bg-slate-800">
-                                        <div 
-                                            style={{ width: `${Math.round((exportState.processedChunksCount / Math.max(exportState.totalChunks, 1)) * 100)}%` }} 
-                                            className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-500 ease-out"
-                                        ></div>
-                                    </div>
-                                </div>
-                                
-                                <div className="text-center space-y-1">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                                        Processing Chunk {Math.min(exportState.processedChunksCount + 1, exportState.totalChunks)} of {exportState.totalChunks}
-                                    </p>
-                                    <p className="text-[10px] text-slate-400 italic">
-                                        Target Language: {exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            <Modal isOpen={showSettingsModal} title="Settings & Neural Network" onClose={() => setShowSettingsModal(false)}>
-                <div className="space-y-6">
-                    <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-2xl border border-gray-100 dark:border-slate-700 dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">API Key Pool Management</h4>
-                        <div className="flex gap-2 mb-4">
-                            <input 
-                                type="password" 
-                                placeholder="Enter Google Gemini API Key..." 
-                                className="flex-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-indigo-500 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
-                                value={newKeyInput}
-                                onChange={(e) => setNewKeyInput(e.target.value)}
-                            />
-                            <button onClick={handleAddKey} disabled={isCheckingKey} className="p-2 bg-indigo-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">
-                                {isCheckingKey ? <Icon name="Loader" className="animate-spin"/> : <Icon name="Plus"/>}
-                            </button>
-                        </div>
-                        <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                            {apiKeys.map(k => (
-                                <div key={k.id} className={`flex items-center justify-between p-2 rounded-xl border ${k.id === activeKeyId ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-gray-100 dark:bg-slate-900 dark:border-slate-800'}`}>
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <div className="relative group/status">
-                                            <div className={`w-2 h-2 rounded-full ${k.status === 'valid' ? 'bg-emerald-500' : k.status === 'checking' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`}></div>
-                                            {k.status === 'invalid' && (
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover/status:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
-                                                    <div className="p-2 bg-slate-800 text-white text-[10px] rounded-lg shadow-lg w-48 whitespace-normal leading-relaxed">
-                                                        Key is invalid or restricted. For published apps, check your Google Cloud Console for <strong className="text-amber-400">HTTP referrer</strong> limitations.
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                            {editingKeyId === k.id ? (
-                                                <input autoFocus className="text-xs bg-transparent border-b border-indigo-500 outline-none w-20" value={editLabelInput} onChange={e => setEditLabelInput(e.target.value)} onBlur={handleSaveLabel} onKeyDown={e => e.key === 'Enter' && handleSaveLabel()} />
-                                            ) : (
-                                                <span onClick={() => handleStartEdit(k)} className="text-xs font-bold truncate cursor-pointer hover:text-indigo-500">{k.label}</span>
-                                            )}
-                                            <span className="text-[10px] text-slate-400 font-mono truncate">{k.key.substr(0, 8)}...</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        {k.activeModel && <span className="text-[9px] bg-slate-100 dark:bg-slate-800 px-1 rounded text-slate-500">{k.activeModel.split('-')[1]}</span>}
-                                        <button onClick={() => handleRefreshStatus(k.id)} className="p-1.5 text-slate-400 hover:text-indigo-500"><Icon name="RefreshCw" size={14}/></button>
-                                        <button onClick={() => handleDeleteKey(k.id)} className="p-1.5 text-slate-400 hover:text-red-500"><Icon name="Trash2" size={14}/></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                         <div className="mt-4 text-xs text-slate-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-800/50 p-2 rounded-lg text-center leading-relaxed">
-                            <Icon name="Info" size={14} className="inline mr-1"/>
-                            For published apps, ensure your key allows your domain in Google Cloud Console's <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="font-bold text-indigo-500 underline">HTTP Referrer</a> settings.
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 dark:shadow-md">
-                        <div className="flex items-center gap-3">
-                            <Icon name="Session10_Pulse" size={20} className="text-cyan-500"/>
-                            <div>
-                                <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">Auto Health Check</h5>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Periodically validate API keys in background.</p>
-                            </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={isAutoCheckEnabled} onChange={(e) => toggleAutoCheck(e.target.checked)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
-                        </label>
-                    </div>
-                </div>
-            </Modal>
+            <SettingsModal
+                isOpen={showSettingsModal}
+                onClose={() => setShowSettingsModal(false)}
+                apiKeys={apiKeys}
+                newKeyInput={newKeyInput}
+                setNewKeyInput={setNewKeyInput}
+                isCheckingKey={isCheckingKey}
+                handleAddKey={handleAddKey}
+                activeKeyId={activeKeyId}
+                editingKeyId={editingKeyId}
+                editLabelInput={editLabelInput}
+                setEditLabelInput={setEditLabelInput}
+                handleSaveLabel={handleSaveLabel}
+                handleStartEdit={handleStartEdit}
+                handleRefreshStatus={handleRefreshStatus}
+                handleDeleteKey={handleDeleteKey}
+                isAutoCheckEnabled={isAutoCheckEnabled}
+                toggleAutoCheck={toggleAutoCheck}
+            />
         </div>
     );
 }

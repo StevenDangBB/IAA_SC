@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon, IconSelect, IconInput, Modal } from './UI';
 import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
