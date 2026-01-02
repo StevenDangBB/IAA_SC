@@ -42,12 +42,14 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         return { isValid: false, latency: 0, errorType: 'invalid' };
     }
 
-    // 2. Updated Probe List (Removing 1.5 series which causes 404s for some keys)
-    // Prioritizing experimental and preview models as per new guidelines
+    // 2. STABLE Probe List
+    // We prioritize models that are known to be universally available to standard API keys.
+    // Experimental models (2.0/3.0) often return 404 for standard keys, causing false negatives.
     const probeModels = [
-        "gemini-2.0-flash-exp",      // Primary - High reliability currently
-        "gemini-3-flash-preview",    // Next Gen
-        "gemini-flash-latest"        // Fallback Alias
+        "gemini-1.5-flash",      // Gold Standard for Availability
+        "gemini-1.5-pro",        // High Tier
+        "gemini-1.0-pro",        // Legacy Stable
+        "gemini-2.0-flash-exp"   // Experimental (Only try if others fail or specifically requested)
     ];
 
     if (preferredModel && !probeModels.includes(preferredModel)) {
@@ -74,7 +76,6 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
         } catch (error: any) {
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
-            const code = error.code || 0;
             
             console.warn(`[ISO-AUDIT] Probe failed for ${modelId}:`, msg);
 
