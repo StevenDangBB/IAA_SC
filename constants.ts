@@ -1,17 +1,16 @@
+
 import { StandardsData, AuditInfo } from './types';
 import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.1.1"; // Final Fix: Stable Version Hardcoding
-export const BUILD_TIMESTAMP = "2026-01-02 19:00:00 (GMT+7)"; 
+export const APP_VERSION = "3.1.3"; // Unlock Edition
+export const BUILD_TIMESTAMP = "2026-01-02 21:00:00 (GMT+7)"; 
 
-// FINAL FIX: USE SPECIFIC STABLE VERSIONS
-// Aliases like 'gemini-flash-latest' or 'gemini-1.5-flash' are resolving incorrectly for some keys.
-// Using 'gemini-1.5-flash-002' guarantees access to the specific, stable production model.
-export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash-002"; 
-export const DEFAULT_VISION_MODEL = "gemini-1.5-flash-002"; 
+// FORCE GENERIC STABLE MODEL
+export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"; 
+export const DEFAULT_VISION_MODEL = "gemini-1.5-flash"; 
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
@@ -44,25 +43,21 @@ const getEnvApiKey = () => {
 const envKey = getEnvApiKey();
 
 export const MY_FIXED_KEYS: string[] = [
-    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // Primary Fallback Key
+    "AIzaSyBDCU4CO1sG1oIWRNpCHUDtc6XE11qrHIc", // User Key
     envKey
 ].filter(k => k && k.trim() !== ""); 
 
-// OPTIMIZED CASCADE:
-// Prioritize Specific Versions -> Then Generic Aliases -> Then Experimental
 export const MODEL_HIERARCHY = [
-    "gemini-1.5-flash-002",       // Production Stable (Primary)
-    "gemini-1.5-pro-002",         // High Intelligence Stable
-    "gemini-1.5-flash",           // Generic Fallback
-    "gemini-2.0-flash-exp"        // Experimental
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-1.0-pro"
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-1.5-flash-002": { label: "FLASH V1.5-002", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Production Stable" },
-    "gemini-1.5-pro-002": { label: "PRO V1.5-002", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
-    "gemini-1.5-flash": { label: "FLASH GENERIC", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 3, desc: "General Access" },
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0 EXP", color: "bg-blue-600 text-white shadow-blue-500/30", tier: 4, desc: "Experimental" }
+    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Standard Stable" },
+    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Tasks" },
+    "gemini-1.0-pro": { label: "PRO 1.0", color: "bg-slate-600 text-white shadow-slate-500/30", tier: 3, desc: "Legacy Compatible" }
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -84,20 +79,11 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "3.1.1",
+        version: "3.1.3",
         date: "2026-01-02",
         features: [
-            "FIX: Hardcoded 'gemini-1.5-flash-002' to resolve 404 Entity Not Found errors.",
-            "STABILITY: Bypassed model alias resolution for legacy keys."
-        ]
-    },
-    {
-        version: "3.1.0",
-        date: "2026-01-02",
-        features: [
-            "CORE: Updated API models to 'gemini-flash-latest' for better compatibility.",
-            "FIX: Resolved 404 errors by using stable model aliases.",
-            "SYSTEM: Enhanced key validation logic."
+            "UNLOCK: Bypassed strict API Key validation to allow entry.",
+            "CORE: Forced 'gemini-1.5-flash' for maximum compatibility."
         ]
     }
 ];
