@@ -157,7 +157,7 @@ export default function App() {
             const existingKeySet = new Set(loadedKeys.map(k => k.key));
             let hasChanges = false;
             
-            // Only add Fixed Keys if they are not empty
+            // Only add Fixed Keys if they are not empty AND not already in list
             MY_FIXED_KEYS.forEach((fixedKey, index) => {
                 if (fixedKey && !existingKeySet.has(fixedKey)) {
                     loadedKeys.push({ id: `fixed_key_${index}_${Math.random().toString(36).substr(2, 5)}`, label: `Environment Key ${index + 1}`, key: fixedKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
@@ -166,15 +166,6 @@ export default function App() {
             });
 
             if (hasChanges) localStorage.setItem("iso_api_keys", JSON.stringify(loadedKeys));
-            
-            // Legacy key migration
-            const legacyKey = localStorage.getItem("iso_api_key");
-            if (loadedKeys.length === 0 && legacyKey && !MY_FIXED_KEYS.includes(legacyKey)) {
-                const newId = Date.now().toString();
-                loadedKeys.push({ id: newId, label: "Legacy Key", key: legacyKey, status: 'unknown', latency: 0, lastChecked: new Date().toISOString() });
-                setActiveKeyId(newId);
-                localStorage.setItem("iso_active_key_id", newId);
-            }
             
             const savedActiveId = localStorage.getItem("iso_active_key_id");
             if (savedActiveId && loadedKeys.some(k => k.id === savedActiveId)) setActiveKeyId(savedActiveId);
@@ -229,57 +220,153 @@ export default function App() {
     const determineKeyCapabilities = async (key: string): Promise<{ status: 'valid' | 'invalid' | 'quota_exceeded' | 'unknown', activeModel?: string, latency: number }> => {
         // Smart Validation: Tries default model first, then fallbacks
         const result = await validateApiKey(key);
-        return { status: result.isValid ? 'valid' : (result.errorType || 'unknown'), activeModel: result.activeModel, latency: result.latency };
+        
+        let status: 'valid' | 'invalid' | 'quota_exceeded' | 'unknown' = 'unknown';
+        if (result.isValid) status = 'valid';
+        else if (result.errorType === 'network_error') status = 'unknown'; // Allow network errors to be retried or kept as unknown rather than invalid
+        else if (result.errorType) status = result.errorType as any;
+
+        return { status, activeModel: result.activeModel, latency: result.latency };
     };
 
     const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
-        setIsCheckingKey(true); setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
-        const today = new Date().toISOString().split('T')[0]; const updatedKeys = [...initialKeys];
+        setIsCheckingKey(true); 
+        // Visual indicator that check started
+        setApiKeys(prev => prev.map(k => ({ ...k, status: 'checking' })));
+        
+        const today = new Date().toISOString().split('T')[0]; 
+        const updatedKeys = [...initialKeys];
         
         let hasAtLeastOneValid = false;
 
         for (let i = 0; i < updatedKeys.length; i++) {
-            const profile = updatedKeys[i]; const cap = await determineKeyCapabilities(profile.key);
-            updatedKeys[i] = { ...profile, status: cap.status, activeModel: cap.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: today };
-            setApiKeys(prev => prev.map(k => k.id === profile.id ? updatedKeys[i] : k));
+            const profile = updatedKeys[i]; 
+            const cap = await determineKeyCapabilities(profile.key);
+            
+            // Construct updated profile
+            updatedKeys[i] = { 
+                ...profile, 
+                status: cap.status, 
+                activeModel: cap.activeModel, 
+                latency: cap.latency, 
+                lastChecked: new Date().toISOString(), 
+                lastResetDate: today 
+            };
+            
+            // Immediate State Update for UI feedback per item
+            setApiKeys(prev => {
+                const newArr = [...prev];
+                const idx = newArr.findIndex(k => k.id === profile.id);
+                if (idx !== -1) newArr[idx] = updatedKeys[i];
+                return newArr;
+            });
+
             if(cap.status === 'valid') hasAtLeastOneValid = true;
-            await new Promise(r => setTimeout(r, 200)); 
+            await new Promise(r => setTimeout(r, 100)); // Slight delay to prevent UI freezing
         }
 
+        // Final sync and active key switch logic
         setApiKeys(currentKeys => {
             const currentActiveProfile = currentKeys.find(k => k.id === activeKeyId);
-            if (!currentActiveProfile || currentActiveProfile.status !== 'valid') {
+            // If active key is bad, switch to a good one
+            if (!currentActiveProfile || (currentActiveProfile.status !== 'valid' && currentActiveProfile.status !== 'unknown')) {
                 const bestKey = currentKeys.filter(k => k.status === 'valid').sort((a, b) => a.latency - b.latency)[0];
-                if (bestKey) { setActiveKeyId(bestKey.id); setTimeout(() => setToastMsg(`Auto-switched to healthy key: ${bestKey.label}`), 0); } 
+                if (bestKey) { 
+                    setActiveKeyId(bestKey.id); 
+                    localStorage.setItem("iso_active_key_id", bestKey.id);
+                    setTimeout(() => setToastMsg(`Auto-switched to healthy key: ${bestKey.label}`), 0); 
+                } 
             }
+            // Persist to local storage
+            localStorage.setItem("iso_api_keys", JSON.stringify(currentKeys));
             return currentKeys;
         });
-
-        if (!hasAtLeastOneValid && updatedKeys.length > 0) {
-            setAiError("All detected API Keys are invalid or expired. Please update settings.");
-            setShowSettingsModal(true);
-        }
 
         setIsCheckingKey(false);
     };
 
     const handleRefreshStatus = async (id: string) => {
-        const keyProfile = apiKeys.find(k => k.id === id); if (!keyProfile) return;
+        const keyProfile = apiKeys.find(k => k.id === id); 
+        if (!keyProfile) return;
+        
+        // Set specific item to checking
         setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
+        
         const cap = await determineKeyCapabilities(keyProfile.key);
-        setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: cap.status, activeModel: cap.activeModel || k.activeModel, latency: cap.latency, lastChecked: new Date().toISOString() } : k));
+        
+        setApiKeys(prev => {
+            const next = prev.map(k => k.id === id ? { 
+                ...k, 
+                status: cap.status, 
+                activeModel: cap.activeModel || k.activeModel, 
+                latency: cap.latency, 
+                lastChecked: new Date().toISOString() 
+            } : k);
+            localStorage.setItem("iso_api_keys", JSON.stringify(next));
+            return next;
+        });
     };
 
     const handleAddKey = async () => {
         if (!newKeyInput.trim()) return;
         if (apiKeys.some(k => k.key === newKeyInput.trim())) { setToastMsg("This API Key is already in your pool!"); setNewKeyInput(""); return; }
-        setIsCheckingKey(true); const tempId = Date.now().toString(); const cap = await determineKeyCapabilities(newKeyInput);
-        const newProfile: ApiKeyProfile = { id: tempId, label: newKeyLabel || `Key ${apiKeys.length + 1}`, key: newKeyInput, status: cap.status, activeModel: cap.activeModel, latency: cap.latency, lastChecked: new Date().toISOString(), lastResetDate: new Date().toISOString().split('T')[0] };
-        setApiKeys(prev => [...prev, newProfile]);
-        if (apiKeys.length === 0 || (activeKeyProfile?.status !== 'valid' && cap.status === 'valid')) setActiveKeyId(tempId);
+        
+        setIsCheckingKey(true); 
+        const tempId = Date.now().toString(); 
+        const cap = await determineKeyCapabilities(newKeyInput);
+        
+        const newProfile: ApiKeyProfile = { 
+            id: tempId, 
+            label: newKeyLabel || `Key ${apiKeys.length + 1}`, 
+            key: newKeyInput, 
+            status: cap.status, 
+            activeModel: cap.activeModel, 
+            latency: cap.latency, 
+            lastChecked: new Date().toISOString(), 
+            lastResetDate: new Date().toISOString().split('T')[0] 
+        };
+        
+        const nextKeys = [...apiKeys, newProfile];
+        setApiKeys(nextKeys);
+        localStorage.setItem("iso_api_keys", JSON.stringify(nextKeys));
+
+        if (apiKeys.length === 0 || (activeKeyProfile?.status !== 'valid' && cap.status === 'valid')) {
+            setActiveKeyId(tempId);
+            localStorage.setItem("iso_active_key_id", tempId);
+        }
+        
         setNewKeyInput(""); setNewKeyLabel(""); setIsCheckingKey(false);
         if(cap.status === 'valid') setToastMsg("Key added successfully!");
-        else setAiError("The key you added appears invalid. Please check.");
+        else setAiError("The key you added appears invalid or network is blocking it.");
+    };
+
+    // --- REFACTORED DELETE LOGIC ---
+    const handleDeleteKey = (id: string) => {
+        // 1. Calculate the new list *before* updating state
+        const nextKeys = apiKeys.filter(k => k.id !== id);
+        
+        // 2. Determine new Active Key if we just deleted the current one
+        let newActiveId = activeKeyId;
+        if (activeKeyId === id) {
+            const nextBest = nextKeys.find(k => k.status === 'valid') || nextKeys[0];
+            newActiveId = nextBest ? nextBest.id : "";
+        }
+
+        // 3. Update States synchronously
+        setApiKeys(nextKeys);
+        if (newActiveId !== activeKeyId) {
+            setActiveKeyId(newActiveId);
+        }
+
+        // 4. Persist Changes
+        localStorage.setItem("iso_api_keys", JSON.stringify(nextKeys));
+        if (newActiveId) {
+            localStorage.setItem("iso_active_key_id", newActiveId);
+        } else {
+            localStorage.removeItem("iso_active_key_id");
+        }
+        
+        setToastMsg("Key removed from pool.");
     };
 
     const executeWithSmartFailover = async <T,>(operation: (apiKey: string, model: string) => Promise<T>): Promise<T> => {
@@ -351,7 +438,9 @@ export default function App() {
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
+            // Also save API keys on auto-save just in case
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
+            
             if (isManuallyCleared.current) isManuallyCleared.current = false;
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
@@ -488,7 +577,7 @@ export default function App() {
     const toggleAutoCheck = (enabled: boolean) => { setIsAutoCheckEnabled(enabled); localStorage.setItem('iso_auto_check', String(enabled)); setToastMsg(enabled ? "Auto-health check enabled." : "Auto-health check disabled."); };
     const handleStartEdit = (keyProfile: ApiKeyProfile) => { setEditingKeyId(keyProfile.id); setEditLabelInput(keyProfile.label); };
     const handleSaveLabel = () => { if (editingKeyId) { setApiKeys(prev => prev.map(k => k.id === editingKeyId ? { ...k, label: editLabelInput } : k)); setEditingKeyId(null); } };
-    const handleDeleteKey = (id: string) => { if (confirm("Delete this API key?")) { setApiKeys(prev => prev.filter(k => k.id !== id)); if (activeKeyId === id) setActiveKeyId(""); } };
+    
     
     const handleOpenReferenceClause = async (clause: Clause) => {
         setReferenceClauseState({ isOpen: true, clause, isLoading: true, fullText: { en: "", vi: "" } });
