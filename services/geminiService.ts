@@ -91,8 +91,9 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             }
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 // CRITICAL FIX: 403 often means "API Not Enabled" in Cloud Console, not just Referrer
-                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied: API not enabled in Console OR Referrer blocked." };
+                 // CRITICAL: 403 can mean API Not Enabled OR Referrer Mismatch.
+                 // Since user has enabled API, this usually points to Browser Referrer Policy issues.
+                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (403). Check Key Restrictions." };
             }
         }
     }
@@ -106,7 +107,7 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 50) || "All models failed" };
 };
 
-// --- REAL FEATURE: REFERENCE LOOKUP ---
+// ... (Rest of the file remains unchanged - fetchFullClauseText, etc.)
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
