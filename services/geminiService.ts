@@ -48,13 +48,15 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
 
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Probe models in order of preference (Fastest/Cheapest first)
+    // Probe models in order of preference
     const probeModels = [...MODEL_HIERARCHY];
+    // If a specific preference is given, try it first, but still fall back to others
     if (preferredModel && !probeModels.includes(preferredModel)) {
         probeModels.unshift(preferredModel);
     }
 
     let lastError: any = null;
+    let any403 = false;
 
     for (const model of probeModels) {
         const start = performance.now();
@@ -74,44 +76,47 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
-            // Log full error for debugging in console
             console.error(`[Gemini Probe] ${model} failed:`, error);
             
-            // If it's a model-not-found (404), we continue to the next model.
-            if (status === 404 || msg.includes("not found")) {
-                continue;
-            }
-
-            // API Key Invalid or Permissions Issue
+            // API Key Invalid (Global for all models)
             if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key" };
             }
             
+            // Quota (Global for all models)
             if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
                 return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded" };
             }
 
+            // 403 Permission Denied
+            // CRITICAL FIX: If we get a 403 on a specific model, we CONTINUE to try the next model.
+            // Why? Because "Gemini 3.0 Preview" might be restricted for some projects/regions, 
+            // while "Gemini 1.5 Flash" works fine.
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 // Try to extract more specific info if possible, otherwise generic guidance
-                 let userHint = "Access Denied (403).";
-                 if (msg.includes("generative language api has not been used")) {
-                     userHint = "Error: 'Generative Language API' is NOT ENABLED in Google Cloud Console.";
-                 } else if (msg.includes("referer")) {
-                     userHint = "Error: Referrer blocked. Check Website Restrictions in Console.";
-                 }
-                 
-                 return { 
-                     isValid: false, 
-                     latency: 0, 
-                     errorType: 'referrer_error', 
-                     errorMessage: userHint 
-                 };
+                 any403 = true;
+                 // Continue loop to try next model!
+                 continue;
+            }
+            
+            // 404 Not Found (Model doesn't exist or no access)
+            if (status === 404 || msg.includes("not found")) {
+                continue;
             }
         }
     }
 
-    // If we get here, all probes failed. Return the last relevant error.
+    // If we get here, ALL models failed.
     const msg = (lastError?.message || "").toLowerCase();
+    
+    if (any403) {
+        return { 
+             isValid: false, 
+             latency: 0, 
+             errorType: 'referrer_error', 
+             errorMessage: "Access Denied (403) on ALL models. Try setting 'Application restrictions' to 'None' in Google Console to test." 
+         };
+    }
+
     if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
          return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network/CORS Blocked" };
     }
@@ -124,8 +129,8 @@ export const fetchFullClauseText = async (clause: { code: string, title: string 
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    // If we have a lot of context (PDF loaded), prioritize PRO model for larger context window if not specified
-    const targetModel = model || (contextData && contextData.length > 50000 ? "gemini-3-pro-preview" : DEFAULT_GEMINI_MODEL);
+    // Use passed model or default to 1.5 Flash (Stable)
+    const targetModel = model || DEFAULT_GEMINI_MODEL;
     
     let prompt = "";
 
@@ -199,8 +204,8 @@ export const parseStandardStructure = async (rawText: string, standardName: stri
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    // Use Pro model for complex structural analysis and large context
-    const targetModel = model || "gemini-3-pro-preview";
+    // Use default stable model
+    const targetModel = model || DEFAULT_GEMINI_MODEL;
 
     const prompt = `
     You are an ISO Standard Architect.
