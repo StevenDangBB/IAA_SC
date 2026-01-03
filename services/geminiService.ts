@@ -74,6 +74,9 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
+            // Detailed console logging for debugging the user's specific referrer issue
+            console.error(`[Gemini Probe Failed] Model: ${model}, Status: ${status}, Message: ${msg}`);
+            
             // If it's a model-not-found (404), we continue to the next model.
             if (status === 404 || msg.includes("not found")) {
                 continue;
@@ -90,11 +93,12 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
                  // Detailed troubleshooting for 403
+                 // Hint: The user likely forgot 'https://' in the Google Console restriction
                  return { 
                      isValid: false, 
                      latency: 0, 
                      errorType: 'referrer_error', 
-                     errorMessage: "Access Denied (403). Check Google Console: 1. Is 'Generative Language API' enabled? 2. Do Website Restrictions match EXACTLY (e.g. https://user.github.io/*)?" 
+                     errorMessage: "Access Denied (403). Check Google Console Restrictions. Did you include 'https://'?" 
                  };
             }
         }
