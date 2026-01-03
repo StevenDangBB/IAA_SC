@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.3.2"; // REFACTOR SNAPSHOT
-export const BUILD_TIMESTAMP = "2026-01-03 10:15:00 (GMT+7)"; 
+export const APP_VERSION = "3.3.3"; // REFACTOR SNAPSHOT
+export const BUILD_TIMESTAMP = "2026-01-03 10:45:00 (GMT+7)"; 
 
 // Use the standard compliant models
 export const DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"; 
@@ -46,18 +46,20 @@ export const MY_FIXED_KEYS: string[] = [
     envKey 
 ].filter(k => k && k.trim() !== ""); 
 
-// Production Hierarchy - Updated to 3.0 Series
+// Production Hierarchy - Updated to include reliable 1.5 Flash
 export const MODEL_HIERARCHY = [
     "gemini-3-flash-preview",
+    "gemini-1.5-flash", // MOST STABLE for Free Tier/Public Access
     "gemini-3-pro-preview",
-    "gemini-2.0-flash-exp" // Fallback to experimental if needed
+    "gemini-2.0-flash-exp" 
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
     "gemini-3-flash-preview": { label: "FLASH 3.0", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Fast & Latest" },
     "gemini-3-pro-preview": { label: "PRO 3.0", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-amber-600 text-white shadow-amber-500/30", tier: 3, desc: "Experimental" }
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-amber-600 text-white shadow-amber-500/30", tier: 3, desc: "Experimental" },
+    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 1, desc: "Stable & Reliable" }
 };
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -79,6 +81,16 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "3.3.3",
+        date: "2026-01-03",
+        features: [
+            "FIX: Critical API Connection Fix for Public Environments (GitHub Pages).",
+            "CORE: Updated Referrer Policy to 'no-referrer-when-downgrade' to allow proper key validation.",
+            "CORE: Added Gemini 1.5 Flash as a high-reliability fallback model.",
+            "UX: Improved error messaging for API Key restrictions."
+        ]
+    },
+    {
         version: "3.3.2",
         date: "2026-01-03",
         features: [
@@ -86,15 +98,6 @@ export const RELEASE_NOTES = [
             "UX: Improved file upload logic - allows re-uploading the same file after deletion.",
             "UI: Adjusted Clause Reference text alignment to Left for better readability.",
             "DEV: Extracted Modals and Sidebar components for cleaner codebase."
-        ]
-    },
-    {
-        version: "3.3.1",
-        date: "2026-01-03",
-        features: [
-            "FIX: Updated model engine to Gemini 3.0 Flash/Pro to resolve API connectivity issues.",
-            "FIX: Resolved API Key deletion bug in Settings.",
-            "CORE: Enhanced validation logic to detect HTTP Referrer restrictions."
         ]
     }
 ];

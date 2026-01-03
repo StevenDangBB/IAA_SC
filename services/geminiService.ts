@@ -85,15 +85,17 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             }
             
             if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-                // Quota might be global, but let's assume if one model fails quota, others might too. 
-                // However, rare cases exist. We'll return error here to be safe.
                 return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded" };
             }
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 // CRITICAL: 403 can mean API Not Enabled OR Referrer Mismatch.
-                 // Since user has enabled API, this usually points to Browser Referrer Policy issues.
-                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (403). Check Key Restrictions." };
+                 // Detailed troubleshooting for 403
+                 return { 
+                     isValid: false, 
+                     latency: 0, 
+                     errorType: 'referrer_error', 
+                     errorMessage: "Access Denied (403). Check Google Console: 1. Is 'Generative Language API' enabled? 2. Do Website Restrictions match EXACTLY (e.g. https://user.github.io/*)?" 
+                 };
             }
         }
     }
