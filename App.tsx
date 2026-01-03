@@ -402,7 +402,7 @@ export default function App() {
         }
         setNewKeyInput(""); setNewKeyLabel(""); setIsCheckingKey(false);
         if(cap.status === 'valid') setToastMsg("Key added successfully!");
-        else if (cap.status === 'referrer_error') setAiError("Key restricted! Check 'HTTP Referrers' in Google Cloud Console.");
+        else if (cap.status === 'referrer_error') setAiError("Permission Denied (403). Is the API Enabled in Google Console? Check Referrers.");
         else setAiError("The key you added appears invalid or network is blocking it.");
     };
 
@@ -478,13 +478,15 @@ export default function App() {
     const processSourceFile = async (file: File): Promise<string> => {
         let text = "";
         try {
-            if (file.name.endsWith('.pdf')) {
+            if (file.name.toLowerCase().endsWith('.pdf')) {
                 text = await extractTextFromPdf(file);
-            } else if (file.name.endsWith('.docx')) {
+            } else if (file.name.toLowerCase().endsWith('.docx')) {
                 if (typeof mammoth === 'undefined') throw new Error("Mammoth library missing");
                 const arrayBuffer = await file.arrayBuffer();
                 const result = await mammoth.extractRawText({ arrayBuffer });
                 text = result.value;
+            } else if (file.name.toLowerCase().endsWith('.doc')) {
+                throw new Error("Legacy Word (.doc) files are not supported due to browser limitations. Please save your file as .docx and try again.");
             } else {
                 text = await file.text();
             }
@@ -501,6 +503,12 @@ export default function App() {
         const file = e.target.files?.[0]; 
         if (!file) return; 
         
+        // Defensive check: Should generally be caught by UI state, but good for safety
+        if (!standardKey || standardKey === "ADD_NEW") {
+            setToastMsg("Please select a Standard first before uploading a source document.");
+            return;
+        }
+
         setKnowledgeFileName(file.name);
         setToastMsg("Parsing Standard Document...");
         

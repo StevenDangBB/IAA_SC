@@ -29,11 +29,30 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
 
     // Logic to determine icon state
     const hasSource = !!knowledgeFileName;
+    const isStandardSelected = !!standardKey && standardKey !== "ADD_NEW";
+    
     const sourceIcon = hasSource ? "BookOpen" : "Book";
-    const sourceColor = hasSource ? "text-emerald-500 drop-shadow-sm" : auditFieldIconColor;
-    const sourceTooltip = hasSource ? `Source Attached: ${knowledgeFileName}. Click to Replace.` : "Click book icon to upload Source PDF for better accuracy";
+    
+    // Dynamic styling based on state
+    let sourceColor = "text-gray-300 dark:text-slate-600"; // Default disabled state
+    let sourceTooltip = "Please select an ISO Standard first to enable document upload.";
+    let cursorClass = "cursor-not-allowed";
+
+    if (hasSource) {
+        sourceColor = "text-emerald-500 drop-shadow-sm";
+        sourceTooltip = `Source Attached: ${knowledgeFileName}. Click to Replace.`;
+        cursorClass = "cursor-pointer";
+    } else if (isStandardSelected) {
+        sourceColor = `${auditFieldIconColor} hover:text-indigo-600 dark:hover:text-indigo-300`;
+        sourceTooltip = "Click to upload Source PDF or Word (DOCX) for better accuracy";
+        cursorClass = "cursor-pointer hover:scale-110 active:scale-95";
+    }
 
     const handleIconClick = () => {
+        if (!isStandardSelected) {
+            // Optional: You could trigger a small shake animation or toast here via a parent callback if desired
+            return;
+        }
         if (fileInputRef.current) {
             fileInputRef.current.click();
         }
@@ -53,7 +72,8 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
 
     return (
         <div className="bg-gray-50/80 dark:bg-slate-900/50 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-3 space-y-4">
-            <input type="file" ref={fileInputRef} accept=".pdf,.docx,.txt" className="hidden" onChange={handleFileChange} />
+            {/* Updated accept attribute to include .doc and .docx */}
+            <input type="file" ref={fileInputRef} accept=".pdf,.docx,.doc,.txt" className="hidden" onChange={handleFileChange} />
 
             {/* SECTION 1: SCOPE */}
             <div className="space-y-2">
@@ -61,7 +81,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                 <div className="relative group/source">
                     <IconSelect 
                         icon={sourceIcon}
-                        iconColor={sourceColor}
+                        iconColor={`${sourceColor} transition-all duration-300 ${cursorClass}`}
                         value={standardKey} 
                         onChange={(e: any) => { if (e.target.value === "ADD_NEW") onAddNewStandard(); else setStandardKey(e.target.value); }} 
                         options={standardOptions} 

@@ -91,7 +91,8 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             }
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Referrer Blocked (Check Google Console)" };
+                 // CRITICAL FIX: 403 often means "API Not Enabled" in Cloud Console, not just Referrer
+                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied: API not enabled in Console OR Referrer blocked." };
             }
         }
     }
