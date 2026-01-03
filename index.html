@@ -17,7 +17,13 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
+        // Initialize PDF.js worker
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        
         tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -219,7 +225,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-BM4Tb1PG.js"></script>
+  <script type="module" crossorigin src="./assets/index-DDhsVI3P.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
