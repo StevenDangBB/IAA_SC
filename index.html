@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- CRITICAL FIX: Ensure browser sends the Origin URL to Google so API Key restrictions work -->
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!-- CRITICAL FIX: 'no-referrer-when-downgrade' ensures the full URL (Origin + Path) is sent to Google's HTTPS API. 
+         This is required for API Key 'Website restrictions' to work correctly on GitHub Pages. -->
+    <meta name="referrer" content="no-referrer-when-downgrade" />
     <title>ISO Audit Pro</title>
     <script>
         // Robust polyfill for process.env
@@ -227,7 +228,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-D-erOI3-.js"></script>
+  <script type="module" crossorigin src="./assets/index-l4D6wW1E.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
