@@ -57,6 +57,7 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
 
     let lastError: any = null;
     let any403 = false;
+    let apiNotEnabled = false;
 
     for (const model of probeModels) {
         const start = performance.now();
@@ -80,20 +81,21 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             
             // API Key Invalid (Global for all models)
             if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
-                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key" };
+                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key. Please check characters." };
             }
             
             // Quota (Global for all models)
             if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-                return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded" };
+                return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded. Try another key." };
             }
 
             // 403 Permission Denied
             // CRITICAL FIX: If we get a 403 on a specific model, we CONTINUE to try the next model.
-            // Why? Because "Gemini 3.0 Preview" might be restricted for some projects/regions, 
-            // while "Gemini 1.5 Flash" works fine.
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
                  any403 = true;
+                 if (msg.includes("has not been used") || msg.includes("not enabled")) {
+                     apiNotEnabled = true;
+                 }
                  // Continue loop to try next model!
                  continue;
             }
@@ -109,19 +111,27 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     const msg = (lastError?.message || "").toLowerCase();
     
     if (any403) {
+        if (apiNotEnabled) {
+            return { 
+                 isValid: false, 
+                 latency: 0, 
+                 errorType: 'referrer_error', 
+                 errorMessage: "API Not Enabled. Go to Google Cloud Console > Enable 'Generative Language API'." 
+             };
+        }
         return { 
              isValid: false, 
              latency: 0, 
              errorType: 'referrer_error', 
-             errorMessage: "Access Denied (403) on ALL models. Try setting 'Application restrictions' to 'None' in Google Console to test." 
+             errorMessage: "Access Denied (403). Check Google Console Restrictions. Ensure 'http://localhost:5173/*' is added." 
          };
     }
 
     if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
-         return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network/CORS Blocked" };
+         return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Error. Check internet or VPN/Firewall." };
     }
 
-    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 100) || "All models failed" };
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "Unknown error occurred." };
 };
 
 // ... (Rest of the file remains unchanged - fetchFullClauseText, etc.)

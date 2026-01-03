@@ -310,13 +310,19 @@ export default function App() {
         }
     };
 
-    const determineKeyCapabilities = async (key: string): Promise<{ status: 'valid' | 'invalid' | 'quota_exceeded' | 'referrer_error' | 'unknown', activeModel?: string, latency: number }> => {
+    const determineKeyCapabilities = async (key: string): Promise<{ status: 'valid' | 'invalid' | 'quota_exceeded' | 'referrer_error' | 'unknown', activeModel?: string, latency: number, errorMessage?: string }> => {
         const result = await validateApiKey(key);
         let status: 'valid' | 'invalid' | 'quota_exceeded' | 'referrer_error' | 'unknown' = 'unknown';
         if (result.isValid) status = 'valid';
         else if (result.errorType === 'network_error') status = 'unknown'; 
         else if (result.errorType) status = result.errorType as any;
-        return { status, activeModel: result.activeModel, latency: result.latency };
+        
+        return { 
+            status, 
+            activeModel: result.activeModel, 
+            latency: result.latency,
+            errorMessage: result.errorMessage // Pass the real error message
+        };
     };
 
     const checkAllKeys = async (initialKeys: ApiKeyProfile[]) => {
@@ -401,9 +407,13 @@ export default function App() {
             localStorage.setItem("iso_active_key_id", tempId);
         }
         setNewKeyInput(""); setNewKeyLabel(""); setIsCheckingKey(false);
-        if(cap.status === 'valid') setToastMsg("Key added successfully!");
-        else if (cap.status === 'referrer_error') setAiError("Permission Denied (403). Is the API Enabled in Google Console? Check Referrers.");
-        else setAiError("The key you added appears invalid or network is blocking it.");
+        
+        if(cap.status === 'valid') {
+            setToastMsg("Key added successfully!");
+        } else {
+            // SHOW THE REAL ERROR MESSAGE HERE
+            setAiError(cap.errorMessage || "Connection failed. Please check your API Key and Network.");
+        }
     };
 
     const handleDeleteKey = (id: string) => {
@@ -951,7 +961,15 @@ export default function App() {
         setIsRescuing(true);
         try {
             if (rescueKey.trim()) {
-                const cap = await determineKeyCapabilities(rescueKey);
+                // Determine Capabilities for rescue key
+                const result = await validateApiKey(rescueKey);
+                const cap = { 
+                    status: result.isValid ? 'valid' : (result.errorType || 'unknown'), 
+                    errorMessage: result.errorMessage,
+                    activeModel: result.activeModel, 
+                    latency: result.latency 
+                };
+
                 if (cap.status === 'valid') {
                      const newProfile: ApiKeyProfile = { 
                         id: `rescue_${Date.now()}`, 
@@ -968,7 +986,7 @@ export default function App() {
                     setExportState(prev => ({ ...prev, isPaused: false, error: null }));
                     setRescueKey("");
                 } else {
-                    setToastMsg("Rescue Key Invalid/Exhausted.");
+                    setToastMsg(`Rescue Key Invalid: ${cap.errorMessage}`);
                 }
             } else {
                 setExportState(prev => ({ ...prev, isPaused: false, error: null }));
