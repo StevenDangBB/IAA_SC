@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CRITICAL FIX: 'no-referrer-when-downgrade' ensures the full URL is sent as Referer header.
+         Without this, browsers may strip the path/origin on localhost, causing Google API 403 errors. -->
+    <meta name="referrer" content="no-referrer-when-downgrade" />
     <title>ISO Audit Pro</title>
     <script>
         // Robust polyfill for process.env
@@ -225,7 +228,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-B-2BKezV.js"></script>
+  <script type="module" crossorigin src="./assets/index-yXqnH7iT.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
