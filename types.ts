@@ -53,7 +53,7 @@ export interface ApiKeyProfile {
     id: string;
     label: string;
     key: string;
-    status: 'valid' | 'invalid' | 'quota_exceeded' | 'checking' | 'unknown';
+    status: 'valid' | 'invalid' | 'quota_exceeded' | 'checking' | 'unknown' | 'referrer_error';
     activeModel?: string; // The best model currently working for this key
     lastResetDate?: string; // YYYY-MM-DD to track daily resets
     latency: number; // in ms

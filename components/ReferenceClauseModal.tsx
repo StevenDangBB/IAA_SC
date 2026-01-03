@@ -48,6 +48,7 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
             return;
         }
 
+        // Split by explicit newline for cleaner streaming effect
         const lines = textToDisplay.split('\n');
         let currentIndex = 0;
         let currentText = "";
@@ -55,16 +56,17 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
         const startTimeout = setTimeout(() => {
             const interval = setInterval(() => {
                 if (currentIndex < lines.length) {
+                    // Re-append the newline that was removed by split
                     currentText += (lines[currentIndex] || '') + '\n';
                     setStreamedText(currentText);
                     currentIndex++;
                 } else {
                     clearInterval(interval);
                 }
-            }, 30); 
+            }, 20); // Faster streaming for better UX
 
             return () => clearInterval(interval);
-        }, 100);
+        }, 50);
 
         return () => clearTimeout(startTimeout);
     }, [isOpen, textToDisplay, isLoading]);
@@ -136,9 +138,9 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
                         </div>
 
                         {/* Content Area */}
-                        <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-gray-50/50 dark:bg-slate-950/50 rounded-2xl border border-gray-100 dark:border-slate-800 relative shadow-inner text-justify">
+                        <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-gray-50/50 dark:bg-slate-950/50 rounded-2xl border border-gray-100 dark:border-slate-800 relative shadow-inner text-left">
                             <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <p className="text-xs md:text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed font-medium">
+                                <p className="text-xs md:text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-7 font-medium tracking-wide">
                                     {streamedText}
                                     {!isLoading && streamedText !== textToDisplay && (
                                         <span className="inline-block w-1.5 h-4 bg-indigo-500 animate-pulse ml-1 align-middle"></span>

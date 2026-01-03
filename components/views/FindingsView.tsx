@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
@@ -30,7 +29,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
     const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
 
     useEffect(() => {
-        if (viewMode === 'findings' && findingsContainerRef.current) {
+        if (viewMode === 'list' && findingsContainerRef.current) {
             findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight;
         }
     }, [analysisResult?.length, viewMode]);

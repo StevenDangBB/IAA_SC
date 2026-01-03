@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL, MODEL_HIERARCHY, MY_FIXED_KEYS } from "../constants";
 import { cleanAndParseJSON } from "../utils";
+import { Standard } from "../types";
 
 const getAiClient = (overrideKey?: string) => {
     let keyToUse = overrideKey;
@@ -37,8 +38,8 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-// --- ROBUST VALIDATION ---
-export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
+// --- ROBUST VALIDATION WITH MODEL PROBING ---
+export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
 
     if (!key) {
@@ -47,67 +48,119 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
 
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Simplest possible probe
-    const probeModel = "gemini-1.5-flash";
-
-    const start = performance.now();
-    try {
-        // Use a very minimal prompt to save tokens and time
-        await ai.models.generateContent({
-            model: probeModel,
-            contents: { parts: [{ text: "Hi" }] }, 
-        });
-        const end = performance.now();
-        
-        return { isValid: true, latency: Math.round(end - start), activeModel: probeModel };
-        
-    } catch (error: any) {
-        const msg = (error.message || "").toLowerCase();
-        const status = error.status || 0;
-        
-        console.warn("Validation Probe Error:", msg);
-
-        // Explicitly identify Auth errors
-        if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
-            return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key" };
-        }
-        
-        // Quota errors
-        if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-            return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded" };
-        }
-
-        // Network / CORS errors (Sandbox issues)
-        if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
-             // In many sandboxes, the key might be valid but the network blocks it. 
-             // We return a specific type so UI can warn but maybe allows trying.
-             return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network/CORS Blocked" };
-        }
-
-        return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 50) };
+    // Probe models in order of preference (Fastest/Cheapest first)
+    const probeModels = [...MODEL_HIERARCHY];
+    if (preferredModel && !probeModels.includes(preferredModel)) {
+        probeModels.unshift(preferredModel);
     }
+
+    let lastError: any = null;
+
+    for (const model of probeModels) {
+        const start = performance.now();
+        try {
+            // Minimal token request
+            await ai.models.generateContent({
+                model: model,
+                contents: { parts: [{ text: "Hi" }] }, 
+            });
+            const end = performance.now();
+            
+            // If success, return immediately
+            return { isValid: true, latency: Math.round(end - start), activeModel: model };
+            
+        } catch (error: any) {
+            lastError = error;
+            const msg = (error.message || "").toLowerCase();
+            const status = error.status || 0;
+            
+            // If it's a model-not-found (404), we continue to the next model.
+            if (status === 404 || msg.includes("not found")) {
+                continue;
+            }
+
+            // For other specific errors, we might want to stop early or note them
+            if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
+                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key" };
+            }
+            
+            if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
+                // Quota might be global, but let's assume if one model fails quota, others might too. 
+                // However, rare cases exist. We'll return error here to be safe.
+                return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded" };
+            }
+
+            if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
+                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Referrer Blocked (Check Google Console)" };
+            }
+        }
+    }
+
+    // If we get here, all probes failed. Return the last relevant error.
+    const msg = (lastError?.message || "").toLowerCase();
+    if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
+         return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network/CORS Blocked" };
+    }
+
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 50) || "All models failed" };
 };
 
 // --- REAL FEATURE: REFERENCE LOOKUP ---
-export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
+export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    const targetModel = model || DEFAULT_GEMINI_MODEL;
+    // If we have a lot of context (PDF loaded), prioritize PRO model for larger context window if not specified
+    const targetModel = model || (contextData && contextData.length > 50000 ? "gemini-3-pro-preview" : DEFAULT_GEMINI_MODEL);
     
-    const prompt = `You are an ISO Standard Database. 
-    Task: Provide the EXACT verbatim text for the clause below.
-    Standard: ${standardName}
-    Clause: [${clause.code}] ${clause.title}
-    
-    Output Format: JSON ONLY.
-    Structure: {"en": "Full English Text...", "vi": "Full Vietnamese Text Translation..."}
-    Do not summarize. Return full legal text.`;
-    
-    const config: any = {};
-    if (!targetModel.includes("1.0-pro")) {
-        config.responseMimeType = "application/json";
+    let prompt = "";
+
+    if (contextData) {
+        // --- RAG MODE (WITH UPLOADED SOURCE) ---
+        prompt = `You are a precision extraction engine.
+        
+        TASK: Extract the EXACT VERBATIM text for the clause below from the PROVIDED SOURCE DOCUMENT.
+        
+        TARGET CLAUSE: [${clause.code}] ${clause.title}
+        
+        SOURCE DOCUMENT (START):
+        """
+        ${contextData.substring(0, 700000)} 
+        """
+        SOURCE DOCUMENT (END)
+        
+        INSTRUCTIONS:
+        1. Find the section in the SOURCE DOCUMENT matching the clause code and title.
+        2. Return the EXACT content of that section word-for-word.
+        3. Do NOT summarize, do NOT paraphrase.
+        4. Maintain all lists, numbering, and structure using newlines (\\n).
+        
+        Output Format: JSON ONLY.
+        Structure: {
+            "en": "Exact extracted text from source...", 
+            "vi": "High-quality Vietnamese translation of the extracted text..."
+        }`;
+    } else {
+        // --- GENERATIVE MODE (FALLBACK) ---
+        prompt = `You are an ISO Standard Database. 
+        Task: Provide the EXACT verbatim text for the clause below.
+        Standard: ${standardName}
+        Clause: [${clause.code}] ${clause.title}
+        
+        IMPORTANT FORMATTING RULES:
+        1. Preserve all original structure (paragraphs, lists, sub-points).
+        2. Use explicit newline characters (\\n) to separate paragraphs and list items.
+        3. Use bullet points (-) or numbering (a, b, c) exactly as in the standard.
+        4. Do NOT output a single continuous block of text.
+        
+        Output Format: JSON ONLY.
+        Structure: {
+            "en": "Full English Text with preserved formatting...", 
+            "vi": "Full Vietnamese Text Translation with preserved formatting..."
+        }`;
     }
+    
+    const config: any = { responseMimeType: "application/json" };
 
     try {
         const response = await ai.models.generateContent({
@@ -118,12 +171,81 @@ export const fetchFullClauseText = async (clause: { code: string, title: string 
         
         const parsed = cleanAndParseJSON(response.text || "{}");
         return { 
-            en: parsed?.en || "Content unavailable via AI.", 
-            vi: parsed?.vi || "Nội dung không khả dụng qua AI." 
+            en: parsed?.en || (contextData ? "Could not find clause in provided document." : "Content unavailable via AI."), 
+            vi: parsed?.vi || (contextData ? "Không tìm thấy điều khoản trong tài liệu cung cấp." : "Nội dung không khả dụng qua AI.") 
         };
     } catch (e) {
         console.error("Fetch Clause Error:", e);
         throw e;
+    }
+};
+
+// --- NEW FEATURE: PARSE STANDARD STRUCTURE ---
+export const parseStandardStructure = async (rawText: string, standardName: string, apiKey?: string, model?: string): Promise<Standard | null> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+
+    // Use Pro model for complex structural analysis and large context
+    const targetModel = model || "gemini-3-pro-preview";
+
+    const prompt = `
+    You are an ISO Standard Architect.
+    TASK: Analyze the provided raw text of a standard and extract its hierarchical structure into a strictly typed JSON object.
+
+    Standard Name: ${standardName}
+
+    RAW TEXT START:
+    """
+    ${rawText.substring(0, 500000)}
+    """
+    RAW TEXT END
+
+    INSTRUCTIONS:
+    1. Identify the main "Groups" (usually high-level chapters like Context, Leadership, Planning, Support, Operation, Performance Evaluation, Improvement).
+    2. Identify "Clauses" within those groups (e.g., 4.1, 4.2).
+    3. Identify "SubClauses" if they exist and are important (e.g., 8.1.1).
+    4. Generate a 'description' for each clause: a concise summary (10-20 words) of what the clause requires.
+    5. Assign appropriate icons for Groups from this list: "FileShield" (Context/Policy), "LayoutList" (Planning/Support), "Cpu" (Operation), "CheckThick" (Check/Act), "Lock" (Security), "Users" (People).
+
+    OUTPUT SCHEMA (JSON ONLY):
+    {
+      "name": "${standardName}",
+      "description": "Auto-generated from source file",
+      "groups": [
+        {
+          "id": "GRP_X",
+          "title": "Title of the group (e.g., 4. Context)",
+          "icon": "FileShield",
+          "clauses": [
+            {
+              "id": "CL_X.Y",
+              "code": "X.Y",
+              "title": "Title of Clause",
+              "description": "Summary of requirement...",
+              "subClauses": [] // Optional
+            }
+          ]
+        }
+      ]
+    }
+    `;
+
+    const config: any = { responseMimeType: "application/json" };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: targetModel,
+            contents: prompt,
+            config
+        });
+        const parsed = cleanAndParseJSON(response.text || "{}");
+        if (parsed && parsed.groups && Array.isArray(parsed.groups)) {
+            return parsed as Standard;
+        }
+        return null;
+    } catch (e: any) {
+        console.error("Structure Parsing Error:", e);
+        throw new Error(e.message || "Failed to structure standard");
     }
 };
 
@@ -158,11 +280,10 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
 
     const targetModel = model || DEFAULT_GEMINI_MODEL;
 
-    const config: any = { systemInstruction };
-    
-    if (!targetModel.includes("1.0-pro")) {
-        config.responseMimeType = "application/json";
-        config.responseSchema = {
+    const config: any = { 
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
             type: Type.ARRAY,
             items: {
                 type: Type.OBJECT,
@@ -176,9 +297,9 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
                 },
                 required: ["clauseId", "status", "reason", "evidence"]
             }
-        };
-    }
-
+        }
+    };
+    
     try {
         const response = await ai.models.generateContent({
             model: targetModel,
@@ -220,10 +341,7 @@ export const generateMissingDescriptions = async (clauses: { code: string, title
     
     Output JSON Array: [{"code": "...", "description": "..."}]`;
     
-    const config: any = {};
-    if (!targetModel.includes("1.0-pro")) {
-        config.responseMimeType = "application/json";
-    }
+    const config: any = { responseMimeType: "application/json" };
 
     try {
         const response = await ai.models.generateContent({

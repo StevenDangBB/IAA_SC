@@ -1,6 +1,12 @@
 
 import { useEffect, useState } from "react";
 
+declare global {
+    interface Window {
+        pdfjsLib: any;
+    }
+}
+
 export const useDebounce = <T,>(value: T, delay: number): T => {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -36,6 +42,25 @@ export const fileToBase64 = (file: File): Promise<string> => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]); 
         reader.onerror = error => reject(error);
     });
+};
+
+export const extractTextFromPdf = async (file: File): Promise<string> => {
+    if (!window.pdfjsLib) {
+        throw new Error("PDF.js library not loaded");
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+        fullText += pageText + "\n\n";
+    }
+
+    return fullText;
 };
 
 export const cleanAndParseJSON = (text: string) => {

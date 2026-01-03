@@ -59,6 +59,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             else if (k.status === 'checking') { statusColor = 'bg-yellow-500 animate-pulse'; statusTitle = "Validating..."; }
                             else if (k.status === 'invalid') { statusColor = 'bg-red-500 shadow-red-500/50'; statusTitle = "Invalid / Auth Failed"; }
                             else if (k.status === 'quota_exceeded') { statusColor = 'bg-orange-500'; statusTitle = "Quota Exceeded"; }
+                            else if (k.status === 'referrer_error') { statusColor = 'bg-purple-500'; statusTitle = "Blocked by Referrer Restriction"; }
                             else if (k.status === 'unknown') { statusColor = 'bg-slate-400 border border-slate-500'; statusTitle = "Network Error / Unknown"; }
 
                             return (
@@ -101,7 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     </div>
                                     
                                     <div className="flex items-center gap-1">
-                                        {k.activeModel && <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">{k.activeModel.split('-')[1]}</span>}
+                                        {k.activeModel && <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">{k.activeModel.replace('gemini-', '').replace('-preview', '')}</span>}
                                         <button 
                                             onClick={() => handleRefreshStatus(k.id)} 
                                             disabled={k.status === 'checking'}
