@@ -74,15 +74,15 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
-            // Detailed console logging for debugging the user's specific referrer issue
-            console.error(`[Gemini Probe Failed] Model: ${model}, Status: ${status}, Message: ${msg}`);
+            // Log full error for debugging in console
+            console.error(`[Gemini Probe] ${model} failed:`, error);
             
             // If it's a model-not-found (404), we continue to the next model.
             if (status === 404 || msg.includes("not found")) {
                 continue;
             }
 
-            // For other specific errors, we might want to stop early or note them
+            // API Key Invalid or Permissions Issue
             if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key" };
             }
@@ -92,13 +92,19 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             }
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 // Detailed troubleshooting for 403
-                 // Hint: The user likely forgot 'https://' in the Google Console restriction
+                 // Try to extract more specific info if possible, otherwise generic guidance
+                 let userHint = "Access Denied (403).";
+                 if (msg.includes("generative language api has not been used")) {
+                     userHint = "Error: 'Generative Language API' is NOT ENABLED in Google Cloud Console.";
+                 } else if (msg.includes("referer")) {
+                     userHint = "Error: Referrer blocked. Check Website Restrictions in Console.";
+                 }
+                 
                  return { 
                      isValid: false, 
                      latency: 0, 
                      errorType: 'referrer_error', 
-                     errorMessage: "Access Denied (403). Check Google Console Restrictions. Did you include 'https://'?" 
+                     errorMessage: userHint 
                  };
             }
         }
@@ -110,7 +116,7 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
          return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network/CORS Blocked" };
     }
 
-    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 50) || "All models failed" };
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: msg.substring(0, 100) || "All models failed" };
 };
 
 // ... (Rest of the file remains unchanged - fetchFullClauseText, etc.)
