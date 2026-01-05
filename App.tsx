@@ -193,6 +193,11 @@ export default function App() {
         }
     }, [isDarkMode]);
 
+    // --- FONT SIZE LOGIC ---
+    useEffect(() => {
+        document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString());
+    }, [fontSizeScale]);
+
     // ... (Keep existing loadKeyData, Background Checker, etc. same as before) ...
     const loadKeyData = (): ApiKeyProfile[] => {
         try {
