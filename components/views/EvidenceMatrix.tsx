@@ -1,22 +1,98 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Icon } from '../UI';
 import { Clause, Standard, MatrixRow } from '../../types';
 import { copyToClipboard, serializeMatrixData } from '../../utils';
+
+// --- TYPES ---
+export interface EvidenceMatrixHandle {
+    insertEvidence: (clauseId: string, rowId: string, text: string) => void;
+    handleExternalDictation: (text: string) => void;
+    getActiveRow: () => { clauseId: string, rowId: string } | null;
+}
 
 interface EvidenceMatrixProps {
     standard: Standard;
     selectedClauses: string[];
     matrixData: Record<string, MatrixRow[]>;
     setMatrixData: React.Dispatch<React.SetStateAction<Record<string, MatrixRow[]>>>;
+    onPasteFiles?: (files: File[], target: { clauseId: string, rowId: string }) => void;
 }
 
-export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
-    standard, selectedClauses, matrixData, setMatrixData
-}) => {
-    const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
+// --- SUB-COMPONENT: MATRIX ROW (MEMOIZED FOR PERFORMANCE) ---
+interface MatrixRowItemProps {
+    row: MatrixRow;
+    clauseId: string;
+    isActive: boolean;
+    isProcessing: boolean;
+    onInputChange: (clauseId: string, rowId: string, value: string) => void;
+    onFocus: (clauseId: string, rowId: string) => void;
+    onPaste: (e: React.ClipboardEvent, clauseId: string, rowId: string) => void;
+}
 
-    // 1. Flatten Clauses for easy lookup
+const MatrixRowItem = React.memo(({ row, clauseId, isActive, isProcessing, onInputChange, onFocus, onPaste }: MatrixRowItemProps) => {
+    return (
+        <div className="grid grid-cols-[1fr_1.5fr] gap-4 items-start p-3 hover:bg-gray-50 dark:hover:bg-slate-800/30 rounded-lg transition-colors group relative border border-transparent hover:border-gray-100 dark:hover:border-slate-800">
+            <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed pt-2 select-none">
+                {row.requirement}
+            </div>
+            
+            <div className="relative">
+                <textarea
+                    rows={3}
+                    placeholder="Type evidence or paste files here..."
+                    className={`w-full bg-gray-50 dark:bg-slate-950 border rounded-lg p-2 text-xs text-slate-800 dark:text-white outline-none transition-all resize-y min-h-[70px] shadow-sm 
+                        ${isProcessing ? 'opacity-50 pointer-events-none' : ''} 
+                        ${isActive 
+                            ? 'border-indigo-500 ring-2 ring-indigo-500/10 bg-white dark:bg-slate-900' 
+                            : 'border-gray-200 dark:border-slate-700 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10'
+                        }`}
+                    value={row.evidenceInput}
+                    onChange={(e) => onInputChange(clauseId, row.id, e.target.value)}
+                    onFocus={() => onFocus(clauseId, row.id)}
+                    onPaste={(e) => onPaste(e, clauseId, row.id)}
+                />
+                
+                {/* Status Indicators */}
+                <div className="absolute top-2 right-2 pointer-events-none transition-opacity duration-300">
+                     {row.status === 'supplied' && !isProcessing && (
+                        <div className="bg-emerald-500/10 p-0.5 rounded-full">
+                            <Icon name="CheckThick" size={10} className="text-emerald-600"/>
+                        </div>
+                     )}
+                </div>
+
+                {/* Processing Indicator */}
+                {isProcessing && (
+                    <div className="absolute bottom-2 right-2 flex items-center gap-2 px-2 py-1 bg-white dark:bg-slate-800 rounded-md shadow-sm border border-indigo-100 dark:border-slate-600 z-10 animate-in fade-in zoom-in">
+                        <Icon name="Loader" className="animate-spin text-indigo-500" size={12}/>
+                        <span className="text-[9px] font-bold text-indigo-500">Processing...</span>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}, (prev, next) => {
+    // Custom comparison for performance: Only re-render if data changed or active state changed
+    return (
+        prev.row.evidenceInput === next.row.evidenceInput &&
+        prev.row.status === next.row.status &&
+        prev.isActive === next.isActive &&
+        prev.isProcessing === next.isProcessing
+    );
+});
+
+// --- MAIN COMPONENT ---
+export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixProps>(({
+    standard, selectedClauses, matrixData, setMatrixData, onPasteFiles
+}, ref) => {
+    const [expandedClauses, setExpandedClauses] = useState<string[]>([]);
+    
+    // Track focused row
+    const [activeRow, setActiveRow] = useState<{ clauseId: string, rowId: string } | null>(null);
+    const [processingRowId, setProcessingRowId] = useState<string | null>(null);
+
+    // 1. Flatten Clauses (Memoized)
     const flatClauses = useMemo(() => {
         const all: Clause[] = [];
         const traverse = (list: Clause[]) => {
@@ -29,10 +105,8 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
         return all;
     }, [standard]);
 
-    // 2. Initialize Matrix State based on Selected Clauses (SAFE INIT)
+    // 2. Initialize Matrix State (Effect)
     useEffect(() => {
-        // We create a temporary copy to check against updates
-        // Note: We use functional state update to ensure we have latest state
         setMatrixData(currentMatrix => {
             const newMatrix = { ...currentMatrix };
             let updated = false;
@@ -41,11 +115,9 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
                 if (!newMatrix[clauseId]) {
                     const clause = flatClauses.find(c => c.id === clauseId);
                     if (clause) {
-                        // Heuristic: Split description by sentences to create "Requirements"
-                        // Or fallback to whole description if short
+                        // Intelligent splitting of description into requirements
                         const desc = clause.description || "";
-                        // Simple sentence splitting logic to create granular rows
-                        const reqs = desc.length > 50 
+                        const reqs = desc.length > 60 
                             ? desc.split(/(?:\. |\n)/).filter(s => s.trim().length > 5) 
                             : [desc];
                         
@@ -61,7 +133,7 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
             });
 
             if (updated) {
-                // Side effect: Default expand first one if none expanded
+                // Auto-expand first clause if nothing expanded
                 if(selectedClauses.length > 0 && expandedClauses.length === 0) {
                     setExpandedClauses([selectedClauses[0]]);
                 }
@@ -71,8 +143,24 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
         });
     }, [selectedClauses, flatClauses, setMatrixData]);
 
-    // 3. Update Matrix Cell
-    const handleInputChange = (clauseId: string, rowId: string, value: string) => {
+    // --- HANDLERS (Memoized) ---
+
+    const updateRowData = useCallback((clauseId: string, rowId: string, textToAppend: string) => {
+        setMatrixData(prev => ({
+            ...prev,
+            [clauseId]: prev[clauseId].map(row => {
+                if (row.id === rowId) {
+                    const currentText = row.evidenceInput || "";
+                    const separator = currentText && textToAppend ? "\n" : "";
+                    const newText = currentText + separator + textToAppend;
+                    return { ...row, evidenceInput: newText, status: newText.trim() ? 'supplied' : 'pending' };
+                }
+                return row;
+            })
+        }));
+    }, [setMatrixData]);
+
+    const handleInputChange = useCallback((clauseId: string, rowId: string, value: string) => {
         setMatrixData(prev => ({
             ...prev,
             [clauseId]: prev[clauseId].map(row => 
@@ -81,16 +169,52 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
                 : row
             )
         }));
-    };
+    }, [setMatrixData]);
 
-    // 4. Manual Copy Function (Instead of destructive sync)
+    const handlePaste = useCallback((e: React.ClipboardEvent, clauseId: string, rowId: string) => {
+        const items = e.clipboardData.items;
+        const files: File[] = [];
+        
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const f = items[i].getAsFile();
+                if (f) files.push(f);
+            }
+        }
+        
+        if (files.length > 0) {
+            e.preventDefault();
+            if (onPasteFiles) {
+                onPasteFiles(files, { clauseId, rowId });
+            }
+        }
+    }, [onPasteFiles]);
+
+    const handleFocus = useCallback((clauseId: string, rowId: string) => {
+        setActiveRow({ clauseId, rowId });
+    }, []);
+
+    // --- EXPOSED API ---
+    useImperativeHandle(ref, () => ({
+        insertEvidence: (clauseId, rowId, text) => {
+            updateRowData(clauseId, rowId, text);
+        },
+        handleExternalDictation: (text: string) => {
+            if (activeRow) {
+                updateRowData(activeRow.clauseId, activeRow.rowId, text);
+            }
+        },
+        getActiveRow: () => activeRow
+    }));
+    
+    // --- UI ACTIONS ---
     const handleCopyMatrixToClipboard = () => {
         const text = serializeMatrixData(matrixData, selectedClauses);
         if(text) {
             copyToClipboard(text);
-            alert("Matrix data copied to clipboard in Markdown format!"); 
+            alert("Matrix data copied to clipboard as Table!"); 
         } else {
-            alert("Matrix is empty. Please fill in some evidence first.");
+            alert("Matrix is empty.");
         }
     };
 
@@ -98,6 +222,7 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
         setExpandedClauses(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
+    // --- RENDER ---
     if (selectedClauses.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-gray-50/50 dark:bg-slate-900/50 rounded-3xl border border-dashed border-gray-200 dark:border-slate-800">
@@ -108,12 +233,12 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
     }
 
     return (
-        <div className="h-full flex flex-col relative">
+        <div className="h-full flex flex-col relative animate-fade-in-up">
             <div className="flex-shrink-0 flex justify-end mb-2 px-1">
                  <button 
                     onClick={handleCopyMatrixToClipboard}
                     className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-700 hover:border-indigo-200 transition-colors"
-                    title="Copy Matrix content as Markdown table"
+                    title="Export to Clipboard: Copies current data as a structured Text Table for Excel/Word."
                  >
                     <Icon name="Copy" size={12}/> Copy Matrix Table
                  </button>
@@ -133,7 +258,7 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
                         <div key={clauseId} className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300">
                             {/* Header */}
                             <div 
-                                className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                                className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors select-none"
                                 onClick={() => toggleExpand(clauseId)}
                             >
                                 <div className="flex items-center gap-3">
@@ -145,7 +270,7 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
                                 <div className="flex items-center gap-3">
                                     <div className="w-16 h-1.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                         <div 
-                                            className={`h-full rounded-full transition-all duration-500 ${progress === 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`} 
+                                            className={`h-full rounded-full transition-all duration-500 ease-out ${progress === 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`} 
                                             style={{ width: `${progress}%` }}
                                         />
                                     </div>
@@ -155,25 +280,23 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
 
                             {/* Body */}
                             {isExpanded && (
-                                <div className="p-3 border-t border-gray-100 dark:border-slate-800">
-                                    <div className="grid grid-cols-[1fr_1.5fr] gap-4 mb-2 px-2">
+                                <div className="p-3 border-t border-gray-100 dark:border-slate-800 animate-accordion-down">
+                                    <div className="grid grid-cols-[1fr_1.5fr] gap-4 mb-2 px-3">
                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Requirement Breakdown</span>
                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Verified Evidence</span>
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-1">
                                         {rows.map((row) => (
-                                            <div key={row.id} className="grid grid-cols-[1fr_1.5fr] gap-4 items-start p-2 hover:bg-gray-50 dark:hover:bg-slate-800/30 rounded-lg transition-colors group">
-                                                <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed pt-1">
-                                                    {row.requirement}
-                                                </div>
-                                                <textarea
-                                                    rows={2}
-                                                    placeholder="e.g. Reviewed Log #123, Interviewed Mr. A..."
-                                                    className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all resize-y min-h-[50px] shadow-sm"
-                                                    value={row.evidenceInput}
-                                                    onChange={(e) => handleInputChange(clauseId, row.id, e.target.value)}
-                                                />
-                                            </div>
+                                            <MatrixRowItem
+                                                key={row.id}
+                                                row={row}
+                                                clauseId={clauseId}
+                                                isActive={activeRow?.rowId === row.id}
+                                                isProcessing={processingRowId === row.id}
+                                                onInputChange={handleInputChange}
+                                                onFocus={handleFocus}
+                                                onPaste={handlePaste}
+                                            />
                                         ))}
                                     </div>
                                 </div>
@@ -184,4 +307,4 @@ export const EvidenceMatrix: React.FC<EvidenceMatrixProps> = ({
             </div>
         </div>
     );
-};
+});

@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO, TABS_CONFIG } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot, EvidenceTag, MatrixRow } from './types';
 import { Icon, Toast, CommandPaletteModal } from './components/UI';
 import { Header } from './components/Header';
 import Sidebar from './components/Sidebar';
-import ProjectInfoModal from './components/ReleaseNotesModal'; // Now serves as Full Documentation
+import ProjectInfoModal from './components/ReleaseNotesModal'; 
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
@@ -245,12 +245,12 @@ export default function App() {
         }
     };
 
-    const handleSetStandardKey = (key: string) => {
+    const handleSetStandardKey = useCallback((key: string) => {
         if (key !== standardKey) {
             setStandardKey(key);
             loadKnowledgeForStandard(key);
         }
-    };
+    }, [standardKey]);
 
     useEffect(() => {
         const init = async () => {
@@ -423,7 +423,7 @@ export default function App() {
         setToastMsg("Key removed from pool.");
     };
 
-    const executeWithSmartFailover = async <T,>(operation: (apiKey: string, model: string) => Promise<T>): Promise<T> => {
+    const executeWithSmartFailover = useCallback(async <T,>(operation: (apiKey: string, model: string) => Promise<T>): Promise<T> => {
         // If offline, bypass smart failover for keys and just execute the operation (which handles offline logic)
         if (!navigator.onLine) {
              return operation("offline", "local-model");
@@ -452,7 +452,7 @@ export default function App() {
             }
         }
         throw new Error(lastError?.message || "ALL_KEYS_EXHAUSTED");
-    };
+    }, [apiKeys, activeKeyId]);
 
     const loadSessionData = async () => {
         try {
@@ -563,29 +563,33 @@ export default function App() {
         if (!file) setToastMsg(`Created basic standard: ${name}`);
     };
 
+    // --- AUTO-SAVE LOGIC (Cleaned Up) ---
     useEffect(() => {
         if (isRestoring.current) return;
         const isEmptyState = !evidence && (!selectedClauses || selectedClauses.length === 0);
         if (isEmptyState && !isManuallyCleared.current) {
             if (localStorage.getItem("iso_session_data")) {
-                return; 
+                return; // Don't overwrite existing data with initial empty state
             }
         }
-        setIsSaving(true);
+        
+        // Debounced Save
         const handler = setTimeout(() => {
-            if (isRestoring.current) {
-                setIsSaving(false);
-                return;
-            }
+            if (isRestoring.current) return;
+            
+            setIsSaving(true);
             const sessionData = { standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
+            
             if (isManuallyCleared.current) isManuallyCleared.current = false;
-            const now = new Date();
-            setLastSavedTime(now.toLocaleTimeString());
-            setIsSaving(false);
-        }, 800); 
+            
+            setLastSavedTime(new Date().toLocaleTimeString());
+            // Short delay for visual feedback
+            setTimeout(() => setIsSaving(false), 500);
+        }, 1000); 
+        
         return () => clearTimeout(handler);
     }, [standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
 
@@ -677,7 +681,8 @@ export default function App() {
         }
     };
 
-    const handleOcrUpload = async () => {
+    // Wrap Heavy Handlers with useCallback
+    const handleOcrUpload = useCallback(async () => {
         const pendingFiles = uploadedFiles.filter(f => f.status === 'pending' || f.status === 'error');
         if (pendingFiles.length === 0) return;
         setIsOcrLoading(true); setLoadingMessage("Processing documents with Vision AI...");
@@ -703,7 +708,7 @@ export default function App() {
             }
         }
         setIsOcrLoading(false); setLoadingMessage(""); setToastMsg(`Processed ${processedCount} files.`);
-    };
+    }, [uploadedFiles, executeWithSmartFailover]);
 
     const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return; setTemplateFileName(file.name);
@@ -773,7 +778,7 @@ export default function App() {
         setReferenceClauseState({ isOpen: false, clause: null, isLoading: false, fullText: { en: "", vi: "" } });
     };
 
-    const handleAnalyze = async () => {
+    const handleAnalyze = useCallback(async () => {
         if (!standardKey) { setToastMsg("Select a Standard first."); return; }
         if (selectedClauses.length === 0) { setToastMsg("Select at least one Clause to analyze."); return; }
         if (!hasEvidence) { setToastMsg("No evidence provided. Please add text or files."); return; }
@@ -790,15 +795,12 @@ export default function App() {
              
              const targets = selectedClauses.map(id => findClause(id, allClausesFlat)).filter(c => !!c) as Clause[];
              
-             // SYNTHESIS: Combine Raw Evidence + File Content + Matrix Data
              let fullEvidenceContext = evidence;
              
-             // 1. Files
              uploadedFiles.filter(f => f.status === 'success' && f.result).forEach(f => {
                  fullEvidenceContext += `\n\n--- Document: ${f.file.name} ---\n${f.result}`;
              });
 
-             // 2. Matrix Data (New Structured Stream)
              const matrixString = serializeMatrixData(matrixData, selectedClauses);
              if (matrixString) {
                  fullEvidenceContext += `\n\n${matrixString}`;
@@ -809,7 +811,6 @@ export default function App() {
                  tagContext += `[Tagged for ${tag.clauseId}]: "${tag.text}"\n`;
              });
 
-             // Check privacy setting from storage (simulated read)
              const privacyEnabled = localStorage.getItem('iso_privacy_shield') === 'true';
 
              for (let i = 0; i < targets.length; i++) {
@@ -826,7 +827,7 @@ export default function App() {
                             tagContext, 
                             key, 
                             model,
-                            privacyEnabled // Pass privacy state
+                            privacyEnabled 
                         )
                      );
                      
@@ -882,7 +883,7 @@ export default function App() {
             setLoadingMessage("");
             setCurrentAnalyzingClause("");
         }
-    };
+    }, [standardKey, selectedClauses, hasEvidence, evidence, uploadedFiles, matrixData, evidenceTags, allStandards, executeWithSmartFailover]);
 
     const handleGenerateReport = async () => {
         if (!analysisResult || analysisResult.length === 0) {
@@ -900,12 +901,10 @@ export default function App() {
         setLoadingMessage("Synthesizing Final Audit Report...");
         
         try {
-            // SYNTHESIS: Combine Evidence for Report generation context
             let fullContext = evidence;
             const matrixString = serializeMatrixData(matrixData, selectedClauses);
             if (matrixString) fullContext += `\n\n${matrixString}`;
 
-            // Updated to pass combined evidence context for Matrix synthesis
             const report = await executeWithSmartFailover((key, model) => 
                 generateTextReport({
                     company: auditInfo.company,
@@ -914,7 +913,7 @@ export default function App() {
                     standard: allStandards[standardKey]?.name,
                     findings: activeFindings,
                     lang: exportLanguage,
-                    fullEvidenceContext: fullContext // Pass combined context
+                    fullEvidenceContext: fullContext 
                 }, key, model)
             );
             
@@ -961,7 +960,6 @@ export default function App() {
                 return;
             }
 
-            // ADDED: Rate limiting delay to prevent 429 quota exhaustion during bulk exports
             if (idx > 0) {
                 await new Promise(resolve => setTimeout(resolve, 1500));
             }
@@ -985,7 +983,6 @@ export default function App() {
                 });
             } catch (e: any) {
                 console.error("Export Error", e);
-                // Clean error message if it is raw JSON
                 let errMsg = e.message || "Unknown error";
                 try {
                     const jsonStart = errMsg.indexOf('{');
@@ -1077,7 +1074,7 @@ export default function App() {
             return [...baseActions, ...clauseActions];
         }
         return baseActions;
-    }, [isDarkMode, standardKey, allStandards, selectedClauses, activeKeyId, apiKeys]); 
+    }, [isDarkMode, standardKey, allStandards, selectedClauses, activeKeyId, apiKeys, handleAnalyze]); 
 
     const displayBadge = useMemo(() => {
         const currentStandardName = allStandards[standardKey]?.name || "";
