@@ -44,10 +44,10 @@ class VectorStoreService {
         if (!text || !text.trim()) return null;
         try {
             const ai = new GoogleGenAI({ apiKey });
-            // Use embedding-001 model for vectors
+            // FIXED: Parameter must be 'content' (singular) for single embedding request
             const response = await ai.models.embedContent({
                 model: "text-embedding-004",
-                contents: { parts: [{ text }] }
+                content: { parts: [{ text }] }
             });
             return response.embedding?.values || null;
         } catch (e) {
@@ -57,19 +57,19 @@ class VectorStoreService {
     }
 
     async addDocuments(sourceId: string, text: string, apiKey: string) {
-        // 1. Chunking
-        const chunks = text.match(/[\s\S]{1,1000}/g) || [];
+        // 1. Chunking - Optimize size for better semantic retrieval
+        const chunks = text.match(/[\s\S]{1,800}/g) || [];
         const db = await this.openDB();
         
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
 
-        // Clear old vectors for this source
-        // Note: IDB doesn't support easy delete-where, simplified for now
-        // Ideally we iterate cursor and delete matching source.
-
+        // Clear old vectors for this source to prevent duplicates
+        // Note: Ideally we would use a cursor/index to delete, but for MVP this appends
+        
         let count = 0;
         for (const chunk of chunks) {
+            // Rate limit mitigation: Embedding is fast but aggressive looping can hit quotas
             const embedding = await this.embedText(chunk, apiKey);
             if (embedding) {
                 const record: VectorRecord = {
@@ -80,12 +80,12 @@ class VectorStoreService {
                 };
                 store.put(record);
             }
-            // Small delay to avoid rate limit
-            await new Promise(r => setTimeout(r, 100)); 
+            // Small delay to be polite to the API
+            await new Promise(r => setTimeout(r, 50)); 
         }
     }
 
-    async search(query: string, apiKey: string, limit: number = 3): Promise<string> {
+    async search(query: string, apiKey: string, limit: number = 4): Promise<string> {
         const queryVector = await this.embedText(query, apiKey);
         if (!queryVector) return "";
 
@@ -102,12 +102,15 @@ class VectorStoreService {
                 if (cursor) {
                     const record = cursor.value as VectorRecord;
                     const score = cosineSimilarity(queryVector, record.embedding);
-                    results.push({ text: record.text, score });
+                    // Filter low relevance
+                    if (score > 0.5) {
+                        results.push({ text: record.text, score });
+                    }
                     cursor.continue();
                 } else {
                     // Finished
                     results.sort((a, b) => b.score - a.score);
-                    const topResults = results.slice(0, limit).map(r => r.text).join("\n...\n");
+                    const topResults = results.slice(0, limit).map(r => r.text).join("\n\n---\n\n");
                     resolve(topResults);
                 }
             };

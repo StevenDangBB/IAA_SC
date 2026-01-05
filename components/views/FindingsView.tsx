@@ -67,7 +67,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             <div
                 key={idx}
                 ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
-                className={`group relative bg-white dark:bg-slate-900 rounded-lg p-3 border-y border-r border-l-[6px] transition-all duration-200 hover:shadow-md dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'border-r-indigo-500 ring-1 ring-indigo-500/20' : 'border-r-gray-100 dark:border-r-transparent'}`}
+                className={`group relative bg-white dark:bg-slate-900 rounded-lg p-3 border-y border-r border-l-[6px] transition-all duration-300 hover:shadow-md dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'border-r-indigo-500 ring-1 ring-indigo-500/20' : 'border-r-gray-100 dark:border-r-transparent'} animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards`}
+                style={{ animationDelay: `${idx * 50}ms` }}
                 onClick={() => setSelectedFindings(prev => ({ ...prev, [res.clauseId]: !prev[res.clauseId] }))}
             >
                 <div className="absolute top-3 right-3 z-10">
@@ -95,6 +96,15 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                 <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OFI">OFI</option>
                             </select>
                         </div>
+                        {res.crossRefs && res.crossRefs.length > 0 && (
+                            <div className="flex gap-1">
+                                {res.crossRefs.map((ref, rIdx) => (
+                                    <span key={rIdx} className="text-[8px] border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 px-1.5 py-0.5 rounded-md font-mono bg-indigo-50 dark:bg-indigo-900/10">
+                                        {ref}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="mb-3">

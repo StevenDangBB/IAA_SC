@@ -2,7 +2,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Icon, SparkleLoader } from '../UI';
 import { UploadedFile } from '../../App'; 
-import { EvidenceTag } from '../../types'; // Import Tag Type
+import { EvidenceTag } from '../../types';
 
 interface EvidenceViewProps {
     evidence: string;
@@ -20,10 +20,9 @@ interface EvidenceViewProps {
     setEvidenceLanguage: (lang: 'en' | 'vi') => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     
-    // New Props for Tagging
     tags?: EvidenceTag[];
     onAddTag?: (tag: EvidenceTag) => void;
-    selectedClauses?: string[]; // Need this to know what to tag against
+    selectedClauses?: string[];
 }
 
 export const EvidenceView: React.FC<EvidenceViewProps> = ({
@@ -35,8 +34,8 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     
-    // Tagging State
-    const [selectionRect, setSelectionRect] = useState<{top: number, left: number, text: string, start: number, end: number} | null>(null);
+    // Tagging State with Coordinates
+    const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, text: string, start: number, end: number } | null>(null);
 
     const processNewFiles = (files: File[]) => {
         const newFiles = files.map(f => ({
@@ -48,40 +47,43 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     };
 
     // --- TAGGING LOGIC ---
-    const handleTextSelect = () => {
+    const handleTextSelect = (e: React.MouseEvent) => {
         if (!textareaRef.current) return;
         const start = textareaRef.current.selectionStart;
         const end = textareaRef.current.selectionEnd;
         
         if (start !== end) {
             const text = evidence.substring(start, end);
-            // Quick calculation for position (approximate since it's a textarea)
-            // A real rich text editor would be better, but for "No UI Impact" on textarea, we use a fixed approach or simple calc.
-            // Since precise overlay on textarea is hard, we'll position centered above.
-            setSelectionRect({
-                top: 0, // Placeholder, CSS will center it
-                left: 0,
+            
+            // Calculate position relative to viewport to place the menu near the cursor
+            // We use clientX/Y from the mouse event for simplicity
+            const x = e.clientX;
+            const y = e.clientY;
+
+            setSelectionMenu({
+                x,
+                y,
                 text,
                 start,
                 end
             });
         } else {
-            setSelectionRect(null);
+            setSelectionMenu(null);
         }
     };
 
     const confirmTag = (clauseId: string) => {
-        if (selectionRect && onAddTag) {
+        if (selectionMenu && onAddTag) {
             onAddTag({
                 id: `tag_${Date.now()}`,
                 clauseId,
-                text: selectionRect.text,
-                startIndex: selectionRect.start,
-                endIndex: selectionRect.end,
+                text: selectionMenu.text,
+                startIndex: selectionMenu.start,
+                endIndex: selectionMenu.end,
                 timestamp: Date.now()
             });
-            setSelectionRect(null);
-            // clear selection
+            setSelectionMenu(null);
+            // clear selection visually
             if (document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur(); 
             }
@@ -111,24 +113,30 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
             <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0 relative">
                 
-                {/* --- FLOATING TAGGING TOOLBAR --- */}
-                {selectionRect && selectedClauses.length > 0 && (
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white p-2 rounded-xl shadow-2xl flex flex-col gap-2 animate-in zoom-in slide-in-from-bottom-2 border border-slate-700">
-                        <div className="flex justify-between items-center border-b border-slate-600 pb-1 mb-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tag Evidence For:</span>
-                            <button onClick={() => setSelectionRect(null)} className="text-slate-400 hover:text-white"><Icon name="X" size={12}/></button>
+                {/* --- FLOATING TAGGING TOOLBAR (PORTAL-LIKE) --- */}
+                {selectionMenu && selectedClauses.length > 0 && (
+                    <div 
+                        className="fixed z-[9999] bg-slate-900/90 backdrop-blur-md text-white p-2.5 rounded-xl shadow-2xl flex flex-col gap-2 animate-in zoom-in-95 duration-200 border border-slate-700/50 ring-1 ring-white/10 max-w-[200px]"
+                        style={{ top: selectionMenu.y - 120, left: Math.min(selectionMenu.x - 100, window.innerWidth - 220) }}
+                    >
+                        <div className="flex justify-between items-center border-b border-slate-700/50 pb-1.5 mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1">
+                                <Icon name="Tag" size={10}/> Tag As:
+                            </span>
+                            <button onClick={() => setSelectionMenu(null)} className="text-slate-400 hover:text-white bg-white/10 rounded-full p-0.5"><Icon name="X" size={10}/></button>
                         </div>
-                        <div className="flex flex-wrap gap-1 max-w-xs justify-center">
+                        <div className="flex flex-wrap gap-1.5 justify-start max-h-[150px] overflow-y-auto custom-scrollbar">
                             {selectedClauses.map(clauseId => (
                                 <button 
                                     key={clauseId}
                                     onClick={() => confirmTag(clauseId)}
-                                    className="text-[10px] font-mono font-bold bg-indigo-600 hover:bg-indigo-500 px-2 py-1 rounded transition-colors"
+                                    className="text-[10px] font-mono font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-lg transition-all active:scale-95 shadow-sm border border-indigo-500 hover:border-indigo-400"
                                 >
                                     {clauseId}
                                 </button>
                             ))}
                         </div>
+                        <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900/90 rotate-45 border-r border-b border-slate-700/50"></div>
                     </div>
                 )}
 
@@ -148,21 +156,21 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     )}
                     <textarea
                         ref={textareaRef}
-                        className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900"
+                        className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900/60"
                         placeholder="Paste audit evidence here or drag files (Images, PDF, TXT) directly..."
                         value={evidence}
                         onChange={(e) => setEvidence(e.target.value)}
                         onPaste={handlePaste}
-                        onMouseUp={handleTextSelect} // Trigger selection check
-                        onKeyUp={handleTextSelect} // Keyboard selection check
+                        onMouseUp={handleTextSelect} 
                     />
                     
-                    {/* Tags Indicator Overlay (Bottom Right) */}
+                    {/* Tags Indicator Overlay */}
                     {tags.length > 0 && (
-                        <div className="absolute bottom-4 right-4 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity">
-                            <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
-                                {tags.length} Active Tags
-                            </span>
+                        <div className="absolute bottom-4 right-4 pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity">
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
+                                <Icon name="Tag" size={12}/>
+                                {tags.length} Evidence Tags
+                            </div>
                         </div>
                     )}
                 </div>
@@ -212,7 +220,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     </div>
                 )}
             </div>
-            {/* ... (Bottom Toolbar kept exactly the same) ... */}
+            {/* ... Bottom toolbar same as before ... */}
             <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                 <div className="flex-none w-[52px] md:w-auto">
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
