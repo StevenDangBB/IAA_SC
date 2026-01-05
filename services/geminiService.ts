@@ -77,7 +77,10 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
-            console.error(`[Gemini Probe] ${model} failed:`, error);
+            // Only log warnings for unexpected errors. 404 (Not Found) and 403 (Perms) are common during probing.
+            if (status !== 404 && status !== 403 && !msg.includes("not found")) {
+                console.warn(`[Gemini Probe] ${model} failed:`, error);
+            }
             
             // API Key Invalid (Global for all models)
             if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) {
@@ -139,7 +142,7 @@ export const fetchFullClauseText = async (clause: { code: string, title: string 
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    // Use passed model or default to 1.5 Flash (Stable)
+    // Use passed model or default
     const targetModel = model || DEFAULT_GEMINI_MODEL;
     
     let prompt = "";
@@ -313,19 +316,16 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    clauseId: { type: Type.STRING },
-                    status: { type: Type.STRING, enum: ["COMPLIANT", "NC_MINOR", "NC_MAJOR", "OFI", "N_A"] },
-                    reason: { type: Type.STRING },
-                    suggestion: { type: Type.STRING },
-                    evidence: { type: Type.STRING },
-                    conclusion_report: { type: Type.STRING }
-                },
-                required: ["clauseId", "status", "reason", "evidence"]
-            }
+            type: Type.OBJECT, // OPTIMIZATION: Return single object, not Array
+            properties: {
+                clauseId: { type: Type.STRING },
+                status: { type: Type.STRING, enum: ["COMPLIANT", "NC_MINOR", "NC_MAJOR", "OFI", "N_A"] },
+                reason: { type: Type.STRING },
+                suggestion: { type: Type.STRING },
+                evidence: { type: Type.STRING },
+                conclusion_report: { type: Type.STRING }
+            },
+            required: ["clauseId", "status", "reason", "evidence"]
         }
     };
     
@@ -335,7 +335,7 @@ export const generateAnalysis = async (prompt: string, systemInstruction: string
             contents: prompt,
             config
         });
-        return response.text || "[]";
+        return response.text || "{}";
     } catch (e: any) {
         console.error("Analysis Error:", e);
         throw new Error(e.message || "Analysis failed");

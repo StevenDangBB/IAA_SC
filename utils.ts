@@ -7,6 +7,8 @@ declare global {
     }
 }
 
+declare var mammoth: any;
+
 export const useDebounce = <T,>(value: T, delay: number): T => {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -61,6 +63,30 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     }
 
     return fullText;
+};
+
+// MOVED FROM APP.TSX
+export const processSourceFile = async (file: File): Promise<string> => {
+    let text = "";
+    try {
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+            text = await extractTextFromPdf(file);
+        } else if (file.name.toLowerCase().endsWith('.docx')) {
+            if (typeof mammoth === 'undefined') throw new Error("Mammoth library missing");
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            text = result.value;
+        } else if (file.name.toLowerCase().endsWith('.doc')) {
+            throw new Error("Legacy Word (.doc) files are not supported due to browser limitations. Please save your file as .docx and try again.");
+        } else {
+            text = await file.text();
+        }
+        if (!text || text.length < 50) throw new Error("File content is too short or empty.");
+        return text;
+    } catch (err: any) {
+        console.error("File processing error:", err);
+        throw new Error(`Failed to parse ${file.name}: ${err.message}`);
+    }
 };
 
 export const cleanAndParseJSON = (text: string) => {

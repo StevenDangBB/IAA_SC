@@ -5,12 +5,12 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.3.4"; 
-export const BUILD_TIMESTAMP = "2026-01-03 11:30:00 (GMT+7)"; 
+export const APP_VERSION = "3.5.0-REFACTOR"; 
+export const BUILD_TIMESTAMP = "2026-01-03 16:00:00 (GMT+7)"; 
 
-// CHANGE: Default to 1.5 Flash (GA) instead of 3.0 (Preview) to avoid 403 errors on some projects
-export const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"; 
-export const DEFAULT_VISION_MODEL = "gemini-1.5-flash"; 
+// CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
+export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
+export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview"; 
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
@@ -46,21 +46,32 @@ export const MY_FIXED_KEYS: string[] = [
     envKey 
 ].filter(k => k && k.trim() !== ""); 
 
-// CHANGE: Reordered hierarchy to try stable models first
+// CHANGE: Critical reordering. 
+// We now probe 'gemini-3-pro-preview' FIRST. 
+// If the key has quota/access for Pro, it will be selected.
+// If Pro fails (404/403/Quota), it gracefully falls back to Flash.
 export const MODEL_HIERARCHY = [
-    "gemini-1.5-flash", // PRIMARY (Most stable, Free Tier)
-    "gemini-3-flash-preview", // SECONDARY (Newer features, but risk of 403)
-    "gemini-3-pro-preview",
-    "gemini-2.0-flash-exp" 
+    "gemini-3-pro-preview",   // PRIMARY (High Reasoning, Best Quality)
+    "gemini-3-flash-preview", // SECONDARY (High Speed, Fallback)
+    "gemini-2.0-flash-exp",   // EXPERIMENTAL
+    "gemini-1.5-pro",         // LEGACY PRO (Backup for older keys)
+    "gemini-1.5-flash"        // LEGACY FLASH (Last resort)
 ];
 
 // UI METADATA FOR MODELS
 export const MODEL_META: Record<string, { label: string, color: string, tier: number, desc: string }> = {
-    "gemini-3-flash-preview": { label: "FLASH 3.0", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 1, desc: "Latest Preview" },
-    "gemini-3-pro-preview": { label: "PRO 3.0", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 2, desc: "Complex Reasoning" },
-    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-amber-600 text-white shadow-amber-500/30", tier: 3, desc: "Experimental" },
-    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 1, desc: "Stable Production" }
+    "gemini-3-pro-preview": { label: "PRO 3.0", color: "bg-purple-600 text-white shadow-purple-500/30", tier: 3, desc: "Max Reasoning" },
+    "gemini-3-flash-preview": { label: "FLASH 3.0", color: "bg-cyan-600 text-white shadow-cyan-500/30", tier: 2, desc: "High Speed" },
+    "gemini-2.0-flash-exp": { label: "FLASH 2.0", color: "bg-amber-600 text-white shadow-amber-500/30", tier: 2, desc: "Experimental" },
+    "gemini-1.5-pro": { label: "PRO 1.5", color: "bg-indigo-600 text-white shadow-indigo-500/30", tier: 2, desc: "Stable Pro" },
+    "gemini-1.5-flash": { label: "FLASH 1.5", color: "bg-emerald-600 text-white shadow-emerald-500/30", tier: 1, desc: "Legacy Fast" }
 };
+
+export const TABS_CONFIG = [
+    { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-950/30' }, 
+    { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-950/30' }, 
+    { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30' }
+];
 
 export const AUDIT_TYPES: Record<string, string> = {
     "Stage 1": "Initial review of documentation and readiness.",
@@ -81,22 +92,30 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "3.3.4",
+        version: "3.5.0-REFACTOR",
         date: "2026-01-03",
         features: [
-            "HOTFIX: Switched default engine to Gemini 1.5 Flash to resolve 403 Permission errors.",
-            "CORE: Improved connection probing to auto-switch models if access is denied.",
-            "UX: Updated error messages with specific troubleshooting steps for API restrictions."
+            "SYSTEM: Major Refactor Baseline Established.",
+            "ARCH: Decoupled UI components for improved stability.",
+            "CORE: Moved file processing logic to utility layer."
         ]
     },
     {
-        version: "3.3.3",
+        version: "3.4.2",
         date: "2026-01-03",
         features: [
-            "FIX: Critical API Connection Fix for Public Environments (GitHub Pages).",
-            "CORE: Updated Referrer Policy to 'no-referrer-when-downgrade' to allow proper key validation.",
-            "CORE: Added Gemini 1.5 Flash as a high-reliability fallback model.",
-            "UX: Improved error messaging for API Key restrictions."
+            "OPTIMIZATION: Updated AI Core to prioritize 'Gemini 3.0 Pro' automatically.",
+            "CORE: Intelligent model fallback. System tries Pro -> Flash -> Legacy.",
+            "UX: Added visual indicator for active model tier in settings."
+        ]
+    },
+    {
+        version: "3.4.1",
+        date: "2026-01-03",
+        features: [
+            "FIX: Resolved 'Entity Not Found' (404) errors by upgrading to Gemini 3.0 models.",
+            "CORE: Updated Model Hierarchy to remove deprecated aliases.",
+            "UX: Smoother model probing without console error noise."
         ]
     }
 ];

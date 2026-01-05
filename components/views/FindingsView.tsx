@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
@@ -86,7 +87,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                             <select
                                 value={res.status}
                                 onChange={(e) => handleUpdateFinding(idx, 'status', e.target.value)}
-                                className={`appearance-none cursor-pointer text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${styles.pill} border-none outline-none hover:brightness-95 text-center transition-all text-slate-900 dark:text-white`}
+                                className={`appearance-none cursor-pointer text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${styles.pill} border-none outline-none hover:brightness-95 text-center transition-all`}
                             >
                                 <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="COMPLIANT">COMPLIANT</option>
                                 <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="NC_MINOR">MINOR</option>

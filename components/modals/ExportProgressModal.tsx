@@ -22,10 +22,11 @@ interface ExportProgressModalProps {
     setRescueKey: (val: string) => void;
     handleResumeExport: () => void;
     isRescuing: boolean;
+    onClose: () => void; // Added onClose prop
 }
 
 export const ExportProgressModal: React.FC<ExportProgressModalProps> = ({
-    exportState, setExportState, rescueKey, setRescueKey, handleResumeExport, isRescuing
+    exportState, setExportState, rescueKey, setRescueKey, handleResumeExport, isRescuing, onClose
 }) => {
     if (!exportState.isOpen) return null;
 
@@ -83,19 +84,40 @@ export const ExportProgressModal: React.FC<ExportProgressModalProps> = ({
                             <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-100 dark:bg-slate-800">
                                 <div
                                     style={{ width: `${Math.round((exportState.processedChunksCount / Math.max(exportState.totalChunks, 1)) * 100)}%` }}
-                                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-500 ease-out"
+                                    className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center transition-all duration-500 ease-out ${exportState.isFinished ? 'bg-emerald-500' : 'bg-indigo-500'}`}
                                 ></div>
                             </div>
                         </div>
 
                         <div className="text-center space-y-1">
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                                Processing Chunk {Math.min(exportState.processedChunksCount + 1, exportState.totalChunks)} of {exportState.totalChunks}
-                            </p>
-                            <p className="text-[10px] text-slate-400 italic">
-                                Target Language: {exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'}
-                            </p>
+                            {exportState.isFinished ? (
+                                <p className="text-sm text-slate-600 dark:text-slate-300 font-bold">
+                                    File has been downloaded successfully.
+                                </p>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                                        Processing Chunk {Math.min(exportState.processedChunksCount + 1, exportState.totalChunks)} of {exportState.totalChunks}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 italic">
+                                        Target Language: {exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'}
+                                    </p>
+                                </>
+                            )}
                         </div>
+
+                        {/* Close Button for Success State */}
+                        {exportState.isFinished && (
+                            <div className="flex justify-center pt-2">
+                                <button 
+                                    onClick={onClose}
+                                    className="px-6 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center gap-2"
+                                >
+                                    <Icon name="X" size={16}/>
+                                    Close Window
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

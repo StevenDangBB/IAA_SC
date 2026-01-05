@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO } from './constants';
+import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO, TABS_CONFIG } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot } from './types';
 import { Icon, Toast, CommandPaletteModal } from './components/UI';
 import { Header } from './components/Header';
@@ -9,7 +9,7 @@ import ReleaseNotesModal from './components/ReleaseNotesModal';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
-import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf } from './utils';
+import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile } from './utils';
 
 // New Component Imports
 import { EvidenceView } from './components/views/EvidenceView';
@@ -18,6 +18,7 @@ import { ReportView } from './components/views/ReportView';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { ExportProgressModal, ExportState } from './components/modals/ExportProgressModal';
 import { AddStandardModal } from './components/modals/AddStandardModal';
+import { TabNavigation } from './components/TabNavigation'; // NEW COMPONENT
 
 declare var mammoth: any;
 
@@ -128,46 +129,10 @@ export default function App() {
     const [rescueKey, setRescueKey] = useState("");
     const [isRescuing, setIsRescuing] = useState(false);
 
-    const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
-    const tabsContainerRef = useRef<HTMLDivElement>(null); 
-    const [tabStyle, setTabStyle] = useState({ left: 0, width: 0, opacity: 0, color: '' });
-    
-    const tabsList = [
-        { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-950/30' }, 
-        { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-950/30' }, 
-        { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30' }
-    ];
-
-    const currentTabConfig = tabsList.find(t => t.id === layoutMode) || tabsList[0];
+    // REFACTORED: Tab logic moved to TabNavigation.tsx
+    // We only need the current config for container styling
+    const currentTabConfig = TABS_CONFIG.find(t => t.id === layoutMode) || TABS_CONFIG[0];
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-    // --- LIQUID TABS EFFECT LOGIC ---
-    useEffect(() => {
-        const updateTabIndicator = () => {
-            const activeIndex = tabsList.findIndex(t => t.id === layoutMode);
-            const activeEl = tabsRef.current[activeIndex];
-            if (activeEl) {
-                setTabStyle({
-                    left: activeEl.offsetLeft,
-                    width: activeEl.offsetWidth,
-                    opacity: 1,
-                    color: tabsList[activeIndex].colorClass
-                });
-            }
-        };
-
-        // Execute immediately
-        updateTabIndicator();
-        
-        // Execute on resize and when sidebar toggles (animations)
-        window.addEventListener('resize', updateTabIndicator);
-        const timer = setTimeout(updateTabIndicator, 300); // Sync with sidebar transition
-
-        return () => {
-            window.removeEventListener('resize', updateTabIndicator);
-            clearTimeout(timer);
-        };
-    }, [layoutMode, isSidebarOpen, sidebarWidth]);
 
     const allStandards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
     const hasEvidence = evidence.trim().length > 0 || uploadedFiles.length > 0;
@@ -489,30 +454,6 @@ export default function App() {
     const handleUpdateStandard = (std: Standard) => { setCustomStandards(prev => ({ ...prev, [standardKey]: std })); setToastMsg("Standard updated successfully."); };
     const handleResetStandard = (key: string) => { setCustomStandards(prev => { const next = { ...prev }; delete next[key]; return next; }); setToastMsg("Standard reset to default."); };
     
-    // --- INTEGRATED SOURCE FILE PROCESSING ---
-    const processSourceFile = async (file: File): Promise<string> => {
-        let text = "";
-        try {
-            if (file.name.toLowerCase().endsWith('.pdf')) {
-                text = await extractTextFromPdf(file);
-            } else if (file.name.toLowerCase().endsWith('.docx')) {
-                if (typeof mammoth === 'undefined') throw new Error("Mammoth library missing");
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({ arrayBuffer });
-                text = result.value;
-            } else if (file.name.toLowerCase().endsWith('.doc')) {
-                throw new Error("Legacy Word (.doc) files are not supported due to browser limitations. Please save your file as .docx and try again.");
-            } else {
-                text = await file.text();
-            }
-            if (!text || text.length < 50) throw new Error("File content is too short or empty.");
-            return text;
-        } catch (err: any) {
-            console.error("File processing error:", err);
-            throw new Error(`Failed to parse ${file.name}: ${err.message}`);
-        }
-    };
-
     // --- KNOWLEDGE BASE UPLOAD (EXISTING STANDARD) ---
     const handleKnowledgeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; 
@@ -528,6 +469,7 @@ export default function App() {
         setToastMsg("Parsing Standard Document...");
         
         try {
+            // Refactored: using util function
             const text = await processSourceFile(file);
             setKnowledgeBase(text);
             setToastMsg(`Standard Loaded (${(text.length / 1024).toFixed(0)}KB). Saving for future use...`);
@@ -553,6 +495,7 @@ export default function App() {
         if (file) {
             setToastMsg("Processing document and extracting structure...");
             try {
+                // Refactored: using util function
                 text = await processSourceFile(file);
                 // Save Source immediately
                 setKnowledgeBase(text);
@@ -790,10 +733,9 @@ export default function App() {
 
         setIsAnalyzeLoading(true);
         setLayoutMode('findings');
-        // Reset or prepare results
-        // For fresh analysis on new evidence, typically we might want to clear old results.
-        // Or we could append. Let's reset for this implementation to be clean.
-        setAnalysisResult(null);
+        
+        // Reset results to start fresh analysis stream
+        setAnalysisResult([]);
         
         try {
              const allClausesFlat = allStandards[standardKey].groups.flatMap(g => g.clauses);
@@ -809,13 +751,11 @@ export default function App() {
                  fullEvidenceContext += `\n\n--- Document: ${f.file.name} ---\n${f.result}`;
              });
 
-             const newResults: AnalysisResult[] = [];
-             const newSelections: Record<string, boolean> = {};
-
+             // OPTIMIZATION: Loop and stream results 1-by-1
              for (let i = 0; i < targets.length; i++) {
                  const clause = targets[i];
                  setCurrentAnalyzingClause(clause.code);
-                 setLoadingMessage(`Analyzing Clause ${clause.code}...`);
+                 setLoadingMessage(`Analyzing [${clause.code}] ${clause.title}...`);
 
                  const prompt = `
                  Analyze the provided EVIDENCE against ISO Standard "${allStandards[standardKey].name}", Clause "${clause.code}: ${clause.title}".
@@ -832,34 +772,58 @@ export default function App() {
                  3. Evidence Quote (Verbatim support).
                  4. Suggestion (If NC or OFI).
                  
-                 Output JSON Array with 1 object: [{ "clauseId": "${clause.code}", "status": "...", "reason": "...", "evidence": "...", "suggestion": "..." }]
+                 Output a SINGLE JSON Object: { "clauseId": "${clause.code}", "status": "...", "reason": "...", "evidence": "...", "suggestion": "..." }
                  `;
                  
                  // Using executeWithSmartFailover to handle keys
-                 const jsonStr = await executeWithSmartFailover((key, model) => generateAnalysis(prompt, "You are a lead ISO Auditor.", key, model));
-                 const parsed = cleanAndParseJSON(jsonStr);
-                 
-                 if (Array.isArray(parsed) && parsed.length > 0) {
-                     const item = parsed[0];
-                     item.clauseId = clause.code; 
-                     newResults.push(item);
-                     newSelections[clause.code] = true;
-                 } else {
-                     newResults.push({
+                 try {
+                     const jsonStr = await executeWithSmartFailover((key, model) => generateAnalysis(prompt, "You are a lead ISO Auditor.", key, model));
+                     const parsed = cleanAndParseJSON(jsonStr);
+                     
+                     let newFinding: AnalysisResult;
+
+                     if (parsed && typeof parsed === 'object') {
+                         newFinding = {
+                             clauseId: clause.code, // Enforce correct ID
+                             status: parsed.status || 'N_A',
+                             reason: parsed.reason || 'No reasoning provided.',
+                             evidence: parsed.evidence || '',
+                             suggestion: parsed.suggestion || '',
+                             conclusion_report: parsed.conclusion_report || ''
+                         };
+                     } else {
+                         newFinding = {
+                             clauseId: clause.code,
+                             status: 'N_A',
+                             reason: 'AI failed to format response.',
+                             evidence: '',
+                             suggestion: '',
+                             conclusion_report: ''
+                         };
+                     }
+
+                     // STREAM UPDATE: Update state immediately
+                     setAnalysisResult(prev => [...(prev || []), newFinding]);
+                     setSelectedFindings(prev => ({...prev, [clause.code]: true})); // Auto-select new finding
+                     
+                     // Allow UI thread to breathe
+                     await new Promise(r => setTimeout(r, 50));
+
+                 } catch (clauseError) {
+                     console.error(`Error analyzing clause ${clause.code}`, clauseError);
+                     // Add an error placeholder so the user knows it failed but flow continues
+                     setAnalysisResult(prev => [...(prev || []), {
                          clauseId: clause.code,
                          status: 'N_A',
-                         reason: 'AI could not determine status.',
+                         reason: 'Analysis failed due to API error.',
                          evidence: '',
-                         suggestion: '',
+                         suggestion: 'Retry manually.',
                          conclusion_report: ''
-                     });
-                     newSelections[clause.code] = true;
+                     }]);
                  }
              }
              
-             setAnalysisResult(newResults);
-             setSelectedFindings(newSelections);
-             setToastMsg(`Analysis Complete. Generated ${newResults.length} findings.`);
+             setToastMsg(`Analysis Complete.`);
 
         } catch (e: any) {
             handleGenericError(e);
@@ -925,12 +889,25 @@ export default function App() {
             if (idx >= exportState.totalChunks) {
                 setExportState(prev => ({ ...prev, isFinished: true }));
                 try {
+                    // NEW: FILENAME CONSTRUCTION LOGIC
+                    const getSafeName = (str: string) => cleanFileName(str || "Unknown");
+                    const stdName = getSafeName(allStandards[standardKey]?.name);
+                    const aType = getSafeName(auditInfo.type);
+                    const smo = getSafeName(auditInfo.smo);
+                    const company = getSafeName(auditInfo.company);
+                    const dept = getSafeName(auditInfo.department);
+                    const auditor = getSafeName(auditInfo.auditor);
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+                    // Format: [Standard]_[Type]_[SMO]_[Company]_[Dept]_Audit Note_[Auditor]_[Timestamp].txt
+                    const fileName = `${stdName}_${aType}_${smo}_${company}_${dept}_Audit_Note_${auditor}_${timestamp}.txt`;
+
                     const finalContent = exportState.results.join("");
                     const blob = new Blob([finalContent], { type: 'text/plain' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `ISO_Audit_Export_${exportState.currentType}_${new Date().toISOString()}.txt`;
+                    a.download = fileName; // Applied new filename format
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -942,12 +919,29 @@ export default function App() {
             const chunk = exportState.chunks[idx];
             try {
                 let result = chunk;
-                if (exportState.targetLang !== 'en' && exportState.targetLang !== 'vi') { 
-                    // Should not happen based on types
-                } else if (exportState.targetLang !== 'en') {
-                     const prompt = `Translate this text to ${exportState.targetLang === 'vi' ? 'Vietnamese' : 'English'} maintaining formatting:\n\n${chunk}`;
-                     result = await executeWithSmartFailover((key, model) => generateTextReport(prompt, "Translator", key, model));
-                }
+                
+                // CRITICAL FIX: ALWAYS process via AI to ensure language compliance.
+                // We remove the condition that skipped 'en' because input might be 'vi'.
+                // The prompt handles "if already in target language, keep it".
+                const targetLanguageName = exportState.targetLang === 'vi' ? 'Vietnamese' : 'English';
+                
+                const prompt = `
+                You are a professional ISO Audit Translator.
+                TASK: Convert the following text to ${targetLanguageName}.
+
+                CRITICAL RULES:
+                1. If the input is in a different language, TRANSLATE it completely to ${targetLanguageName}.
+                2. If the input is already in ${targetLanguageName}, refine the tone to be professional ISO audit style.
+                3. Translate all specific audit content (Evidence details, Findings, Conclusions).
+                4. Translate structural labels (e.g., "Evidence:" -> "Bằng chứng:" if Target is VI, or vice versa).
+                5. Preserve formatting, line breaks, and [Clause ID] references.
+
+                INPUT TEXT:
+                """
+                ${chunk}
+                """`;
+
+                result = await executeWithSmartFailover((key, model) => generateTextReport(prompt, "Professional ISO Translator", key, model));
                 
                 setExportState(prev => {
                     const newResults = [...prev.results];
@@ -960,7 +954,7 @@ export default function App() {
             }
         };
         processChunk();
-    }, [exportState, executeWithSmartFailover]);
+    }, [exportState, executeWithSmartFailover, standardKey, auditInfo, allStandards]); // Added dependencies for filename generation
 
     const handleResumeExport = async () => {
         setIsRescuing(true);
@@ -1136,20 +1130,18 @@ export default function App() {
                 </div>
                 {isSidebarOpen && <div className="fixed top-16 bottom-0 inset-x-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity duration-300 animate-in fade-in" onClick={() => setIsSidebarOpen(false)} />}
                 
-                {/* ... (Main Content Layout remains same) ... */}
+                {/* --- MAIN CONTENT AREA --- */}
                 <div className={`flex-1 flex flex-col min-w-0 relative w-full transition-all duration-300 ease-soft ${currentTabConfig.bgSoft} border-t-4 ${currentTabConfig.borderClass}`}>
                     
                     <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center gap-3">
                         <div className="flex-1 min-w-0">
-                            <div ref={tabsContainerRef} className="relative flex justify-between bg-gray-100 dark:bg-slate-950 p-1 rounded-xl w-full dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
-                                <div className={`absolute top-1 bottom-1 shadow-sm rounded-lg transition-all duration-500 ease-fluid z-0 ${tabStyle.color}`} style={{ left: tabStyle.left, width: tabStyle.width, opacity: tabStyle.opacity }} />
-                                {tabsList.map((tab, idx) => (
-                                    <button key={tab.id} ref={el => { tabsRef.current[idx] = el; }} onClick={() => setLayoutMode(tab.id as LayoutMode)} className={`flex-1 relative z-10 flex items-center justify-center gap-2 px-1 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-colors duration-300 ${layoutMode === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>
-                                        <Icon name={tab.icon} size={16}/> 
-                                        <span className={`${isSidebarOpen ? 'hidden xl:inline' : 'hidden md:inline'}`}>{tab.label}</span>
-                                    </button>
-                                ))}
-                            </div>
+                            {/* REFACTORED: Tab Navigation Component */}
+                            <TabNavigation 
+                                layoutMode={layoutMode} 
+                                setLayoutMode={setLayoutMode}
+                                isSidebarOpen={isSidebarOpen}
+                                sidebarWidth={sidebarWidth}
+                            />
                         </div>
                         <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
                             <button 
@@ -1271,6 +1263,7 @@ export default function App() {
                 setRescueKey={setRescueKey}
                 handleResumeExport={handleResumeExport}
                 isRescuing={isRescuing}
+                onClose={() => setExportState(prev => ({ ...prev, isOpen: false }))} // Added onClose handler
             />
 
             <SettingsModal
