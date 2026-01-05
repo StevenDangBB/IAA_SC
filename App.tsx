@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO, TABS_CONFIG } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot } from './types';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot, EvidenceTag } from './types';
 import { Icon, Toast, CommandPaletteModal } from './components/UI';
 import { Header } from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -9,7 +9,10 @@ import ReleaseNotesModal from './components/ReleaseNotesModal';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
+import { KnowledgeStore } from './services/knowledgeStore'; 
+import { VectorStore } from './services/vectorStore'; // NEW: Vector DB
 import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile } from './utils';
+import { workerChunkText, runInWorker } from './services/workerUtils'; // NEW: Worker Utils
 
 // New Component Imports
 import { EvidenceView } from './components/views/EvidenceView';
@@ -18,7 +21,7 @@ import { ReportView } from './components/views/ReportView';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { ExportProgressModal, ExportState } from './components/modals/ExportProgressModal';
 import { AddStandardModal } from './components/modals/AddStandardModal';
-import { TabNavigation } from './components/TabNavigation'; // NEW COMPONENT
+import { TabNavigation } from './components/TabNavigation';
 
 declare var mammoth: any;
 
@@ -97,6 +100,7 @@ export default function App() {
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
+    const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]); // New: Tags
     
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     
@@ -184,46 +188,65 @@ export default function App() {
         } catch (e) { console.error("Failed to load keys", e); return []; }
     };
 
-    // --- PERSISTENT KNOWLEDGE BASE STORAGE ---
-    const getStorageKey = (stdKey: string) => `iso_kb_content_${stdKey}`;
-    const getStorageNameKey = (stdKey: string) => `iso_kb_name_${stdKey}`;
+    // --- PERSISTENT KNOWLEDGE BASE STORAGE (UPDATED TO INDEXEDDB) ---
+    // Removed old getStorageKey helpers as we use IndexedDB now
 
-    const loadKnowledgeForStandard = (key: string) => {
+    const loadKnowledgeForStandard = async (key: string) => {
         try {
-            const savedContent = localStorage.getItem(getStorageKey(key));
-            const savedName = localStorage.getItem(getStorageNameKey(key));
-            if (savedContent && savedName) {
-                setKnowledgeBase(savedContent);
-                setKnowledgeFileName(savedName);
-                setToastMsg(`Restored source document: ${savedName}`);
+            // 1. Try migration first (if user had data in LocalStorage)
+            await KnowledgeStore.migrateFromLocalStorage(key);
+
+            // 2. Load from IndexedDB
+            const doc = await KnowledgeStore.getDocument(key);
+            
+            if (doc) {
+                setKnowledgeBase(doc.content);
+                setKnowledgeFileName(doc.fileName);
+                setToastMsg(`Restored source document: ${doc.fileName}`);
+                // NEW: Populate Vector DB if active key exists
+                if (activeKeyProfile?.key) {
+                    // We do this silently in background
+                    VectorStore.addDocuments(key, doc.content, activeKeyProfile.key).catch(e => console.warn("Background Vectorization:", e));
+                }
             } else {
                 setKnowledgeBase(null);
                 setKnowledgeFileName(null);
             }
         } catch (e) {
-            console.error("Failed to load KB", e);
+            console.error("Failed to load KB from DB", e);
+            setKnowledgeBase(null);
+            setKnowledgeFileName(null);
         }
     };
 
-    const saveKnowledgeToStorage = (key: string, content: string, fileName: string) => {
+    const saveKnowledgeToStorage = async (key: string, content: string, fileName: string) => {
         try {
-            localStorage.setItem(getStorageKey(key), content);
-            localStorage.setItem(getStorageNameKey(key), fileName);
+            await KnowledgeStore.saveDocument(key, fileName, content);
+            console.log(`Saved ${fileName} to KnowledgeStore`);
+            
+            // NEW: Vectorization Trigger
+            if (activeKeyProfile?.key) {
+                setToastMsg("Vectorizing Source Document for AI Search...");
+                // Use worker utility to chunk logic effectively (already handled inside VectorStore logic or here)
+                await VectorStore.addDocuments(key, content, activeKeyProfile.key);
+                setToastMsg("Document Vectorized for Semantic Search.");
+            }
         } catch (e) {
-            console.error("Storage Quota Exceeded for KB", e);
-            setToastMsg("Warning: Document too large to save for future sessions (Quota Exceeded). It will work for this session only.");
+            console.error("DB Save Failed", e);
+            setToastMsg("Warning: Failed to save document to persistent storage.");
         }
     };
 
     // --- NEW: Handle Clearing Knowledge Base ---
-    const handleClearKnowledge = () => {
+    const handleClearKnowledge = async () => {
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
         if (standardKey) {
             try {
-                localStorage.removeItem(getStorageKey(standardKey));
-                localStorage.removeItem(getStorageNameKey(standardKey));
-                setToastMsg("Source document removed from standard.");
+                await KnowledgeStore.deleteDocument(standardKey);
+                // NEW: Clear Vectors
+                await VectorStore.clear(); 
+                setToastMsg("Source document removed from database.");
             } catch (e) {
                 console.error("Failed to clear KB", e);
             }
@@ -234,10 +257,20 @@ export default function App() {
     const handleSetStandardKey = (key: string) => {
         if (key !== standardKey) {
             setStandardKey(key);
-            // Attempt to load existing KB for this new key
+            // Attempt to load existing KB for this new key (Async)
             loadKnowledgeForStandard(key);
         }
     };
+
+    useEffect(() => {
+        const init = async () => {
+            const keys = loadKeyData();
+            setApiKeys(keys);
+            loadSessionData();
+            if (keys.length > 0 && !isCheckingKey) checkAllKeys(keys);
+        };
+        init();
+    }, []);
 
     useEffect(() => {
         if (!isAutoCheckEnabled) return;
@@ -427,7 +460,7 @@ export default function App() {
         throw new Error(lastError?.message || "ALL_KEYS_EXHAUSTED");
     };
 
-    const loadSessionData = () => {
+    const loadSessionData = async () => {
         try {
             const session = localStorage.getItem("iso_session_data");
             const customStds = localStorage.getItem("iso_custom_standards");
@@ -437,11 +470,12 @@ export default function App() {
                 if (data.standardKey) {
                     setStandardKey(data.standardKey);
                     // Also attempt to load knowledge base for this standard
-                    loadKnowledgeForStandard(data.standardKey);
+                    await loadKnowledgeForStandard(data.standardKey);
                 }
                 if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
                 if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
                 if (data.evidence) setEvidence(data.evidence);
+                if (data.evidenceTags) setEvidenceTags(data.evidenceTags); // NEW
                 if (data.analysisResult) setAnalysisResult(data.analysisResult);
                 if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
                 if (data.finalReportText) setFinalReportText(data.finalReportText);
@@ -459,7 +493,7 @@ export default function App() {
         const file = e.target.files?.[0]; 
         if (!file) return; 
         
-        // Defensive check: Should generally be caught by UI state, but good for safety
+        // Defensive check
         if (!standardKey || standardKey === "ADD_NEW") {
             setToastMsg("Please select a Standard first before uploading a source document.");
             return;
@@ -469,14 +503,15 @@ export default function App() {
         setToastMsg("Parsing Standard Document...");
         
         try {
-            // Refactored: using util function
+            // WORKER UPGRADE: Using processSourceFile (which could use worker internals later)
+            // For now, we still wait for main thread parse, but then Vectorize in background
             const text = await processSourceFile(file);
             setKnowledgeBase(text);
-            setToastMsg(`Standard Loaded (${(text.length / 1024).toFixed(0)}KB). Saving for future use...`);
+            setToastMsg(`Standard Loaded (${(text.length / 1024).toFixed(0)}KB). Saving...`);
             
-            // Save to persistent storage
+            // Save to persistent storage (IndexedDB) and Vectorize
             if (standardKey) {
-                saveKnowledgeToStorage(standardKey, text, file.name);
+                await saveKnowledgeToStorage(standardKey, text, file.name);
             }
         } catch (err: any) {
             setToastMsg(err.message);
@@ -497,10 +532,10 @@ export default function App() {
             try {
                 // Refactored: using util function
                 text = await processSourceFile(file);
-                // Save Source immediately
+                // Save Source immediately to KnowledgeStore
                 setKnowledgeBase(text);
                 setKnowledgeFileName(file.name);
-                saveKnowledgeToStorage(newKey, text, file.name);
+                await saveKnowledgeToStorage(newKey, text, file.name);
                 
                 // 2. Use AI to Parse Structure
                 setToastMsg("AI is analyzing structure... (This may take 15s)");
@@ -561,7 +596,7 @@ export default function App() {
                 setIsSaving(false);
                 return;
             }
-            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
@@ -571,24 +606,24 @@ export default function App() {
             setIsSaving(false);
         }, 800); 
         return () => clearTimeout(handler);
-    }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
+    }, [standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
 
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (!isRestoring.current) {
-                const sessionData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+                const sessionData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
                 localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText]);
+    }, [standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText]);
 
-    const handleNewSession = (e?: any) => { 
+    const handleNewSession = async (e?: any) => { 
         if(e) e.stopPropagation(); 
         if(!confirm("Start New Session? Current data will be moved to 'Backup Vault'.")) return; 
         try {
-            const currentData = { standardKey, auditInfo, selectedClauses, evidence, analysisResult, selectedFindings, finalReportText };
+            const currentData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
             const hasData = evidence.trim().length > 0 || selectedClauses.length > 0;
             if (hasData) {
                 const snapshot: SessionSnapshot = {
@@ -608,6 +643,7 @@ export default function App() {
             setStandardKey("");
             setAuditInfo(DEFAULT_AUDIT_INFO); 
             setEvidence(""); 
+            setEvidenceTags([]);
             setSelectedClauses([]); 
             setUploadedFiles([]); 
             setAnalysisResult(null); 
@@ -625,7 +661,7 @@ export default function App() {
         }
     };
     
-    const handleRestoreSnapshot = (snapshot: SessionSnapshot) => {
+    const handleRestoreSnapshot = async (snapshot: SessionSnapshot) => {
         try {
             isRestoring.current = true;
             setShowRecallModal(false);
@@ -633,11 +669,13 @@ export default function App() {
             localStorage.setItem("iso_session_data", JSON.stringify(data));
             if (data.standardKey) {
                 setStandardKey(data.standardKey);
-                loadKnowledgeForStandard(data.standardKey);
+                // Load KB from IndexedDB
+                await loadKnowledgeForStandard(data.standardKey);
             }
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
+            if (data.evidenceTags) setEvidenceTags(data.evidenceTags);
             setUploadedFiles([]); 
             if (data.analysisResult) setAnalysisResult(data.analysisResult);
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
@@ -725,7 +763,7 @@ export default function App() {
         setReferenceClauseState({ isOpen: false, clause: null, isLoading: false, fullText: { en: "", vi: "" } });
     };
 
-    // --- MISSING FUNCTIONS IMPLEMENTATION ---
+    // --- UPDATED ANALYZE FUNCTION (Supports RAG & Prompt Registry) ---
     const handleAnalyze = async () => {
         if (!standardKey) { setToastMsg("Select a Standard first."); return; }
         if (selectedClauses.length === 0) { setToastMsg("Select at least one Clause to analyze."); return; }
@@ -733,8 +771,6 @@ export default function App() {
 
         setIsAnalyzeLoading(true);
         setLayoutMode('findings');
-        
-        // Reset results to start fresh analysis stream
         setAnalysisResult([]);
         
         try {
@@ -745,10 +781,15 @@ export default function App() {
              
              const targets = selectedClauses.map(id => findClause(id, allClausesFlat)).filter(c => !!c) as Clause[];
              
-             // Construct context from evidence and processed files
              let fullEvidenceContext = evidence;
              uploadedFiles.filter(f => f.status === 'success' && f.result).forEach(f => {
                  fullEvidenceContext += `\n\n--- Document: ${f.file.name} ---\n${f.result}`;
+             });
+
+             // Format Tags for Context
+             let tagContext = "";
+             evidenceTags.forEach(tag => {
+                 tagContext += `[Tagged for ${tag.clauseId}]: "${tag.text}"\n`;
              });
 
              // OPTIMIZATION: Loop and stream results 1-by-1
@@ -757,39 +798,30 @@ export default function App() {
                  setCurrentAnalyzingClause(clause.code);
                  setLoadingMessage(`Analyzing [${clause.code}] ${clause.title}...`);
 
-                 const prompt = `
-                 Analyze the provided EVIDENCE against ISO Standard "${allStandards[standardKey].name}", Clause "${clause.code}: ${clause.title}".
-                 Clause Description: ${clause.description}
-                 
-                 EVIDENCE:
-                 """
-                 ${fullEvidenceContext.substring(0, 50000)} 
-                 """
-                 
-                 DETERMINE:
-                 1. Status (COMPLIANT, NC_MINOR, NC_MAJOR, OFI, or N_A).
-                 2. Reason (Why?).
-                 3. Evidence Quote (Verbatim support).
-                 4. Suggestion (If NC or OFI).
-                 
-                 Output a SINGLE JSON Object: { "clauseId": "${clause.code}", "status": "...", "reason": "...", "evidence": "...", "suggestion": "..." }
-                 `;
-                 
-                 // Using executeWithSmartFailover to handle keys
                  try {
-                     const jsonStr = await executeWithSmartFailover((key, model) => generateAnalysis(prompt, "You are a lead ISO Auditor.", key, model));
-                     const parsed = cleanAndParseJSON(jsonStr);
+                     const jsonStr = await executeWithSmartFailover((key, model) => 
+                        generateAnalysis(
+                            { code: clause.code, title: clause.title, description: clause.description },
+                            allStandards[standardKey].name,
+                            fullEvidenceContext.substring(0, 50000), // Limit raw context
+                            tagContext, // Pass tagged info
+                            key, 
+                            model
+                        )
+                     );
                      
+                     const parsed = cleanAndParseJSON(jsonStr);
                      let newFinding: AnalysisResult;
 
                      if (parsed && typeof parsed === 'object') {
                          newFinding = {
-                             clauseId: clause.code, // Enforce correct ID
+                             clauseId: clause.code, 
                              status: parsed.status || 'N_A',
                              reason: parsed.reason || 'No reasoning provided.',
                              evidence: parsed.evidence || '',
                              suggestion: parsed.suggestion || '',
-                             conclusion_report: parsed.conclusion_report || ''
+                             conclusion_report: parsed.conclusion_report || '',
+                             crossRefs: parsed.crossRefs || [] // Map new feature
                          };
                      } else {
                          newFinding = {
@@ -798,27 +830,25 @@ export default function App() {
                              reason: 'AI failed to format response.',
                              evidence: '',
                              suggestion: '',
-                             conclusion_report: ''
+                             conclusion_report: '',
+                             crossRefs: []
                          };
                      }
 
-                     // STREAM UPDATE: Update state immediately
                      setAnalysisResult(prev => [...(prev || []), newFinding]);
-                     setSelectedFindings(prev => ({...prev, [clause.code]: true})); // Auto-select new finding
-                     
-                     // Allow UI thread to breathe
+                     setSelectedFindings(prev => ({...prev, [clause.code]: true})); 
                      await new Promise(r => setTimeout(r, 50));
 
                  } catch (clauseError) {
                      console.error(`Error analyzing clause ${clause.code}`, clauseError);
-                     // Add an error placeholder so the user knows it failed but flow continues
                      setAnalysisResult(prev => [...(prev || []), {
                          clauseId: clause.code,
                          status: 'N_A',
                          reason: 'Analysis failed due to API error.',
                          evidence: '',
                          suggestion: 'Retry manually.',
-                         conclusion_report: ''
+                         conclusion_report: '',
+                         crossRefs: []
                      }]);
                  }
              }
@@ -850,25 +880,18 @@ export default function App() {
         setLoadingMessage("Synthesizing Final Audit Report...");
         
         try {
-            const prompt = `
-            Generate a comprehensive ISO Audit Report.
+            // Updated to use Prompt Registry via Service
+            const report = await executeWithSmartFailover((key, model) => 
+                generateTextReport({
+                    company: auditInfo.company,
+                    type: auditInfo.type,
+                    auditor: auditInfo.auditor,
+                    standard: allStandards[standardKey]?.name,
+                    findings: activeFindings,
+                    lang: exportLanguage
+                }, key, model)
+            );
             
-            Entity: ${auditInfo.company}
-            Type: ${auditInfo.type}
-            Auditor: ${auditInfo.auditor}
-            Standard: ${allStandards[standardKey]?.name}
-            
-            FINDINGS TO INCLUDE:
-            ${JSON.stringify(activeFindings)}
-            
-            TEMPLATE / INSTRUCTIONS:
-            ${reportTemplate || "Use standard professional ISO audit report format including Executive Summary, Audit Scope, Findings Detail, and Conclusion."}
-            
-            Language: ${exportLanguage === 'vi' ? 'Vietnamese' : 'English'}.
-            Tone: Professional, Objective.
-            `;
-            
-            const report = await executeWithSmartFailover((key, model) => generateTextReport(prompt, "You are an expert ISO Certification Body Auditor.", key, model));
             setFinalReportText(report);
             setLayoutMode('report');
             setToastMsg("Report Generated Successfully.");
@@ -880,7 +903,7 @@ export default function App() {
         }
     };
 
-    // Export Processing Effect
+    // Export Processing Effect (Existing Logic for Translation/Files)
     useEffect(() => {
         if (!exportState.isOpen || exportState.isPaused || exportState.isFinished) return;
 
@@ -889,7 +912,6 @@ export default function App() {
             if (idx >= exportState.totalChunks) {
                 setExportState(prev => ({ ...prev, isFinished: true }));
                 try {
-                    // NEW: FILENAME CONSTRUCTION LOGIC
                     const getSafeName = (str: string) => cleanFileName(str || "Unknown");
                     const stdName = getSafeName(allStandards[standardKey]?.name);
                     const aType = getSafeName(auditInfo.type);
@@ -898,8 +920,6 @@ export default function App() {
                     const dept = getSafeName(auditInfo.department);
                     const auditor = getSafeName(auditInfo.auditor);
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-
-                    // Format: [Standard]_[Type]_[SMO]_[Company]_[Dept]_Audit Note_[Auditor]_[Timestamp].txt
                     const fileName = `${stdName}_${aType}_${smo}_${company}_${dept}_Audit_Note_${auditor}_${timestamp}.txt`;
 
                     const finalContent = exportState.results.join("");
@@ -907,7 +927,7 @@ export default function App() {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = fileName; // Applied new filename format
+                    a.download = fileName; 
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -919,29 +939,16 @@ export default function App() {
             const chunk = exportState.chunks[idx];
             try {
                 let result = chunk;
-                
-                // CRITICAL FIX: ALWAYS process via AI to ensure language compliance.
-                // We remove the condition that skipped 'en' because input might be 'vi'.
-                // The prompt handles "if already in target language, keep it".
                 const targetLanguageName = exportState.targetLang === 'vi' ? 'Vietnamese' : 'English';
-                
-                const prompt = `
-                You are a professional ISO Audit Translator.
-                TASK: Convert the following text to ${targetLanguageName}.
+                const prompt = `Translate to ${targetLanguageName}. Keep formatting. ISO Audit Context.\n\nInput:\n"""${chunk}"""`;
 
-                CRITICAL RULES:
-                1. If the input is in a different language, TRANSLATE it completely to ${targetLanguageName}.
-                2. If the input is already in ${targetLanguageName}, refine the tone to be professional ISO audit style.
-                3. Translate all specific audit content (Evidence details, Findings, Conclusions).
-                4. Translate structural labels (e.g., "Evidence:" -> "Bằng chứng:" if Target is VI, or vice versa).
-                5. Preserve formatting, line breaks, and [Clause ID] references.
-
-                INPUT TEXT:
-                """
-                ${chunk}
-                """`;
-
-                result = await executeWithSmartFailover((key, model) => generateTextReport(prompt, "Professional ISO Translator", key, model));
+                // Quick translate logic (inline here vs service for simplicity as it's chunk-based)
+                // In production, move to service
+                result = await executeWithSmartFailover(async (key, model) => {
+                     const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: key });
+                     const res = await ai.models.generateContent({ model: model, contents: prompt });
+                     return res.text || chunk;
+                });
                 
                 setExportState(prev => {
                     const newResults = [...prev.results];
@@ -954,31 +961,17 @@ export default function App() {
             }
         };
         processChunk();
-    }, [exportState, executeWithSmartFailover, standardKey, auditInfo, allStandards]); // Added dependencies for filename generation
+    }, [exportState, executeWithSmartFailover, standardKey, auditInfo, allStandards]);
 
     const handleResumeExport = async () => {
         setIsRescuing(true);
         try {
             if (rescueKey.trim()) {
-                // Determine Capabilities for rescue key
                 const result = await validateApiKey(rescueKey);
-                const cap = { 
-                    status: result.isValid ? 'valid' : (result.errorType || 'unknown'), 
-                    errorMessage: result.errorMessage,
-                    activeModel: result.activeModel, 
-                    latency: result.latency 
-                };
+                const cap = { status: result.isValid ? 'valid' : (result.errorType || 'unknown'), errorMessage: result.errorMessage, activeModel: result.activeModel, latency: result.latency };
 
                 if (cap.status === 'valid') {
-                     const newProfile: ApiKeyProfile = { 
-                        id: `rescue_${Date.now()}`, 
-                        label: `Rescue Key`, 
-                        key: rescueKey, 
-                        status: 'valid', 
-                        activeModel: cap.activeModel,
-                        latency: cap.latency, 
-                        lastChecked: new Date().toISOString() 
-                    };
+                     const newProfile: ApiKeyProfile = { id: `rescue_${Date.now()}`, label: `Rescue Key`, key: rescueKey, status: 'valid', activeModel: cap.activeModel, latency: cap.latency as number, lastChecked: new Date().toISOString() };
                     setApiKeys(prev => [...prev, newProfile]);
                     setActiveKeyId(newProfile.id);
                     setToastMsg("Rescue Key Added. Resuming...");
@@ -1013,7 +1006,6 @@ export default function App() {
             { label: "Toggle Dark Mode", desc: `Switch to ${isDarkMode ? 'Light' : 'Dark'}`, icon: isDarkMode ? "Sun" : "Moon", action: () => setIsDarkMode(!isDarkMode) },
         ];
 
-        // Ensure we have a valid standard selected before adding clause actions
         if (standardKey && allStandards[standardKey]) {
             const flatten = (list: Clause[]): Clause[] => list.reduce((acc, c) => {
                 acc.push(c);
@@ -1026,9 +1018,8 @@ export default function App() {
             const clauseActions = allClauses.map(c => ({
                 label: `[${c.code}] ${c.title}`,
                 desc: c.description || "No description",
-                icon: "Session6_Zap", // Use a generic icon or specific if available
+                icon: "Session6_Zap", 
                 type: 'clause',
-                // Action to select/deselect the clause
                 action: () => {
                     const isSelected = selectedClauses.includes(c.id);
                     if (isSelected) setSelectedClauses(prev => prev.filter(id => id !== c.id));
@@ -1037,7 +1028,6 @@ export default function App() {
                     setToastMsg(`Inserted clause ${c.code} and ${isSelected ? 'removed from' : 'added to'} audit scope.`);
                     setIsCmdPaletteOpen(false);
                 },
-                // Action strictly for looking up reference
                 onReference: (e: any) => {
                     if (e) e.stopPropagation();
                     handleOpenReferenceClause(c);
@@ -1046,11 +1036,10 @@ export default function App() {
             }));
             return [...baseActions, ...clauseActions];
         }
-        
         return baseActions;
     }, [isDarkMode, standardKey, allStandards, selectedClauses, activeKeyId, apiKeys]); 
 
-    // ... (Badge, Tooltip, and Render logic - kept same) ...
+    // Badge Logic
     const displayBadge = useMemo(() => {
         const currentStandardName = allStandards[standardKey]?.name || "";
         const match = currentStandardName.match(/\((.*?)\)/);
@@ -1123,7 +1112,7 @@ export default function App() {
                         showIntegrityModal={showIntegrityModal} 
                         setShowIntegrityModal={setShowIntegrityModal}
                         knowledgeFileName={knowledgeFileName}
-                        knowledgeBase={knowledgeBase} // Pass KB content for health check
+                        knowledgeBase={knowledgeBase} 
                         onKnowledgeUpload={handleKnowledgeUpload}
                         onClearKnowledge={handleClearKnowledge}
                     />
@@ -1189,6 +1178,9 @@ export default function App() {
                                 evidenceLanguage={evidenceLanguage}
                                 setEvidenceLanguage={setEvidenceLanguage}
                                 textareaRef={evidenceTextareaRef}
+                                tags={evidenceTags} // New Prop
+                                onAddTag={(newTag) => setEvidenceTags(prev => [...prev, newTag])} // New Prop
+                                selectedClauses={selectedClauses} // New Prop
                             />
                         )}
                         {layoutMode === 'findings' && (
@@ -1263,7 +1255,7 @@ export default function App() {
                 setRescueKey={setRescueKey}
                 handleResumeExport={handleResumeExport}
                 isRescuing={isRescuing}
-                onClose={() => setExportState(prev => ({ ...prev, isOpen: false }))} // Added onClose handler
+                onClose={() => setExportState(prev => ({ ...prev, isOpen: false }))} 
             />
 
             <SettingsModal

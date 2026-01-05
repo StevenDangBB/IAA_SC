@@ -1,8 +1,8 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Icon, SparkleLoader } from '../UI';
-import { UploadedFile } from '../../App'; // We will export this type from App or Types
-import { fileToBase64 } from '../../utils';
+import { UploadedFile } from '../../App'; 
+import { EvidenceTag } from '../../types'; // Import Tag Type
 
 interface EvidenceViewProps {
     evidence: string;
@@ -19,16 +19,24 @@ interface EvidenceViewProps {
     evidenceLanguage: 'en' | 'vi';
     setEvidenceLanguage: (lang: 'en' | 'vi') => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    
+    // New Props for Tagging
+    tags?: EvidenceTag[];
+    onAddTag?: (tag: EvidenceTag) => void;
+    selectedClauses?: string[]; // Need this to know what to tag against
 }
 
 export const EvidenceView: React.FC<EvidenceViewProps> = ({
     evidence, setEvidence, uploadedFiles, setUploadedFiles,
     onOcrProcess, isOcrLoading, onAnalyze, isReadyForAnalysis,
     isAnalyzeLoading, analyzeTooltip, onExport, evidenceLanguage, setEvidenceLanguage,
-    textareaRef
+    textareaRef, tags = [], onAddTag, selectedClauses = []
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // Tagging State
+    const [selectionRect, setSelectionRect] = useState<{top: number, left: number, text: string, start: number, end: number} | null>(null);
 
     const processNewFiles = (files: File[]) => {
         const newFiles = files.map(f => ({
@@ -37,6 +45,47 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
             status: 'pending' as const
         }));
         setUploadedFiles(prev => [...prev, ...newFiles]);
+    };
+
+    // --- TAGGING LOGIC ---
+    const handleTextSelect = () => {
+        if (!textareaRef.current) return;
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        
+        if (start !== end) {
+            const text = evidence.substring(start, end);
+            // Quick calculation for position (approximate since it's a textarea)
+            // A real rich text editor would be better, but for "No UI Impact" on textarea, we use a fixed approach or simple calc.
+            // Since precise overlay on textarea is hard, we'll position centered above.
+            setSelectionRect({
+                top: 0, // Placeholder, CSS will center it
+                left: 0,
+                text,
+                start,
+                end
+            });
+        } else {
+            setSelectionRect(null);
+        }
+    };
+
+    const confirmTag = (clauseId: string) => {
+        if (selectionRect && onAddTag) {
+            onAddTag({
+                id: `tag_${Date.now()}`,
+                clauseId,
+                text: selectionRect.text,
+                startIndex: selectionRect.start,
+                endIndex: selectionRect.end,
+                timestamp: Date.now()
+            });
+            setSelectionRect(null);
+            // clear selection
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur(); 
+            }
+        }
     };
 
     const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -60,7 +109,29 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
 
     return (
         <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
-            <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0">
+            <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0 relative">
+                
+                {/* --- FLOATING TAGGING TOOLBAR --- */}
+                {selectionRect && selectedClauses.length > 0 && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white p-2 rounded-xl shadow-2xl flex flex-col gap-2 animate-in zoom-in slide-in-from-bottom-2 border border-slate-700">
+                        <div className="flex justify-between items-center border-b border-slate-600 pb-1 mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tag Evidence For:</span>
+                            <button onClick={() => setSelectionRect(null)} className="text-slate-400 hover:text-white"><Icon name="X" size={12}/></button>
+                        </div>
+                        <div className="flex flex-wrap gap-1 max-w-xs justify-center">
+                            {selectedClauses.map(clauseId => (
+                                <button 
+                                    key={clauseId}
+                                    onClick={() => confirmTag(clauseId)}
+                                    className="text-[10px] font-mono font-bold bg-indigo-600 hover:bg-indigo-500 px-2 py-1 rounded transition-colors"
+                                >
+                                    {clauseId}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div
                     className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-col relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
                     onDragOver={handleDragOver}
@@ -77,12 +148,23 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     )}
                     <textarea
                         ref={textareaRef}
-                        className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap"
+                        className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900"
                         placeholder="Paste audit evidence here or drag files (Images, PDF, TXT) directly..."
                         value={evidence}
                         onChange={(e) => setEvidence(e.target.value)}
                         onPaste={handlePaste}
+                        onMouseUp={handleTextSelect} // Trigger selection check
+                        onKeyUp={handleTextSelect} // Keyboard selection check
                     />
+                    
+                    {/* Tags Indicator Overlay (Bottom Right) */}
+                    {tags.length > 0 && (
+                        <div className="absolute bottom-4 right-4 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
+                                {tags.length} Active Tags
+                            </span>
+                        </div>
+                    )}
                 </div>
                 {uploadedFiles.length > 0 && (
                     <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-2xl animate-in slide-in-from-bottom-5 duration-300 dark:shadow-inner">
@@ -130,6 +212,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     </div>
                 )}
             </div>
+            {/* ... (Bottom Toolbar kept exactly the same) ... */}
             <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                 <div className="flex-none w-[52px] md:w-auto">
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
