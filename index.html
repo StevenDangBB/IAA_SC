@@ -46,6 +46,7 @@
                         'spring': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Bouncy
                         'fluid': 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Smooth overshoot
                         'soft': 'cubic-bezier(0.4, 0, 0.2, 1)', // Apple-like
+                        'expo': 'cubic-bezier(0.19, 1, 0.22, 1)', // Snappy
                     },
                     animation: {
                         'brain-wave': 'brainWave 3s ease infinite',
@@ -120,10 +121,16 @@
         
         /* Global Font Scaling */
         :root { --font-scale: 1.0; }
-        html { font-size: calc(16px * var(--font-scale)); }
+        html { font-size: calc(16px * var(--font-scale)); scroll-behavior: smooth; }
         
         ::selection { background-color: #4f46e5 !important; color: #ffffff !important; }
         .dark ::selection { background-color: #fbbf24 !important; color: #000000 !important; }
+
+        /* Hardware Acceleration for Animations */
+        .animate-fade-in-up, .transition-transform {
+            will-change: transform, opacity;
+            transform: translateZ(0); /* Trigger GPU */
+        }
 
         /* Smooth Scrolling for Containers */
         .custom-scrollbar { scroll-behavior: smooth; }
@@ -228,7 +235,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-_prUDOmr.js"></script>
+  <script type="module" crossorigin src="./assets/index-BHaKQjbS.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C1TFRE--.js">
