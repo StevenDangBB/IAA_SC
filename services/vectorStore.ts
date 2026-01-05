@@ -47,9 +47,9 @@ class VectorStoreService {
             // Use embedding-001 model for vectors
             const response = await ai.models.embedContent({
                 model: "text-embedding-004",
-                content: { parts: [{ text }] }
+                contents: { parts: [{ text }] }
             });
-            return response.embedding.values || null;
+            return response.embedding?.values || null;
         } catch (e) {
             console.error("Embedding Error", e);
             return null;
