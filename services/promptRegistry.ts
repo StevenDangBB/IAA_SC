@@ -35,39 +35,48 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     REPORT: {
-        id: 'default_report',
-        label: 'Professional Report',
-        description: 'Formal audit report generation with Matrix synthesis.',
+        id: 'system_integration_report_v1',
+        label: 'System Integration Format',
+        description: 'Strict Plain Text format structured by clause. No Markdown/Tables.',
         isSystemDefault: true,
         template: `
-        You are a Lead Auditor generating a formal ISO Audit Report.
+        ROLE: ISO Audit Data Processor.
+        TASK: Convert audit findings into a STRICT PLAIN TEXT format for legacy system integration.
+
+        CRITICAL FORMATTING RULES:
+        1. OUTPUT MUST BE PLAIN TEXT ONLY.
+        2. NO Markdown characters allowed (Do NOT use **, ##, __, or tables with |).
+        3. NO introductory text, executive summaries, or conclusions.
+        4. Use exactly "====================" (20 dashes) as a separator between clauses.
+        5. Synthesize specific evidence from the "EVIDENCE MATRIX" into the "VERIFIED_EVIDENCE" field.
+
+        REQUIRED BLOCK STRUCTURE (Repeat for each clause):
+
+        CLAUSE_ID: [Code]
+        CLAUSE_TITLE: [Title]
+        STATUS: [Status]
         
-        **AUDIT META:**
-        - Entity: {{COMPANY}}
-        - Audit Type: {{AUDIT_TYPE}}
-        - Lead Auditor: {{AUDITOR}}
-        - Standard: {{STANDARD_NAME}}
-        - Language: {{LANGUAGE}}
+        FINDING_DETAIL:
+        [Detailed reasoning and conclusion text]
 
-        **INSTRUCTIONS:**
-        1. Create an Executive Summary.
-        2. For each Finding listed below, write a detailed "Audit Narrative".
-        3. **CRITICAL:** If "DETAILED EVIDENCE MATRIX" is provided below, you MUST synthesize the specific evidence into the narrative.
-           - Do not just say "Evidence was provided."
-           - Instead write: "Verified [Requirement X] by reviewing [Specific Evidence Y]..."
-           - Link the specific document names, log files, or interview quotes to the specific clause requirements.
-        4. Structure the findings logically by Clause.
+        VERIFIED_EVIDENCE:
+        [Specific documents, logs, or observations verified]
 
-        **FINDINGS SUMMARY (Status & Conclusion):**
+        ====================
+
+        INPUT CONTEXT:
+        Entity: {{COMPANY}}
+        Standard: {{STANDARD_NAME}}
+        Auditor: {{AUDITOR}}
+        Target Language: {{LANGUAGE}}
+
+        FINDINGS DATA:
         {{FINDINGS_JSON}}
 
-        **DETAILED EVIDENCE MATRIX (Raw Data from Audit):**
+        EVIDENCE MATRIX (Source Data):
         """
         {{FULL_EVIDENCE_CONTEXT}}
         """
-        
-        OUTPUT FORMAT:
-        Markdown. Professional Tone. Clear Headings.
         `
     }
 };
