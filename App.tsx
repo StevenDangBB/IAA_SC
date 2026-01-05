@@ -5,7 +5,7 @@ import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clau
 import { Icon, Toast, CommandPaletteModal } from './components/UI';
 import { Header } from './components/Header';
 import Sidebar from './components/Sidebar';
-import ReleaseNotesModal from './components/ReleaseNotesModal';
+import ProjectInfoModal from './components/ReleaseNotesModal'; // Now serves as Full Documentation
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
@@ -1102,7 +1102,7 @@ export default function App() {
     };
 
     return (
-        <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
+        <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative animate-fade-in-up">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
             {aiError && (
@@ -1159,7 +1159,7 @@ export default function App() {
                 {isSidebarOpen && <div className="fixed top-16 bottom-0 inset-x-0 bg-black/50 z-50 md:hidden backdrop-blur-sm transition-opacity duration-300 animate-in fade-in" onClick={() => setIsSidebarOpen(false)} />}
                 
                 {/* --- MAIN CONTENT AREA --- */}
-                <div className={`flex-1 flex flex-col min-w-0 relative w-full transition-all duration-300 ease-soft ${currentTabConfig.bgSoft} border-t-4 ${currentTabConfig.borderClass}`}>
+                <div className={`flex-1 flex flex-col min-w-0 relative w-full transition-all duration-300 ease-soft ${currentTabConfig.bgSoft} border-t-4 ${currentTabConfig.borderClass} will-change-transform`}>
                     
                     <div className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center gap-3">
                         <div className="flex-1 min-w-0">
@@ -1274,7 +1274,7 @@ export default function App() {
                 onSelectAction={(action: any) => { action.action(); }} 
             />
             
-            <ReleaseNotesModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
+            <ProjectInfoModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
 
             <ReferenceClauseModal 
                 isOpen={referenceClauseState.isOpen} 

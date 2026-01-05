@@ -3,180 +3,291 @@ import { useState, useEffect } from 'react';
 import { Icon } from './UI';
 import { APP_VERSION, RELEASE_NOTES, KEY_CAPABILITIES, BUILD_TIMESTAMP } from '../constants';
 
-const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     const [imgError, setImgError] = useState(false);
+    const [activeTab, setActiveTab] = useState<'overview' | 'guide' | 'tech' | 'changelog'>('overview');
 
     useEffect(() => {
         if (isOpen) {
             setImgError(false);
+            setActiveTab('overview');
         }
     }, [isOpen]);
 
     if (!isOpen) return null;
 
+    const tabs = [
+        { id: 'overview', label: 'Overview', icon: 'Session1_SparklePlus' },
+        { id: 'guide', label: 'User Guide', icon: 'BookOpen' },
+        { id: 'tech', label: 'System Blueprint', icon: 'Cpu' },
+        { id: 'changelog', label: 'Releases', icon: 'History' },
+    ];
+
+    const techStackData = [
+        { layer: "Frontend", tech: "React 18 + Vite", role: "Component Lifecycle, State Management", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20" },
+        { layer: "Styling", tech: "Tailwind CSS", role: "Utility-first styling, Dark mode adaptive", color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-50 dark:bg-cyan-900/20" },
+        { layer: "AI Engine", tech: "Google Gemini 3.0 Pro", role: "Reasoning, Analysis, Vision OCR", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
+        { layer: "Storage", tech: "IndexedDB + LocalStorage", role: "Vector Store, Session Persistence", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20" },
+        { layer: "Processing", tech: "Web Workers", role: "Non-blocking file parsing & chunking", color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50 dark:bg-rose-900/20" }
+    ];
+
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 fade-in backdrop-blur-md" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col h-[90vh] md:h-[85vh] border border-gray-100 dark:border-slate-800 transform transition-all scale-100 overflow-hidden relative" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl flex flex-col h-[90vh] md:h-[85vh] border border-gray-100 dark:border-slate-800 transform transition-all scale-100 overflow-hidden relative" onClick={e => e.stopPropagation()}>
                 
-                {/* --- Author Header Section --- */}
-                <div className="flex-shrink-0 relative overflow-hidden group">
-                    {/* Background Decorative Elements */}
+                {/* --- HEADER --- */}
+                <div className="flex-shrink-0 relative overflow-hidden group border-b border-gray-100 dark:border-slate-800">
+                    {/* Background */}
                     <div className="absolute inset-0 bg-slate-900">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+                        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                        <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
                     </div>
 
                     <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 p-2 bg-slate-800/50 rounded-full hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><Icon name="X" size={20}/></button>
 
-                    <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8 z-10">
-                        {/* Author Image */}
-                        <div className="relative flex-shrink-0">
-                            <div className="absolute -inset-10 bg-indigo-600/30 rounded-full blur-3xl"></div>
-                            <div className="absolute -inset-[6px] rounded-full bg-[conic-gradient(from_0deg,transparent_0_deg,#f472b6_100deg,#8b5cf6_200deg,#06b6d4_300deg,transparent_360deg)] opacity-100 blur-md animate-[spin_4s_linear_infinite]"></div>
-                            <div className="absolute -inset-1 bg-gradient-to-br from-amber-400 via-pink-500 to-cyan-500 rounded-full opacity-60 blur-lg animate-pulse"></div>
-
-                            <div className="relative w-24 h-24 rounded-full p-0.5 bg-slate-900 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl">
+                    <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 z-10">
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0 mb-4 md:mb-0">
+                            <div className="relative w-20 h-20 rounded-full p-0.5 bg-slate-900 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl mx-auto md:mx-0">
                                 {!imgError ? (
-                                    <img 
-                                        src="./author.png"
-                                        alt="Trung DANGHOANG" 
-                                        className="w-full h-full rounded-full object-cover bg-slate-800 border-2 border-slate-800"
-                                        onError={() => setImgError(true)}
-                                    />
+                                    <img src="./author.png" alt="Author" className="w-full h-full rounded-full object-cover" onError={() => setImgError(true)} />
                                 ) : (
-                                    <div className="w-full h-full rounded-full flex items-center justify-center bg-black relative overflow-hidden border-2 border-slate-800/50">
+                                    <div className="w-full h-full rounded-full flex items-center justify-center bg-black relative">
                                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1e1b4b_0%,_#000000_100%)]"></div>
-                                        <div className="absolute inset-0 opacity-30 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
-                                        <div className="absolute inset-[-100%] bg-gradient-to-tr from-transparent via-cyan-400/30 to-transparent rotate-45 animate-[spinReverse_6s_linear_infinite]"></div>
-                                        <div className="relative z-10 transform scale-110 drop-shadow-[0_0_25px_rgba(0,242,195,0.8)]">
-                                            <Icon name="TDLogo" size={56} />
-                                        </div>
+                                        <div className="relative z-10 transform scale-110"><Icon name="TDLogo" size={48} /></div>
                                     </div>
                                 )}
                             </div>
-                            <div className="absolute bottom-0 right-0 z-20 bg-blue-500 text-white p-1 rounded-full border-4 border-slate-900 shadow-sm" title="Verified Creator">
-                                <Icon name="CheckLineart" size={12}/> 
-                            </div>
                         </div>
 
-                        {/* Author Info */}
-                        <div className="flex-1 min-w-0 text-center md:text-left relative z-10">
-                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1">
-                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[0.6rem] font-bold text-amber-500 uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-                                    Solution Architect
-                                </span>
-                                <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-[0.6rem] font-bold text-indigo-400 uppercase tracking-widest">
-                                    AI Core Lead
-                                </span>
-                            </div>
-                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
-                                Trung DANGHOANG
+                        {/* Info */}
+                        <div className="flex-1 text-center md:text-left">
+                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2">
+                                ISO Audit Pro <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200 text-lg align-top ml-1">GOLD</span>
                             </h2>
-                            <p className="text-slate-400 text-sm font-medium flex items-center justify-center md:justify-start gap-2">
-                                Creator of <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400 font-bold">ISO Audit Pro</span>
-                            </p>
+                            <p className="text-slate-400 text-sm font-medium mb-4">The AI-Powered Compliance Assistant</p>
+                            
+                            <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                                {tabs.map(t => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setActiveTab(t.id as any)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                                    >
+                                        <Icon name={t.icon} size={14}/> {t.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
                 
-                {/* --- Content Body --- */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 bg-gray-50 dark:bg-slate-950">
+                {/* --- BODY --- */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-gray-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
                     
-                    <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* System Core - ALIGNED GRID */}
-                        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                                <Icon name="Cpu" size={14}/> System Core
-                            </h4>
-                            <div className="grid grid-cols-[120px_1fr] gap-y-3 gap-x-4 items-center">
-                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">App Version</span>
-                                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm tabular-nums">v{APP_VERSION}</span>
-                                
-                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">Build Time</span>
-                                <span className="font-mono text-[10px] text-slate-500 tabular-nums leading-tight">{BUILD_TIMESTAMP}</span>
-                                
-                                <span className="text-sm font-medium text-slate-500 dark:text-slate-400 text-right">Engine</span>
-                                <span className="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded inline-block w-fit">Gemini 3.0 Pro</span>
+                    {/* OVERVIEW TAB */}
+                    {activeTab === 'overview' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+                            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-gray-100 dark:border-slate-800 pb-2">System Status</h4>
+                                <div className="grid grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-y-3 gap-x-4 items-center">
+                                    <span className="text-sm font-medium text-slate-500 text-right">Version</span>
+                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">v{APP_VERSION}</span>
+                                    <span className="text-sm font-medium text-slate-500 text-right">Build</span>
+                                    <span className="font-mono text-[10px] text-slate-500 break-words">{BUILD_TIMESTAMP}</span>
+                                    <span className="text-sm font-medium text-slate-500 text-right">Engine</span>
+                                    <span className="font-mono text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded w-fit">Gemini 3.0 Pro</span>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Capabilities - ALIGNED LIST */}
-                        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                                <Icon name="Sparkle" size={14}/> Capabilities
-                            </h4>
-                            <div className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {KEY_CAPABILITIES.map((cap, idx) => (
-                                    <div key={idx} className="flex items-start gap-3">
-                                        <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0"></div>
-                                        <div className="flex-1">
-                                            <span className="text-xs font-bold text-slate-800 dark:text-white block mb-0.5">{cap.title}</span>
-                                            <span className="text-xs text-slate-500 dark:text-slate-400 leading-tight block">{cap.desc}</span>
+                                    <div key={idx} className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 flex items-start gap-3">
+                                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400"><Icon name={cap.icon} size={20}/></div>
+                                        <div>
+                                            <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200">{cap.title}</h5>
+                                            <p className="text-xs text-slate-500 mt-1">{cap.desc}</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Release History - STRICT TIMELINE ALIGNMENT */}
-                    <div>
-                        <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
-                            <Icon name="History" size={14}/> Release History
-                        </h4>
-                        
-                        <div className="ml-2 border-l-2 border-slate-200 dark:border-slate-800 space-y-8 pl-6 relative">
-                            {RELEASE_NOTES.map((release, index) => (
-                                <div key={index} className="relative group">
-                                    {/* Timeline Dot */}
-                                    <div className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 transition-colors duration-300 ${index === 0 ? 'bg-indigo-500 shadow-[0_0_0_4px_rgba(99,102,241,0.2)]' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
-                                    
-                                    {/* Header Row: Version and Date perfectly aligned */}
-                                    <div className="flex flex-row items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <h4 className={`text-sm font-bold tabular-nums ${index === 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                                                v{release.version}
-                                            </h4>
-                                            {index === 0 && <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1.5 py-0.5 rounded uppercase">Latest</span>}
-                                        </div>
-                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded tabular-nums">
-                                            {release.date}
-                                        </span>
+                    {/* GUIDE TAB */}
+                    {activeTab === 'guide' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+                            <section>
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-3">Workflow</h3>
+                                <ol className="list-decimal list-inside space-y-3 text-sm text-slate-600 dark:text-slate-300 marker:text-indigo-500 marker:font-bold">
+                                    <li><strong>Setup:</strong> Select a Standard (e.g., ISO 9001) from the Sidebar. Upload a source PDF if available for better accuracy.</li>
+                                    <li><strong>Evidence Gathering:</strong>
+                                        <ul className="list-disc list-inside ml-5 mt-2 space-y-2 text-slate-500">
+                                            <li>Use <strong>Document Mode</strong> for unstructured text, OCR images, or voice dictation.</li>
+                                            <li>Use <strong>Evidence Matrix</strong> for structured, clause-by-clause mapping (Recommended for GAP analysis).</li>
+                                        </ul>
+                                    </li>
+                                    <li><strong>Analysis:</strong> Select clauses in the Sidebar and click "Analyze". The AI uses Dual-Stream Synthesis to combine your raw evidence and matrix data.</li>
+                                    <li><strong>Reporting:</strong> Review findings, adjust conclusions, and generate the final report. You can export as formatted text or strict Plain Text for system integration.</li>
+                                </ol>
+                            </section>
+
+                            <section>
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-3">Pro Tips</h3>
+                                <div className="grid gap-3">
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-200">
+                                        <strong>Offline Mode:</strong> If internet is lost, the app switches to "Local Intelligence" (Heuristic Analysis) automatically.
                                     </div>
-                                    
-                                    {/* Content Features */}
-                                    <ul className="space-y-1.5">
-                                        {release.features.map((feature, idx) => {
-                                            const [tag, ...rest] = feature.split(':');
-                                            const hasTag = rest.length > 0;
-                                            return (
-                                                <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2 leading-relaxed">
-                                                    {hasTag ? (
-                                                        <>
-                                                            <span className="font-bold text-[9px] min-w-[50px] text-right uppercase text-slate-400 dark:text-slate-500 mt-0.5">{tag}</span>
-                                                            <span className="text-slate-300 dark:text-slate-600">|</span>
-                                                            <span>{rest.join(':')}</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <span className="w-1 h-1 bg-slate-400 rounded-full mt-1.5 flex-shrink-0"></span>
-                                                            <span>{feature}</span>
-                                                        </>
-                                                    )}
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-lg text-xs text-blue-800 dark:text-blue-200">
+                                        <strong>Privacy Shield:</strong> Toggle the Shield icon in the header to auto-redact emails/phones before sending data to AI.
+                                    </div>
                                 </div>
-                            ))}
+                            </section>
                         </div>
-                    </div>
+                    )}
+
+                    {/* TECH / SYSTEM BLUEPRINT TAB */}
+                    {activeTab === 'tech' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8 pb-10">
+                            
+                            {/* Section 1: Business Logic */}
+                            <section>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
+                                        <Icon name="Session7_Compass" size={24}/>
+                                    </div>
+                                    <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white">Business Logic & Workflow</h3>
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                                    <div className="p-5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                                        <h4 className="font-bold text-sm text-indigo-600 dark:text-indigo-400 mb-2 uppercase tracking-wide">1. Evidence Aggregation</h4>
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-left">
+                                            The system employs a unique <strong>"Dual-Stream Synthesis"</strong> engine.
+                                            <br/><br/>
+                                            <span className="block mb-2">🔹 <strong>Unstructured Stream:</strong> Captures raw text, OCR data from images/PDFs, and voice dictation logs. Ideal for messy, real-world audit trails.</span>
+                                            <span className="block">🔹 <strong>Structured Stream (Matrix):</strong> A tabular interface mapping specific evidence directly to ISO clauses. Ideal for GAP analysis and strict compliance checks.</span>
+                                            <br/>
+                                            <span className="block mt-2 text-xs italic opacity-75">During analysis, both streams are merged to provide the AI with a complete context.</span>
+                                        </p>
+                                    </div>
+
+                                    <div className="p-5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                                        <h4 className="font-bold text-sm text-emerald-600 dark:text-emerald-400 mb-2 uppercase tracking-wide">2. Compliance Intelligence</h4>
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-left">
+                                            Compliance is determined not just by matching keywords, but by <strong>Contextual Reasoning</strong>.
+                                            <br/><br/>
+                                            <span className="block mb-2">🔸 <strong>RAG (Retrieval-Augmented Generation):</strong> If a source PDF is uploaded, the system vectorizes it locally (IndexedDB) to ground the AI's answers in the specific standard's text.</span>
+                                            <span className="block">🔸 <strong>Heuristic Fallback:</strong> In offline mode, the system switches to "Local Intelligence", using regex and keyword scoring to estimate compliance without Cloud APIs.</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Section 2: Functional Modules */}
+                            <section>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 pl-2 border-l-4 border-purple-500">Core Functional Modules</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {[
+                                        { title: "Smart OCR Engine", desc: "Extracts text from images and scanned PDFs using Google Vision (Cloud) or fallback methods." },
+                                        { title: "Privacy Shield", desc: "Client-side PII redaction (Emails, Phones) before data leaves the browser." },
+                                        { title: "Report Synthesizer", desc: "Generates final audit reports in Markdown or Plain Text for system integration." },
+                                        { title: "Vector Store", desc: "Client-side vector database (IndexedDB) for semantic search of large standards." },
+                                        { title: "Neural Pool", desc: "Multi-key management system with smart failover and quota handling." },
+                                        { title: "Session Time Machine", desc: "Snapshot-based state management allowing rollbacks to previous audit points." }
+                                    ].map((feature, i) => (
+                                        <div key={i} className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-700">
+                                            <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-1">{feature.title}</h5>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug">{feature.desc}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                            {/* Section 3: Technical Architecture (Responsive Table) */}
+                            <section>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 pl-2 border-l-4 border-blue-500">Technical Architecture</h3>
+                                
+                                {/* Desktop Table View */}
+                                <div className="hidden md:block overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 uppercase tracking-wider text-xs">
+                                            <tr>
+                                                <th className="px-6 py-4 font-extrabold">Layer</th>
+                                                <th className="px-6 py-4 font-extrabold">Technology</th>
+                                                <th className="px-6 py-4 font-extrabold">Role</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-slate-800/50 bg-white dark:bg-slate-900">
+                                            {techStackData.map((row, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors">
+                                                    <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">{row.layer}</td>
+                                                    <td className={`px-6 py-4 font-bold ${row.color}`}>{row.tech}</td>
+                                                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{row.role}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-3">
+                                    {techStackData.map((row, idx) => (
+                                        <div key={idx} className="p-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-sm flex flex-col gap-2">
+                                            <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800 pb-2">
+                                                <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{row.layer}</span>
+                                                <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${row.bg} ${row.color}`}>
+                                                    {row.tech}
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                <strong className="text-slate-700 dark:text-slate-300">Role:</strong> {row.role}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                        </div>
+                    )}
+
+                    {/* CHANGELOG TAB */}
+                    {activeTab === 'changelog' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="border-l-2 border-slate-200 dark:border-slate-800 space-y-8 pl-6 relative ml-2">
+                                {RELEASE_NOTES.map((release, index) => (
+                                    <div key={index} className="relative group">
+                                        <div className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 transition-colors ${index === 0 ? 'bg-indigo-500 shadow-[0_0_0_4px_rgba(99,102,241,0.2)]' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+                                        <div className="flex justify-between mb-2">
+                                            <h4 className={`text-sm font-bold ${index === 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>v{release.version}</h4>
+                                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{release.date}</span>
+                                        </div>
+                                        <ul className="space-y-1.5">
+                                            {release.features.map((feature, idx) => (
+                                                <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2">
+                                                    <span className="w-1 h-1 bg-slate-400 rounded-full mt-1.5 flex-shrink-0"></span>
+                                                    <span>{feature}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     
-                    <div className="mt-10 pt-6 border-t border-gray-100 dark:border-slate-800 text-center">
-                        <p className="text-[10px] text-slate-400">
-                            © 2025 Trung DANGHOANG. All rights reserved. <br/>
-                            Built for ISO Audit Professional Compliance.
+                    {/* FORMAL FOOTER */}
+                    <div className="mt-10 pt-8 border-t border-gray-100 dark:border-slate-800 flex flex-col items-center">
+                        <div className="flex items-center gap-3 mb-2 opacity-80">
+                            <div className="h-[1px] w-12 bg-gradient-to-r from-transparent to-indigo-400 dark:to-indigo-500"></div>
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em]">Architected By</span>
+                            <div className="h-[1px] w-12 bg-gradient-to-l from-transparent to-indigo-400 dark:to-indigo-500"></div>
+                        </div>
+                        <h3 className="text-sm md:text-base font-black text-slate-800 dark:text-white tracking-tight mb-1">
+                            Trung Dang Hoang <span className="text-slate-400 dark:text-slate-500 font-serif italic font-normal ml-1">(Steven)</span>
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                            © 2026 All Rights Reserved. Built for ISO Audit Professional Compliance.
                         </p>
                     </div>
                 </div>
@@ -185,4 +296,4 @@ const ReleaseNotesModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     );
 };
 
-export default ReleaseNotesModal;
+export default ProjectInfoModal;

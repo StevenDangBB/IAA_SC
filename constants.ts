@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.5.0-STABLE"; 
-export const BUILD_TIMESTAMP = "2026-01-04 09:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.0.0-GOLD"; 
+export const BUILD_TIMESTAMP = "2026-01-05 12:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -90,33 +90,25 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "4.0.0-GOLD",
+        date: "2026-01-05",
+        features: [
+            "BREAKTHROUGH: Official Gold Release. Production Ready.",
+            "FEATURE: 'Evidence Matrix' - Structured, clause-by-clause evidence mapping interface.",
+            "FEATURE: 'Plain Text Export' - System-integration friendly reports (No Markdown/Tables).",
+            "ENGINE: 'Dual-Stream Synthesis' - AI now combines unstructured docs + structured matrix data.",
+            "PERFORMANCE: GPU-Accelerated transitions and 'Liquid Tab' navigation.",
+            "DOCS: Integrated full Project Documentation & User Guide."
+        ]
+    },
+    {
         version: "3.5.0-STABLE",
         date: "2026-01-04",
         features: [
             "BASELINE: Official Release Candidate. System stabilized and optimized.",
             "PRIVACY SHIELD: Integrated PII Redaction engine to mask Emails/Phones before AI processing.",
             "HYBRID AI ENGINE: Automatic switch between 'Gemini 3.0 Cloud' and 'Local Intelligence' (Offline Mode).",
-            "SMART FAILOVER: Multi-key pooling allows continuous operation even if primary quotas are exhausted.",
-            "RAG INTEGRATION: Upload Standards/Docs to Vector Database for context-aware AI analysis.",
-            "UI/UX: Liquid Tabs, GPU-Accelerated transitions, and non-blocking Sidebar performance."
-        ]
-    },
-    {
-        version: "3.4.2",
-        date: "2026-01-03",
-        features: [
-            "OPTIMIZATION: Updated AI Core to prioritize 'Gemini 3.0 Pro' automatically.",
-            "CORE: Intelligent model fallback. System tries Pro -> Flash -> Legacy.",
-            "UX: Added visual indicator for active model tier in settings."
-        ]
-    },
-    {
-        version: "3.4.1",
-        date: "2026-01-03",
-        features: [
-            "FIX: Resolved 'Entity Not Found' (404) errors by upgrading to Gemini 3.0 models.",
-            "CORE: Updated Model Hierarchy to remove deprecated aliases.",
-            "UX: Smoother model probing without console error noise."
+            "SMART FAILOVER: Multi-key pooling allows continuous operation even if primary quotas are exhausted."
         ]
     }
 ];
@@ -124,7 +116,8 @@ export const RELEASE_NOTES = [
 export const KEY_CAPABILITIES = [
     { icon: "ScanText", title: "Smart OCR", desc: "Extracts text from Images, PDFs & TXT." },
     { icon: "Wand2", title: "AI Analysis", desc: "Expert compliance evaluation." },
-    { icon: "FileText", title: "Auto Report", desc: "Synthesizes final audit findings." }
+    { icon: "FileText", title: "Auto Report", desc: "Synthesizes final audit findings." },
+    { icon: "LayoutList", title: "Matrix View", desc: "Structured Evidence Mapping." }
 ];
 
 export const INITIAL_EVIDENCE = "";
