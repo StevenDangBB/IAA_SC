@@ -5,6 +5,8 @@ import { cleanAndParseJSON } from "../utils";
 import { Standard, AnalysisResult } from "../types";
 import { PromptRegistry } from "./promptRegistry";
 import { VectorStore } from "./vectorStore";
+import { PrivacyService } from "./privacyService"; // NEW
+import { LocalIntelligence } from "./localIntelligence"; // NEW
 
 const getAiClient = (overrideKey?: string) => {
     let keyToUse = overrideKey;
@@ -103,27 +105,37 @@ export const generateOcrContent = async (textPrompt: string, base64Data: string,
     return response.text || "";
 };
 
-// --- UPDATED ANALYSIS WITH RAG & PROMPT REGISTRY ---
+// --- UPDATED ANALYSIS WITH PRIVACY & LOCAL FALLBACK ---
 export const generateAnalysis = async (
     clause: { code: string, title: string, description: string },
     standardName: string,
     evidenceContext: string,
     tagsContext: string,
     apiKey?: string, 
-    model?: string
+    model?: string,
+    usePrivacyShield: boolean = false
 ) => {
+    // 1. Check Offline Status
+    if (!navigator.onLine) {
+        console.log("Offline Mode: Using Local Intelligence");
+        return LocalIntelligence.analyze(clause.code, clause.title, evidenceContext);
+    }
+
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
     
-    // 1. RAG Search (Semantic)
-    // We search for the Clause Title + Description in the Vector DB (populated by Source Doc)
-    // Note: We need the API key here to embed the query
+    // 2. RAG Search (Semantic)
     const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
-    // Use the *current* active key for RAG
     const ragKey = apiKey || ""; 
     const ragContext = await VectorStore.search(ragQuery, ragKey);
 
-    // 2. Hydrate Prompt
+    // 3. Privacy Shield Redaction
+    let safeEvidence = evidenceContext + "\n\nTAGGED SECTIONS:\n" + tagsContext;
+    if (usePrivacyShield) {
+        safeEvidence = PrivacyService.redact(safeEvidence);
+    }
+
+    // 4. Hydrate Prompt
     const template = PromptRegistry.getPrompt('ANALYSIS');
     const finalPrompt = PromptRegistry.hydrate(template.template, {
         STANDARD_NAME: standardName,
@@ -131,7 +143,7 @@ export const generateAnalysis = async (
         CLAUSE_TITLE: clause.title,
         CLAUSE_DESC: clause.description,
         RAG_CONTEXT: ragContext || "No source document available for vector search.",
-        EVIDENCE: evidenceContext + "\n\nTAGGED SECTIONS:\n" + tagsContext
+        EVIDENCE: safeEvidence
     });
 
     const targetModel = model || DEFAULT_GEMINI_MODEL;
@@ -147,7 +159,7 @@ export const generateAnalysis = async (
                 suggestion: { type: Type.STRING },
                 evidence: { type: Type.STRING },
                 conclusion_report: { type: Type.STRING },
-                crossRefs: { type: Type.ARRAY, items: { type: Type.STRING } } // New: Cross References
+                crossRefs: { type: Type.ARRAY, items: { type: Type.STRING } } 
             },
             required: ["clauseId", "status", "reason", "evidence"]
         }
@@ -162,7 +174,8 @@ export const generateAnalysis = async (
         return response.text || "{}";
     } catch (e: any) {
         console.error("Analysis Error:", e);
-        throw new Error(e.message || "Analysis failed");
+        // Fallback to local if API fails (network or quota)
+        return LocalIntelligence.analyze(clause.code, clause.title, evidenceContext);
     }
 };
 

@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "3.5.0-REFACTOR"; 
-export const BUILD_TIMESTAMP = "2026-01-03 16:00:00 (GMT+7)"; 
+export const APP_VERSION = "3.5.0-STABLE"; 
+export const BUILD_TIMESTAMP = "2026-01-04 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -48,8 +48,6 @@ export const MY_FIXED_KEYS: string[] = [
 
 // CHANGE: Critical reordering. 
 // We now probe 'gemini-3-pro-preview' FIRST. 
-// If the key has quota/access for Pro, it will be selected.
-// If Pro fails (404/403/Quota), it gracefully falls back to Flash.
 export const MODEL_HIERARCHY = [
     "gemini-3-pro-preview",   // PRIMARY (High Reasoning, Best Quality)
     "gemini-3-flash-preview", // SECONDARY (High Speed, Fallback)
@@ -92,12 +90,15 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "3.5.0-REFACTOR",
-        date: "2026-01-03",
+        version: "3.5.0-STABLE",
+        date: "2026-01-04",
         features: [
-            "SYSTEM: Major Refactor Baseline Established.",
-            "ARCH: Decoupled UI components for improved stability.",
-            "CORE: Moved file processing logic to utility layer."
+            "BASELINE: Official Release Candidate. System stabilized and optimized.",
+            "PRIVACY SHIELD: Integrated PII Redaction engine to mask Emails/Phones before AI processing.",
+            "HYBRID AI ENGINE: Automatic switch between 'Gemini 3.0 Cloud' and 'Local Intelligence' (Offline Mode).",
+            "SMART FAILOVER: Multi-key pooling allows continuous operation even if primary quotas are exhausted.",
+            "RAG INTEGRATION: Upload Standards/Docs to Vector Database for context-aware AI analysis.",
+            "UI/UX: Liquid Tabs, GPU-Accelerated transitions, and non-blocking Sidebar performance."
         ]
     },
     {

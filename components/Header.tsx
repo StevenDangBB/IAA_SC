@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon, FontSizeController } from './UI';
 
 interface HeaderProps {
@@ -23,6 +23,18 @@ export const Header: React.FC<HeaderProps> = ({
     isDarkMode, setIsDarkMode, isSystemHealthy,
     onOpenSettings, onOpenAbout
 }) => {
+    // New local state for privacy (synced via localStorage in effect usually, or props if hoisted)
+    // For now, simpler to toggle here and let Service read from a global or param
+    const [privacyEnabled, setPrivacyEnabled] = useState(false);
+
+    const togglePrivacy = () => {
+        const newState = !privacyEnabled;
+        setPrivacyEnabled(newState);
+        // Persist setting
+        localStorage.setItem('iso_privacy_shield', String(newState));
+        // Visual feedback handled by state
+    };
+
     return (
         <header className="flex-shrink-0 px-4 md:px-6 py-0 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-[70] relative flex justify-between items-center h-16 transition-all duration-300">
             <div className="flex items-center h-full gap-3 md:gap-5">
@@ -40,6 +52,15 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
+                {/* Privacy Shield Toggle */}
+                <button 
+                    onClick={togglePrivacy} 
+                    className={`p-2 rounded-xl transition-all active:scale-95 border ${privacyEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400' : 'bg-transparent border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`} 
+                    title={privacyEnabled ? "Privacy Shield Active (PII Redaction On)" : "Enable Privacy Shield"}
+                >
+                    <Icon name="ShieldEye" size={20}/>
+                </button>
+
                 <button onClick={() => setIsCmdPaletteOpen(true)} className="p-2 rounded-xl text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all active:scale-95" title="Command Palette (Ctrl+K)">
                     <Icon name="Session6_Zap" size={20}/>
                 </button>

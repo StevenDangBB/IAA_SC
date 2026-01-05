@@ -32,7 +32,8 @@ interface SidebarProps {
     onClearKnowledge: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
+// WRAP IN REACT.MEMO: Crucial for performance to stop sidebar re-rendering on text input in main area
+const Sidebar: React.FC<SidebarProps> = React.memo(({ 
     isOpen, width, setWidth, standards, standardKey, setStandardKey, 
     auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, 
     onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause, 
@@ -354,5 +355,5 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
         </div>
     );
-};
+});
 export default Sidebar;

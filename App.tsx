@@ -10,9 +10,9 @@ import ReferenceClauseModal from './components/ReferenceClauseModal';
 import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
 import { KnowledgeStore } from './services/knowledgeStore'; 
-import { VectorStore } from './services/vectorStore'; // NEW: Vector DB
+import { VectorStore } from './services/vectorStore'; 
 import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile } from './utils';
-import { workerChunkText, runInWorker } from './services/workerUtils'; // NEW: Worker Utils
+import { workerChunkText, runInWorker } from './services/workerUtils'; 
 
 // New Component Imports
 import { EvidenceView } from './components/views/EvidenceView';
@@ -100,7 +100,7 @@ export default function App() {
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
-    const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]); // New: Tags
+    const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]); 
     
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     
@@ -133,8 +133,6 @@ export default function App() {
     const [rescueKey, setRescueKey] = useState("");
     const [isRescuing, setIsRescuing] = useState(false);
 
-    // REFACTORED: Tab logic moved to TabNavigation.tsx
-    // We only need the current config for container styling
     const currentTabConfig = TABS_CONFIG.find(t => t.id === layoutMode) || TABS_CONFIG[0];
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -167,7 +165,6 @@ export default function App() {
         document.documentElement.style.setProperty('--font-scale', fontSizeScale.toString());
     }, [fontSizeScale]);
 
-    // ... (Keep existing loadKeyData, Background Checker, etc. same as before) ...
     const loadKeyData = (): ApiKeyProfile[] => {
         try {
             const stored = localStorage.getItem("iso_api_keys");
@@ -188,24 +185,15 @@ export default function App() {
         } catch (e) { console.error("Failed to load keys", e); return []; }
     };
 
-    // --- PERSISTENT KNOWLEDGE BASE STORAGE (UPDATED TO INDEXEDDB) ---
-    // Removed old getStorageKey helpers as we use IndexedDB now
-
     const loadKnowledgeForStandard = async (key: string) => {
         try {
-            // 1. Try migration first (if user had data in LocalStorage)
             await KnowledgeStore.migrateFromLocalStorage(key);
-
-            // 2. Load from IndexedDB
             const doc = await KnowledgeStore.getDocument(key);
-            
             if (doc) {
                 setKnowledgeBase(doc.content);
                 setKnowledgeFileName(doc.fileName);
                 setToastMsg(`Restored source document: ${doc.fileName}`);
-                // NEW: Populate Vector DB if active key exists
                 if (activeKeyProfile?.key) {
-                    // We do this silently in background
                     VectorStore.addDocuments(key, doc.content, activeKeyProfile.key).catch(e => console.warn("Background Vectorization:", e));
                 }
             } else {
@@ -223,11 +211,8 @@ export default function App() {
         try {
             await KnowledgeStore.saveDocument(key, fileName, content);
             console.log(`Saved ${fileName} to KnowledgeStore`);
-            
-            // NEW: Vectorization Trigger
             if (activeKeyProfile?.key) {
                 setToastMsg("Vectorizing Source Document for AI Search...");
-                // Use worker utility to chunk logic effectively (already handled inside VectorStore logic or here)
                 await VectorStore.addDocuments(key, content, activeKeyProfile.key);
                 setToastMsg("Document Vectorized for Semantic Search.");
             }
@@ -237,14 +222,12 @@ export default function App() {
         }
     };
 
-    // --- NEW: Handle Clearing Knowledge Base ---
     const handleClearKnowledge = async () => {
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
         if (standardKey) {
             try {
                 await KnowledgeStore.deleteDocument(standardKey);
-                // NEW: Clear Vectors
                 await VectorStore.clear(); 
                 setToastMsg("Source document removed from database.");
             } catch (e) {
@@ -253,11 +236,9 @@ export default function App() {
         }
     };
 
-    // --- CRITICAL: Reset/Restore Knowledge Base when Standard changes ---
     const handleSetStandardKey = (key: string) => {
         if (key !== standardKey) {
             setStandardKey(key);
-            // Attempt to load existing KB for this new key (Async)
             loadKnowledgeForStandard(key);
         }
     };
@@ -324,7 +305,7 @@ export default function App() {
             status, 
             activeModel: result.activeModel, 
             latency: result.latency,
-            errorMessage: result.errorMessage // Pass the real error message
+            errorMessage: result.errorMessage 
         };
     };
 
@@ -414,7 +395,6 @@ export default function App() {
         if(cap.status === 'valid') {
             setToastMsg("Key added successfully!");
         } else {
-            // SHOW THE REAL ERROR MESSAGE HERE
             setAiError(cap.errorMessage || "Connection failed. Please check your API Key and Network.");
         }
     };
@@ -435,6 +415,11 @@ export default function App() {
     };
 
     const executeWithSmartFailover = async <T,>(operation: (apiKey: string, model: string) => Promise<T>): Promise<T> => {
+        // If offline, bypass smart failover for keys and just execute the operation (which handles offline logic)
+        if (!navigator.onLine) {
+             return operation("offline", "local-model");
+        }
+
         const candidates = apiKeys.filter(k => k.status !== 'invalid').sort((a, b) => {
             if (a.status === 'valid' && b.status !== 'valid') return -1;
             if (a.status !== 'valid' && b.status === 'valid') return 1;
@@ -469,13 +454,12 @@ export default function App() {
                 const data = JSON.parse(session);
                 if (data.standardKey) {
                     setStandardKey(data.standardKey);
-                    // Also attempt to load knowledge base for this standard
                     await loadKnowledgeForStandard(data.standardKey);
                 }
                 if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
                 if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
                 if (data.evidence) setEvidence(data.evidence);
-                if (data.evidenceTags) setEvidenceTags(data.evidenceTags); // NEW
+                if (data.evidenceTags) setEvidenceTags(data.evidenceTags); 
                 if (data.analysisResult) setAnalysisResult(data.analysisResult);
                 if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
                 if (data.finalReportText) setFinalReportText(data.finalReportText);
@@ -488,12 +472,10 @@ export default function App() {
     const handleUpdateStandard = (std: Standard) => { setCustomStandards(prev => ({ ...prev, [standardKey]: std })); setToastMsg("Standard updated successfully."); };
     const handleResetStandard = (key: string) => { setCustomStandards(prev => { const next = { ...prev }; delete next[key]; return next; }); setToastMsg("Standard reset to default."); };
     
-    // --- KNOWLEDGE BASE UPLOAD (EXISTING STANDARD) ---
     const handleKnowledgeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; 
         if (!file) return; 
         
-        // Defensive check
         if (!standardKey || standardKey === "ADD_NEW") {
             setToastMsg("Please select a Standard first before uploading a source document.");
             return;
@@ -503,13 +485,10 @@ export default function App() {
         setToastMsg("Parsing Standard Document...");
         
         try {
-            // WORKER UPGRADE: Using processSourceFile (which could use worker internals later)
-            // For now, we still wait for main thread parse, but then Vectorize in background
             const text = await processSourceFile(file);
             setKnowledgeBase(text);
             setToastMsg(`Standard Loaded (${(text.length / 1024).toFixed(0)}KB). Saving...`);
             
-            // Save to persistent storage (IndexedDB) and Vectorize
             if (standardKey) {
                 await saveKnowledgeToStorage(standardKey, text, file.name);
             }
@@ -520,24 +499,19 @@ export default function App() {
         }
     };
 
-    // --- ADD NEW STANDARD (SMART AI IMPORT) ---
     const handleAddStandard = async (name: string, file: File | null) => {
         setShowAddStandardModal(false);
         const newKey = `CUSTOM_${Date.now()}`;
         let text = "";
 
-        // 1. Process File first to get the structure
         if (file) {
             setToastMsg("Processing document and extracting structure...");
             try {
-                // Refactored: using util function
                 text = await processSourceFile(file);
-                // Save Source immediately to KnowledgeStore
                 setKnowledgeBase(text);
                 setKnowledgeFileName(file.name);
                 await saveKnowledgeToStorage(newKey, text, file.name);
                 
-                // 2. Use AI to Parse Structure
                 setToastMsg("AI is analyzing structure... (This may take 15s)");
                 
                 try {
@@ -546,7 +520,7 @@ export default function App() {
                         setCustomStandards(prev => ({ ...prev, [newKey]: parsedStandard }));
                         setStandardKey(newKey);
                         setToastMsg(`Successfully imported ${name} with full structure.`);
-                        return; // Exit here if successful
+                        return; 
                     }
                 } catch (parseError) {
                     console.error("AI Parse Failed, falling back to basic", parseError);
@@ -561,7 +535,6 @@ export default function App() {
             setKnowledgeFileName(null);
         }
 
-        // 3. Fallback / Basic Creation if no file or AI failed
         const newStandard: Standard = {
             name: name,
             description: `Custom Standard created on ${new Date().toLocaleDateString()}`,
@@ -580,8 +553,6 @@ export default function App() {
         if (!file) setToastMsg(`Created basic standard: ${name}`);
     };
 
-    // ... (Auto Save, BeforeUnload, New Session, Restore, OCR, Export, Analyze, Report - kept same) ...
-    // --- ROBUST AUTO-SAVE LOGIC ---
     useEffect(() => {
         if (isRestoring.current) return;
         const isEmptyState = !evidence && (!selectedClauses || selectedClauses.length === 0);
@@ -669,7 +640,6 @@ export default function App() {
             localStorage.setItem("iso_session_data", JSON.stringify(data));
             if (data.standardKey) {
                 setStandardKey(data.standardKey);
-                // Load KB from IndexedDB
                 await loadKnowledgeForStandard(data.standardKey);
             }
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
@@ -763,7 +733,6 @@ export default function App() {
         setReferenceClauseState({ isOpen: false, clause: null, isLoading: false, fullText: { en: "", vi: "" } });
     };
 
-    // --- UPDATED ANALYZE FUNCTION (Supports RAG & Prompt Registry) ---
     const handleAnalyze = async () => {
         if (!standardKey) { setToastMsg("Select a Standard first."); return; }
         if (selectedClauses.length === 0) { setToastMsg("Select at least one Clause to analyze."); return; }
@@ -786,13 +755,14 @@ export default function App() {
                  fullEvidenceContext += `\n\n--- Document: ${f.file.name} ---\n${f.result}`;
              });
 
-             // Format Tags for Context
              let tagContext = "";
              evidenceTags.forEach(tag => {
                  tagContext += `[Tagged for ${tag.clauseId}]: "${tag.text}"\n`;
              });
 
-             // OPTIMIZATION: Loop and stream results 1-by-1
+             // Check privacy setting from storage (simulated read)
+             const privacyEnabled = localStorage.getItem('iso_privacy_shield') === 'true';
+
              for (let i = 0; i < targets.length; i++) {
                  const clause = targets[i];
                  setCurrentAnalyzingClause(clause.code);
@@ -803,10 +773,11 @@ export default function App() {
                         generateAnalysis(
                             { code: clause.code, title: clause.title, description: clause.description },
                             allStandards[standardKey].name,
-                            fullEvidenceContext.substring(0, 50000), // Limit raw context
-                            tagContext, // Pass tagged info
+                            fullEvidenceContext.substring(0, 50000), 
+                            tagContext, 
                             key, 
-                            model
+                            model,
+                            privacyEnabled // Pass privacy state
                         )
                      );
                      
@@ -821,7 +792,7 @@ export default function App() {
                              evidence: parsed.evidence || '',
                              suggestion: parsed.suggestion || '',
                              conclusion_report: parsed.conclusion_report || '',
-                             crossRefs: parsed.crossRefs || [] // Map new feature
+                             crossRefs: parsed.crossRefs || []
                          };
                      } else {
                          newFinding = {
@@ -853,7 +824,7 @@ export default function App() {
                  }
              }
              
-             setToastMsg(`Analysis Complete.`);
+             setToastMsg(navigator.onLine ? `Analysis Complete.` : `Offline Analysis Complete.`);
 
         } catch (e: any) {
             handleGenericError(e);
@@ -880,7 +851,6 @@ export default function App() {
         setLoadingMessage("Synthesizing Final Audit Report...");
         
         try {
-            // Updated to use Prompt Registry via Service
             const report = await executeWithSmartFailover((key, model) => 
                 generateTextReport({
                     company: auditInfo.company,
@@ -903,7 +873,6 @@ export default function App() {
         }
     };
 
-    // Export Processing Effect (Existing Logic for Translation/Files)
     useEffect(() => {
         if (!exportState.isOpen || exportState.isPaused || exportState.isFinished) return;
 
@@ -942,8 +911,6 @@ export default function App() {
                 const targetLanguageName = exportState.targetLang === 'vi' ? 'Vietnamese' : 'English';
                 const prompt = `Translate to ${targetLanguageName}. Keep formatting. ISO Audit Context.\n\nInput:\n"""${chunk}"""`;
 
-                // Quick translate logic (inline here vs service for simplicity as it's chunk-based)
-                // In production, move to service
                 result = await executeWithSmartFailover(async (key, model) => {
                      const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: key });
                      const res = await ai.models.generateContent({ model: model, contents: prompt });
@@ -989,7 +956,6 @@ export default function App() {
             setIsRescuing(false);
         }
     };
-    // ------------------------------------
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setIsCmdPaletteOpen(prev => !prev); } };
@@ -1039,7 +1005,6 @@ export default function App() {
         return baseActions;
     }, [isDarkMode, standardKey, allStandards, selectedClauses, activeKeyId, apiKeys]); 
 
-    // Badge Logic
     const displayBadge = useMemo(() => {
         const currentStandardName = allStandards[standardKey]?.name || "";
         const match = currentStandardName.match(/\((.*?)\)/);
@@ -1178,9 +1143,9 @@ export default function App() {
                                 evidenceLanguage={evidenceLanguage}
                                 setEvidenceLanguage={setEvidenceLanguage}
                                 textareaRef={evidenceTextareaRef}
-                                tags={evidenceTags} // New Prop
-                                onAddTag={(newTag) => setEvidenceTags(prev => [...prev, newTag])} // New Prop
-                                selectedClauses={selectedClauses} // New Prop
+                                tags={evidenceTags} 
+                                onAddTag={(newTag) => setEvidenceTags(prev => [...prev, newTag])} 
+                                selectedClauses={selectedClauses} 
                             />
                         )}
                         {layoutMode === 'findings' && (

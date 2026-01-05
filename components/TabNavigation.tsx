@@ -10,7 +10,7 @@ interface TabNavigationProps {
     sidebarWidth: number; // Needed to trigger resize recalc
 }
 
-export const TabNavigation: React.FC<TabNavigationProps> = ({ 
+export const TabNavigation: React.FC<TabNavigationProps> = React.memo(({ 
     layoutMode, 
     setLayoutMode, 
     isSidebarOpen,
@@ -68,4 +68,4 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             ))}
         </div>
     );
-};
+});

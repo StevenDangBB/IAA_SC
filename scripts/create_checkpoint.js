@@ -1,3 +1,4 @@
+
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +16,7 @@ try {
 
 const CHECKPOINT_NAME = `v${version}_${TIMESTAMP}`;
 const DEST_DIR = path.join(BACKUP_ROOT, CHECKPOINT_NAME);
+const LATEST_DIR = path.join(BACKUP_ROOT, 'latest');
 
 // Directories/Files to backup (Whitelist approach for safety)
 const INCLUDE_LIST = [
@@ -88,6 +90,13 @@ try {
         note: "Baseline Checkpoint created via npm run checkpoint"
     };
     fs.writeFileSync(path.join(DEST_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
+    // Update 'latest' pointer (copy content to latest folder for easy reference)
+    if (fs.existsSync(LATEST_DIR)) {
+        fs.rmSync(LATEST_DIR, { recursive: true, force: true });
+    }
+    copyRecursiveSync(DEST_DIR, LATEST_DIR);
+    console.log(`📌  Updated 'latest' checkpoint reference.`);
 
     console.log('--------------------------------------------------');
     console.log('✨  CHECKPOINT CREATED SUCCESSFULLY');

@@ -6,7 +6,7 @@ import { EvidenceTag } from '../../types';
 
 interface EvidenceViewProps {
     evidence: string;
-    setEvidence: (text: string) => void;
+    setEvidence: React.Dispatch<React.SetStateAction<string>>;
     uploadedFiles: UploadedFile[];
     setUploadedFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
     onOcrProcess: () => void;
@@ -32,10 +32,75 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     textareaRef, tags = [], onAddTag, selectedClauses = []
 }) => {
     const [isDragging, setIsDragging] = useState(false);
+    const [isListening, setIsListening] = useState(false); // Voice state
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const recognitionRef = useRef<any>(null);
     
     // Tagging State with Coordinates
     const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, text: string, start: number, end: number } | null>(null);
+
+    // --- VOICE LOGIC ---
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+        } else {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Voice-to-Text not supported in this browser.");
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = evidenceLanguage === 'vi' ? 'vi-VN' : 'en-US';
+
+            recognition.onresult = (event: any) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                
+                // Append only final results to state to avoid overwriting user edits
+                if (finalTranscript) {
+                    setEvidence(prev => prev + (prev ? " " : "") + finalTranscript);
+                }
+            };
+
+            recognition.onerror = (event: any) => {
+                console.error("Speech Error", event.error);
+                setIsListening(false);
+                if (event.error === 'not-allowed') {
+                    alert("Microphone permission denied. Please check your browser settings.");
+                }
+            };
+
+            recognition.onend = () => {
+                // If it stops automatically (e.g. silence), update UI
+                // However, we set isListening false on manual stop or error.
+                // If we want continuous to truly mean continuous, we might need to restart it here if not manually stopped.
+                // For this implementation, we'll just let it toggle off.
+                if (isListening) {
+                     setIsListening(false);
+                }
+            };
+
+            try {
+                recognition.start();
+                recognitionRef.current = recognition;
+                setIsListening(true);
+            } catch (e) {
+                console.error("Failed to start recognition", e);
+                setIsListening(false);
+            }
+        }
+    };
 
     const processNewFiles = (files: File[]) => {
         const newFiles = files.map(f => ({
@@ -157,14 +222,14 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     <textarea
                         ref={textareaRef}
                         className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900/60"
-                        placeholder="Paste audit evidence here or drag files (Images, PDF, TXT) directly..."
+                        placeholder="Paste audit evidence here or use Voice Dictation..."
                         value={evidence}
                         onChange={(e) => setEvidence(e.target.value)}
                         onPaste={handlePaste}
                         onMouseUp={handleTextSelect} 
                     />
                     
-                    {/* Tags Indicator Overlay */}
+                    {/* Tags Indicator Overlay - Kept floating as it is informational */}
                     {tags.length > 0 && (
                         <div className="absolute bottom-4 right-4 pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity">
                             <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
@@ -220,7 +285,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     </div>
                 )}
             </div>
-            {/* ... Bottom toolbar same as before ... */}
+            {/* ... Bottom toolbar ... */}
             <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                 <div className="flex-none w-[52px] md:w-auto">
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
@@ -229,6 +294,16 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                         <span className="hidden md:inline">Upload</span>
                     </button>
                 </div>
+
+                {/* Voice Dictation Button - Positioned AFTER Upload based on order: Upload - Voice - Analyze - Export */}
+                <button
+                    onClick={toggleListening}
+                    className={`flex-none w-[52px] md:w-auto md:px-4 h-[52px] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${isListening ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 animate-pulse' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`}
+                    title={isListening ? "Stop Recording" : "Voice Dictation"}
+                >
+                    <Icon name="Mic" size={20} className={isListening ? "animate-pulse" : ""} />
+                    <span className="hidden md:inline">{isListening ? "Listening..." : "Dictate"}</span>
+                </button>
 
                 <button onClick={onAnalyze} disabled={!isReadyForAnalysis} title={analyzeTooltip} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyForAnalysis ? "btn-shrimp text-white active:scale-95" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border border-transparent"}`}>
                     {isAnalyzeLoading ? <SparkleLoader className="text-white" /> : <Icon name="Wand2" size={20} className="hidden md:block" />}
