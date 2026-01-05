@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO, TABS_CONFIG } from './constants';
 import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot, EvidenceTag, MatrixRow } from './types';
@@ -11,7 +10,7 @@ import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
 import { KnowledgeStore } from './services/knowledgeStore'; 
 import { VectorStore } from './services/vectorStore'; 
-import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile, serializeMatrixData } from './utils';
+import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile, serializeMatrixData, generateContentHash } from './utils';
 import { workerChunkText, runInWorker } from './services/workerUtils'; 
 
 // New Component Imports
@@ -71,6 +70,8 @@ export default function App() {
     
     const isRestoring = useRef(false);
     const isManuallyCleared = useRef(false);
+    // NEW: Cache for Analysis Results to save tokens
+    const analysisCache = useRef<Record<string, AnalysisResult>>({});
 
     // KNOWLEDGE BASE (Source Data) - Persistent & Swappable
     const [knowledgeBase, setKnowledgeBase] = useState<string | null>(null);
@@ -143,7 +144,7 @@ export default function App() {
     
     // Check if matrix has data
     const hasMatrixData = useMemo(() => {
-        return Object.values(matrixData).some(rows => rows.some(r => r.status === 'supplied'));
+        return (Object.values(matrixData) as MatrixRow[][]).some(rows => rows.some(r => r.status === 'supplied'));
     }, [matrixData]);
 
     const hasEvidence = evidence.trim().length > 0 || uploadedFiles.length > 0 || hasMatrixData;
@@ -640,6 +641,8 @@ export default function App() {
             setKnowledgeBase(null); 
             setKnowledgeFileName(null);
             setLayoutMode('evidence'); 
+            // Clear Cache on New Session
+            analysisCache.current = {};
             setToastMsg("New Session Started. (Previous session archived in Recall)");
         } catch (error) {
             console.error("New Session Error", error);
@@ -667,6 +670,8 @@ export default function App() {
             if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
             if (data.finalReportText) setFinalReportText(data.finalReportText);
             setSessionKey(Date.now());
+            // Clear cache on restore to ensure fresh state if contexts mismatch
+            analysisCache.current = {};
             const now = new Date();
             setLastSavedTime(now.toLocaleTimeString());
             setToastMsg(`Restored session from: ${new Date(snapshot.timestamp).toLocaleTimeString()}`);
@@ -785,6 +790,10 @@ export default function App() {
 
         setIsAnalyzeLoading(true);
         setLayoutMode('findings');
+        // Do not clear analysisResult immediately, we append to it or update it.
+        // But for a fresh "Analyze" click on a set, usually we expect fresh results for those specific clauses.
+        // The previous logic cleared it: setAnalysisResult([]); 
+        // We will clear it to avoid duplicates in UI for now, but in a real persistent app we might want to merge.
         setAnalysisResult([]);
         
         try {
@@ -812,10 +821,28 @@ export default function App() {
              });
 
              const privacyEnabled = localStorage.getItem('iso_privacy_shield') === 'true';
+             
+             // --- IDEMPOTENT CACHING SIGNATURE ---
+             // Generate a hash of the entire context. If the text hasn't changed, the hash matches.
+             const contextFingerprint = `${standardKey}_${privacyEnabled}_${generateContentHash(fullEvidenceContext + tagContext)}`;
 
              for (let i = 0; i < targets.length; i++) {
                  const clause = targets[i];
                  setCurrentAnalyzingClause(clause.code);
+                 
+                 // Unique Key for this specific Analysis Instance (Clause + Context)
+                 const findingKey = `${clause.id}_${contextFingerprint}`;
+
+                 // 1. CHECK CACHE
+                 if (analysisCache.current[findingKey]) {
+                     console.log(`[Smart Cache] Hit for ${clause.code}`);
+                     setAnalysisResult(prev => [...(prev || []), analysisCache.current[findingKey]]);
+                     setSelectedFindings(prev => ({...prev, [clause.code]: true}));
+                     // Yield to UI loop briefly
+                     await new Promise(r => setTimeout(r, 10)); 
+                     continue; 
+                 }
+
                  setLoadingMessage(`Analyzing [${clause.code}] ${clause.title}...`);
 
                  try {
@@ -855,6 +882,9 @@ export default function App() {
                              crossRefs: []
                          };
                      }
+
+                     // 2. STORE IN CACHE
+                     analysisCache.current[findingKey] = newFinding;
 
                      setAnalysisResult(prev => [...(prev || []), newFinding]);
                      setSelectedFindings(prev => ({...prev, [clause.code]: true})); 

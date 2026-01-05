@@ -141,3 +141,15 @@ export const serializeMatrixData = (matrixData: Record<string, MatrixRow[]>, sel
 
     return hasContent ? output : "";
 };
+
+// --- NEW: Idempotent Hashing for Caching ---
+export const generateContentHash = (str: string): string => {
+    let hash = 0, i, chr;
+    if (str.length === 0) return hash.toString();
+    for (i = 0; i < str.length; i++) {
+        chr = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash.toString(36);
+};
