@@ -2,7 +2,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Icon, SparkleLoader } from '../UI';
 import { UploadedFile } from '../../App'; 
-import { EvidenceTag } from '../../types';
+import { EvidenceTag, StandardsData, MatrixRow } from '../../types';
+import { EvidenceMatrix } from './EvidenceMatrix';
 
 interface EvidenceViewProps {
     evidence: string;
@@ -23,16 +24,24 @@ interface EvidenceViewProps {
     tags?: EvidenceTag[];
     onAddTag?: (tag: EvidenceTag) => void;
     selectedClauses?: string[];
+    
+    // New Props for Matrix
+    standards?: StandardsData;
+    standardKey?: string;
+    matrixData?: Record<string, MatrixRow[]>;
+    setMatrixData?: React.Dispatch<React.SetStateAction<Record<string, MatrixRow[]>>>;
 }
 
 export const EvidenceView: React.FC<EvidenceViewProps> = ({
     evidence, setEvidence, uploadedFiles, setUploadedFiles,
     onOcrProcess, isOcrLoading, onAnalyze, isReadyForAnalysis,
     isAnalyzeLoading, analyzeTooltip, onExport, evidenceLanguage, setEvidenceLanguage,
-    textareaRef, tags = [], onAddTag, selectedClauses = []
+    textareaRef, tags = [], onAddTag, selectedClauses = [],
+    standards, standardKey, matrixData, setMatrixData
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [isListening, setIsListening] = useState(false); // Voice state
+    const [viewMode, setViewMode] = useState<'document' | 'matrix'>('document'); // New Toggle State
     const fileInputRef = useRef<HTMLInputElement>(null);
     const recognitionRef = useRef<any>(null);
     
@@ -67,7 +76,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     }
                 }
                 
-                // Append only final results to state to avoid overwriting user edits
                 if (finalTranscript) {
                     setEvidence(prev => prev + (prev ? " " : "") + finalTranscript);
                 }
@@ -82,10 +90,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
             };
 
             recognition.onend = () => {
-                // If it stops automatically (e.g. silence), update UI
-                // However, we set isListening false on manual stop or error.
-                // If we want continuous to truly mean continuous, we might need to restart it here if not manually stopped.
-                // For this implementation, we'll just let it toggle off.
                 if (isListening) {
                      setIsListening(false);
                 }
@@ -113,25 +117,17 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
 
     // --- TAGGING LOGIC ---
     const handleTextSelect = (e: React.MouseEvent) => {
+        if (viewMode === 'matrix') return; // Disable text selection tagging in Matrix mode
         if (!textareaRef.current) return;
         const start = textareaRef.current.selectionStart;
         const end = textareaRef.current.selectionEnd;
         
         if (start !== end) {
             const text = evidence.substring(start, end);
-            
-            // Calculate position relative to viewport to place the menu near the cursor
-            // We use clientX/Y from the mouse event for simplicity
             const x = e.clientX;
             const y = e.clientY;
 
-            setSelectionMenu({
-                x,
-                y,
-                text,
-                start,
-                end
-            });
+            setSelectionMenu({ x, y, text, start, end });
         } else {
             setSelectionMenu(null);
         }
@@ -148,7 +144,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 timestamp: Date.now()
             });
             setSelectionMenu(null);
-            // clear selection visually
             if (document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur(); 
             }
@@ -176,10 +171,29 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
 
     return (
         <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
+            
+            {/* --- VIEW MODE TOGGLE --- */}
+            <div className="flex justify-center -mt-2 mb-1">
+                <div className="flex bg-gray-100 dark:bg-slate-950 p-1 rounded-xl shadow-inner border border-gray-200 dark:border-slate-800">
+                    <button 
+                        onClick={() => setViewMode('document')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${viewMode === 'document' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                    >
+                        <Icon name="FileText" size={14}/> Document Mode
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('matrix')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${viewMode === 'matrix' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                    >
+                        <Icon name="LayoutList" size={14}/> Evidence Matrix
+                    </button>
+                </div>
+            </div>
+
             <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0 relative">
                 
                 {/* --- FLOATING TAGGING TOOLBAR (PORTAL-LIKE) --- */}
-                {selectionMenu && selectedClauses.length > 0 && (
+                {selectionMenu && selectedClauses.length > 0 && viewMode === 'document' && (
                     <div 
                         className="fixed z-[9999] bg-slate-900/90 backdrop-blur-md text-white p-2.5 rounded-xl shadow-2xl flex flex-col gap-2 animate-in zoom-in-95 duration-200 border border-slate-700/50 ring-1 ring-white/10 max-w-[200px]"
                         style={{ top: selectionMenu.y - 120, left: Math.min(selectionMenu.x - 100, window.innerWidth - 220) }}
@@ -219,18 +233,37 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                             <h3 className="mt-4 text-xl font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest text-center">Drop Files to Extract<br /><span className="text-sm font-normal normal-case">(Images, PDF, TXT)</span></h3>
                         </div>
                     )}
-                    <textarea
-                        ref={textareaRef}
-                        className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900/60"
-                        placeholder="Paste audit evidence here or use Voice Dictation..."
-                        value={evidence}
-                        onChange={(e) => setEvidence(e.target.value)}
-                        onPaste={handlePaste}
-                        onMouseUp={handleTextSelect} 
-                    />
+                    
+                    {/* --- CONDITIONAL RENDER: DOCUMENT vs MATRIX --- */}
+                    {viewMode === 'document' ? (
+                        <textarea
+                            ref={textareaRef}
+                            className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900/60"
+                            placeholder="Paste audit evidence here or use Voice Dictation..."
+                            value={evidence}
+                            onChange={(e) => setEvidence(e.target.value)}
+                            onPaste={handlePaste}
+                            onMouseUp={handleTextSelect} 
+                        />
+                    ) : (
+                        standards && standardKey && standards[standardKey] && matrixData && setMatrixData ? (
+                            <div className="flex-1 w-full h-full bg-gray-50/30 dark:bg-slate-950/30 p-2">
+                                <EvidenceMatrix 
+                                    standard={standards[standardKey]}
+                                    selectedClauses={selectedClauses}
+                                    matrixData={matrixData}
+                                    setMatrixData={setMatrixData}
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center text-slate-400">
+                                Please select a Standard to use Matrix Mode.
+                            </div>
+                        )
+                    )}
                     
                     {/* Tags Indicator Overlay - Kept floating as it is informational */}
-                    {tags.length > 0 && (
+                    {tags.length > 0 && viewMode === 'document' && (
                         <div className="absolute bottom-4 right-4 pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity">
                             <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
                                 <Icon name="Tag" size={12}/>
@@ -295,7 +328,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     </button>
                 </div>
 
-                {/* Voice Dictation Button - Positioned AFTER Upload based on order: Upload - Voice - Analyze - Export */}
+                {/* Voice Dictation Button */}
                 <button
                     onClick={toggleListening}
                     className={`flex-none w-[52px] md:w-auto md:px-4 h-[52px] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${isListening ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 animate-pulse' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`}

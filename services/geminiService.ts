@@ -69,7 +69,7 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "Unknown error." };
 };
 
-// ... (fetchFullClauseText, parseStandardStructure, generateOcrContent kept same or similar - omitted for brevity if unchanged logic, but included here for completeness)
+// ... (fetchFullClauseText, parseStandardStructure, generateOcrContent kept same)
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
@@ -179,9 +179,17 @@ export const generateAnalysis = async (
     }
 };
 
-// --- UPDATED REPORTING WITH PROMPT REGISTRY ---
+// --- UPDATED REPORTING WITH MATRIX SYNTHESIS SUPPORT ---
 export const generateTextReport = async (
-    data: { company: string, type: string, auditor: string, standard: string, findings: any[], lang: string },
+    data: { 
+        company: string, 
+        type: string, 
+        auditor: string, 
+        standard: string, 
+        findings: any[], 
+        lang: string,
+        fullEvidenceContext?: string // New Parameter for Matrix Data
+    },
     apiKey?: string, 
     model?: string
 ) => {
@@ -195,6 +203,7 @@ export const generateTextReport = async (
         AUDITOR: data.auditor,
         STANDARD_NAME: data.standard,
         FINDINGS_JSON: JSON.stringify(data.findings),
+        FULL_EVIDENCE_CONTEXT: data.fullEvidenceContext || "No granular evidence provided.", // Pass the Matrix data
         LANGUAGE: data.lang === 'vi' ? 'Vietnamese' : 'English'
     });
 
@@ -211,7 +220,6 @@ export const generateTextReport = async (
 };
 
 export const generateMissingDescriptions = async (clauses: { code: string, title: string }[], apiKey?: string, model?: string) => {
-    // Kept same
     const ai = getAiClient(apiKey);
     if (!ai) return "[]";
     const targetModel = model || DEFAULT_GEMINI_MODEL;

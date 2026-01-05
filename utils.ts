@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { MatrixRow } from "./types";
 
 declare global {
     interface Window {
@@ -115,4 +116,28 @@ export const cleanAndParseJSON = (text: string) => {
 export const cleanFileName = (str: string) => {
     if (!str) return 'N_A';
     return str.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_').substring(0, 30);
+};
+
+// --- NEW: Helper to Serialize Matrix Data for AI ---
+export const serializeMatrixData = (matrixData: Record<string, MatrixRow[]>, selectedClauses: string[]): string => {
+    let output = "";
+    let hasContent = false;
+
+    selectedClauses.forEach(clauseId => {
+        const rows = matrixData[clauseId];
+        if (rows && rows.some(r => r.status === 'supplied')) {
+            hasContent = true;
+            output += `\n### EVIDENCE MATRIX FOR CLAUSE ${clauseId}\n`;
+            output += `| Requirement | Verified Evidence |\n`;
+            output += `| :--- | :--- |\n`;
+            rows.forEach(row => {
+                if (row.evidenceInput.trim()) {
+                    output += `| ${row.requirement.replace(/\|/g, '-')} | ${row.evidenceInput.replace(/\|/g, '-').replace(/\n/g, ' ')} |\n`;
+                }
+            });
+            output += `\n`;
+        }
+    });
+
+    return hasContent ? output : "";
 };

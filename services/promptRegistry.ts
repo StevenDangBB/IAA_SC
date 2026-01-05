@@ -37,22 +37,37 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
     REPORT: {
         id: 'default_report',
         label: 'Professional Report',
-        description: 'Formal audit report generation.',
+        description: 'Formal audit report generation with Matrix synthesis.',
         isSystemDefault: true,
         template: `
-        Generate a comprehensive ISO Audit Report.
+        You are a Lead Auditor generating a formal ISO Audit Report.
         
-        Entity: {{COMPANY}}
-        Type: {{AUDIT_TYPE}}
-        Auditor: {{AUDITOR}}
-        Standard: {{STANDARD_NAME}}
-        
-        FINDINGS TO INCLUDE:
+        **AUDIT META:**
+        - Entity: {{COMPANY}}
+        - Audit Type: {{AUDIT_TYPE}}
+        - Lead Auditor: {{AUDITOR}}
+        - Standard: {{STANDARD_NAME}}
+        - Language: {{LANGUAGE}}
+
+        **INSTRUCTIONS:**
+        1. Create an Executive Summary.
+        2. For each Finding listed below, write a detailed "Audit Narrative".
+        3. **CRITICAL:** If "DETAILED EVIDENCE MATRIX" is provided below, you MUST synthesize the specific evidence into the narrative.
+           - Do not just say "Evidence was provided."
+           - Instead write: "Verified [Requirement X] by reviewing [Specific Evidence Y]..."
+           - Link the specific document names, log files, or interview quotes to the specific clause requirements.
+        4. Structure the findings logically by Clause.
+
+        **FINDINGS SUMMARY (Status & Conclusion):**
         {{FINDINGS_JSON}}
+
+        **DETAILED EVIDENCE MATRIX (Raw Data from Audit):**
+        """
+        {{FULL_EVIDENCE_CONTEXT}}
+        """
         
-        INSTRUCTIONS:
-        Use professional auditor language. Group findings logically. Include an executive summary.
-        Language: {{LANGUAGE}}.
+        OUTPUT FORMAT:
+        Markdown. Professional Tone. Clear Headings.
         `
     }
 };

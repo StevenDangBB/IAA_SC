@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APP_VERSION, STANDARDS_DATA, INITIAL_EVIDENCE, MODEL_HIERARCHY, MY_FIXED_KEYS, BUILD_TIMESTAMP, DEFAULT_AUDIT_INFO, TABS_CONFIG } from './constants';
-import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot, EvidenceTag } from './types';
+import { StandardsData, AuditInfo, AnalysisResult, Standard, ApiKeyProfile, Clause, FindingsViewMode, SessionSnapshot, EvidenceTag, MatrixRow } from './types';
 import { Icon, Toast, CommandPaletteModal } from './components/UI';
 import { Header } from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -11,7 +11,7 @@ import RecallModal from './components/RecallModal';
 import { generateOcrContent, generateAnalysis, generateTextReport, validateApiKey, fetchFullClauseText, parseStandardStructure } from './services/geminiService';
 import { KnowledgeStore } from './services/knowledgeStore'; 
 import { VectorStore } from './services/vectorStore'; 
-import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile } from './utils';
+import { cleanAndParseJSON, fileToBase64, cleanFileName, copyToClipboard, extractTextFromPdf, processSourceFile, serializeMatrixData } from './utils';
 import { workerChunkText, runInWorker } from './services/workerUtils'; 
 
 // New Component Imports
@@ -99,9 +99,12 @@ export default function App() {
     const [standardKey, setStandardKey] = useState<string>("");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
-    const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
-    const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]); 
     
+    // --- DUAL STREAM EVIDENCE ---
+    const [evidence, setEvidence] = useState(INITIAL_EVIDENCE); // Raw Stream
+    const [matrixData, setMatrixData] = useState<Record<string, MatrixRow[]>>({}); // Structured Stream
+    
+    const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]); 
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult[] | null>(null);
@@ -137,7 +140,13 @@ export default function App() {
     const evidenceTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const allStandards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
-    const hasEvidence = evidence.trim().length > 0 || uploadedFiles.length > 0;
+    
+    // Check if matrix has data
+    const hasMatrixData = useMemo(() => {
+        return Object.values(matrixData).some(rows => rows.some(r => r.status === 'supplied'));
+    }, [matrixData]);
+
+    const hasEvidence = evidence.trim().length > 0 || uploadedFiles.length > 0 || hasMatrixData;
     
     const isReadyForAnalysis = !isAnalyzeLoading && selectedClauses.length > 0 && hasEvidence;
     const isReadyToSynthesize = !isReportLoading && analysisResult && Object.values(selectedFindings).some(v => v);
@@ -459,6 +468,7 @@ export default function App() {
                 if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
                 if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
                 if (data.evidence) setEvidence(data.evidence);
+                if (data.matrixData) setMatrixData(data.matrixData); // Restore Matrix
                 if (data.evidenceTags) setEvidenceTags(data.evidenceTags); 
                 if (data.analysisResult) setAnalysisResult(data.analysisResult);
                 if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
@@ -567,7 +577,7 @@ export default function App() {
                 setIsSaving(false);
                 return;
             }
-            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
+            const sessionData = { standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText };
             localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             localStorage.setItem("iso_custom_standards", JSON.stringify(customStandards));
             localStorage.setItem("iso_api_keys", JSON.stringify(apiKeys));
@@ -577,24 +587,24 @@ export default function App() {
             setIsSaving(false);
         }, 800); 
         return () => clearTimeout(handler);
-    }, [standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
+    }, [standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText, customStandards, apiKeys]);
 
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (!isRestoring.current) {
-                const sessionData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
+                const sessionData = { standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText };
                 localStorage.setItem("iso_session_data", JSON.stringify(sessionData));
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText]);
+    }, [standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText]);
 
     const handleNewSession = async (e?: any) => { 
         if(e) e.stopPropagation(); 
         if(!confirm("Start New Session? Current data will be moved to 'Backup Vault'.")) return; 
         try {
-            const currentData = { standardKey, auditInfo, selectedClauses, evidence, evidenceTags, analysisResult, selectedFindings, finalReportText };
+            const currentData = { standardKey, auditInfo, selectedClauses, evidence, matrixData, evidenceTags, analysisResult, selectedFindings, finalReportText };
             const hasData = evidence.trim().length > 0 || selectedClauses.length > 0;
             if (hasData) {
                 const snapshot: SessionSnapshot = {
@@ -614,6 +624,7 @@ export default function App() {
             setStandardKey("");
             setAuditInfo(DEFAULT_AUDIT_INFO); 
             setEvidence(""); 
+            setMatrixData({});
             setEvidenceTags([]);
             setSelectedClauses([]); 
             setUploadedFiles([]); 
@@ -645,6 +656,7 @@ export default function App() {
             setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...(data.auditInfo || {}) });
             if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
             if (data.evidence !== undefined) setEvidence(data.evidence);
+            if (data.matrixData) setMatrixData(data.matrixData);
             if (data.evidenceTags) setEvidenceTags(data.evidenceTags);
             setUploadedFiles([]); 
             if (data.analysisResult) setAnalysisResult(data.analysisResult);
@@ -705,9 +717,37 @@ export default function App() {
     };
 
     const startSmartExport = (content: string, type: 'notes' | 'report' | 'evidence', lang: ExportLanguage) => {
-        if (!content) return;
-        const CHUNK_SIZE = 4000; const chunks = []; for (let i = 0; i < content.length; i += CHUNK_SIZE) chunks.push(content.substring(i, i + CHUNK_SIZE));
+        let exportContent = content;
+        
+        // SYNTHESIS: Combine Matrix Data for Evidence Export
+        if (type === 'evidence') {
+            const matrixString = serializeMatrixData(matrixData, selectedClauses);
+            if (matrixString) {
+                exportContent = `${content}\n\n${matrixString}`;
+            }
+        }
+
+        if (!exportContent) return;
+        const CHUNK_SIZE = 4000; const chunks = []; for (let i = 0; i < exportContent.length; i += CHUNK_SIZE) chunks.push(exportContent.substring(i, i + CHUNK_SIZE));
         setExportState({ isOpen: true, isPaused: false, isFinished: false, totalChunks: chunks.length, processedChunksCount: 0, chunks, results: new Array(chunks.length).fill(""), error: null, currentType: type, targetLang: lang });
+    };
+
+    // Handler to skip translation on failure
+    const handleSkipExportChunk = () => {
+        setExportState(prev => {
+            const idx = prev.processedChunksCount;
+            const newResults = [...prev.results];
+            // Fallback: use original text for this chunk
+            newResults[idx] = prev.chunks[idx];
+            
+            return {
+                ...prev,
+                isPaused: false,
+                error: null,
+                processedChunksCount: idx + 1, // Advance to next chunk
+                results: newResults
+            };
+        });
     };
 
     const toggleAutoCheck = (enabled: boolean) => { setIsAutoCheckEnabled(enabled); localStorage.setItem('iso_auto_check', String(enabled)); setToastMsg(enabled ? "Auto-health check enabled." : "Auto-health check disabled."); };
@@ -750,10 +790,19 @@ export default function App() {
              
              const targets = selectedClauses.map(id => findClause(id, allClausesFlat)).filter(c => !!c) as Clause[];
              
+             // SYNTHESIS: Combine Raw Evidence + File Content + Matrix Data
              let fullEvidenceContext = evidence;
+             
+             // 1. Files
              uploadedFiles.filter(f => f.status === 'success' && f.result).forEach(f => {
                  fullEvidenceContext += `\n\n--- Document: ${f.file.name} ---\n${f.result}`;
              });
+
+             // 2. Matrix Data (New Structured Stream)
+             const matrixString = serializeMatrixData(matrixData, selectedClauses);
+             if (matrixString) {
+                 fullEvidenceContext += `\n\n${matrixString}`;
+             }
 
              let tagContext = "";
              evidenceTags.forEach(tag => {
@@ -851,6 +900,12 @@ export default function App() {
         setLoadingMessage("Synthesizing Final Audit Report...");
         
         try {
+            // SYNTHESIS: Combine Evidence for Report generation context
+            let fullContext = evidence;
+            const matrixString = serializeMatrixData(matrixData, selectedClauses);
+            if (matrixString) fullContext += `\n\n${matrixString}`;
+
+            // Updated to pass combined evidence context for Matrix synthesis
             const report = await executeWithSmartFailover((key, model) => 
                 generateTextReport({
                     company: auditInfo.company,
@@ -858,7 +913,8 @@ export default function App() {
                     auditor: auditInfo.auditor,
                     standard: allStandards[standardKey]?.name,
                     findings: activeFindings,
-                    lang: exportLanguage
+                    lang: exportLanguage,
+                    fullEvidenceContext: fullContext // Pass combined context
                 }, key, model)
             );
             
@@ -905,6 +961,11 @@ export default function App() {
                 return;
             }
 
+            // ADDED: Rate limiting delay to prevent 429 quota exhaustion during bulk exports
+            if (idx > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+
             const chunk = exportState.chunks[idx];
             try {
                 let result = chunk;
@@ -924,7 +985,20 @@ export default function App() {
                 });
             } catch (e: any) {
                 console.error("Export Error", e);
-                setExportState(prev => ({ ...prev, isPaused: true, error: e.message }));
+                // Clean error message if it is raw JSON
+                let errMsg = e.message || "Unknown error";
+                try {
+                    const jsonStart = errMsg.indexOf('{');
+                    if (jsonStart !== -1) {
+                        const jsonPart = errMsg.substring(jsonStart);
+                        const parsed = JSON.parse(jsonPart);
+                        if (parsed.error && parsed.error.message) {
+                            errMsg = `API Error: ${parsed.error.message}`;
+                        }
+                    }
+                } catch (ignore) {}
+                
+                setExportState(prev => ({ ...prev, isPaused: true, error: errMsg }));
             }
         };
         processChunk();
@@ -1145,7 +1219,12 @@ export default function App() {
                                 textareaRef={evidenceTextareaRef}
                                 tags={evidenceTags} 
                                 onAddTag={(newTag) => setEvidenceTags(prev => [...prev, newTag])} 
-                                selectedClauses={selectedClauses} 
+                                selectedClauses={selectedClauses}
+                                // Pass standard info for Matrix
+                                standards={allStandards}
+                                standardKey={standardKey}
+                                matrixData={matrixData}
+                                setMatrixData={setMatrixData}
                             />
                         )}
                         {layoutMode === 'findings' && (
@@ -1221,6 +1300,7 @@ export default function App() {
                 handleResumeExport={handleResumeExport}
                 isRescuing={isRescuing}
                 onClose={() => setExportState(prev => ({ ...prev, isOpen: false }))} 
+                onSkip={handleSkipExportChunk}
             />
 
             <SettingsModal

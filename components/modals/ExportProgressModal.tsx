@@ -22,11 +22,12 @@ interface ExportProgressModalProps {
     setRescueKey: (val: string) => void;
     handleResumeExport: () => void;
     isRescuing: boolean;
-    onClose: () => void; // Added onClose prop
+    onClose: () => void;
+    onSkip: () => void; // New prop
 }
 
 export const ExportProgressModal: React.FC<ExportProgressModalProps> = ({
-    exportState, setExportState, rescueKey, setRescueKey, handleResumeExport, isRescuing, onClose
+    exportState, setExportState, rescueKey, setRescueKey, handleResumeExport, isRescuing, onClose, onSkip
 }) => {
     if (!exportState.isOpen) return null;
 
@@ -43,26 +44,36 @@ export const ExportProgressModal: React.FC<ExportProgressModalProps> = ({
                 {exportState.error ? (
                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800 mb-4 animate-shake">
                         <p className="text-sm text-red-600 dark:text-red-400 font-bold mb-2 flex items-center gap-2">
-                            <Icon name="AlertCircle" size={16} /> Process Paused: Limit Reached
+                            <Icon name="AlertCircle" size={16} /> Process Paused
                         </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
-                            Your existing API keys have hit their quota limits. Add a backup key to resume immediately without losing progress.
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mb-3 leading-relaxed font-mono bg-white/50 dark:bg-black/20 p-2 rounded border border-red-100 dark:border-red-800/50 break-words max-h-24 overflow-y-auto">
+                            {exportState.error}
                         </p>
-                        <input
-                            type="password"
-                            placeholder="Paste Emergency Google AI Key..."
-                            className="w-full p-2 text-xs rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-950 mb-3 outline-none focus:border-red-500"
-                            value={rescueKey}
-                            onChange={(e) => setRescueKey(e.target.value)}
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <button onClick={() => setExportState(prev => ({ ...prev, isOpen: false }))} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                                Cancel
-                            </button>
-                            <button onClick={handleResumeExport} disabled={isRescuing || !rescueKey.trim()} className="px-3 py-2 text-xs font-bold bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100">
+                        
+                        <div className="mb-3">
+                            <input
+                                type="password"
+                                placeholder="Paste Emergency Google AI Key..."
+                                className="w-full p-2 text-xs rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-950 outline-none focus:border-red-500"
+                                value={rescueKey}
+                                onChange={(e) => setRescueKey(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <button onClick={handleResumeExport} disabled={isRescuing || !rescueKey.trim()} className="w-full py-2 text-xs font-bold bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100">
                                 {isRescuing ? <Icon name="Loader" className="animate-spin" size={12} /> : <Icon name="Zap" size={12} />}
-                                Rescue & Resume
+                                Use Rescue Key
                             </button>
+                            
+                            <div className="flex gap-2">
+                                <button onClick={onSkip} className="flex-1 py-2 text-xs font-bold bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-1" title="Skip translation for this chunk and use original text">
+                                    <Icon name="Minus" size={12}/> Skip / Use Original
+                                </button>
+                                <button onClick={() => setExportState(prev => ({ ...prev, isOpen: false }))} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                                    Cancel
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ) : (

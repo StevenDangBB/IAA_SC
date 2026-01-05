@@ -75,6 +75,7 @@ export interface SessionSnapshot {
         selectedFindings: Record<string, boolean>;
         finalReportText: string | null;
         evidenceTags?: EvidenceTag[]; // New field
+        matrixData?: Record<string, MatrixRow[]>; // New: Evidence Matrix Data
     };
 }
 
@@ -87,6 +88,13 @@ export interface EvidenceTag {
     startIndex: number;
     endIndex: number;
     timestamp: number;
+}
+
+export interface MatrixRow {
+    id: string;
+    requirement: string;
+    evidenceInput: string;
+    status: 'pending' | 'supplied' | 'missing';
 }
 
 export interface VectorRecord {
