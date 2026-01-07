@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.0.0-GOLD"; 
-export const BUILD_TIMESTAMP = "2026-01-05 12:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.3.0-PLANNING"; 
+export const BUILD_TIMESTAMP = "2026-01-08 14:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -15,8 +15,7 @@ export const DEFAULT_VISION_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
     smo: "", 
-    department: "", 
-    interviewee: "", 
+    // Interviewee removed from global scope
     auditor: "", 
     type: "" 
 };
@@ -66,9 +65,10 @@ export const MODEL_META: Record<string, { label: string, color: string, tier: nu
 };
 
 export const TABS_CONFIG = [
-    { id: 'evidence', label: '1. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-950/30' }, 
-    { id: 'findings', label: '2. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-950/30' }, 
-    { id: 'report', label: '3. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30' }
+    { id: 'planning', label: '1. Planning', icon: 'LayoutList', colorClass: 'bg-orange-500', textClass: 'text-orange-600', borderClass: 'border-orange-500', bgSoft: 'bg-orange-50 dark:bg-orange-950/30' },
+    { id: 'evidence', label: '2. Evidence', icon: 'ScanText', colorClass: 'bg-blue-500', textClass: 'text-blue-600', borderClass: 'border-blue-500', bgSoft: 'bg-blue-50 dark:bg-blue-950/30' }, 
+    { id: 'findings', label: '3. Findings', icon: 'Wand2', colorClass: 'bg-purple-500', textClass: 'text-purple-600', borderClass: 'border-purple-500', bgSoft: 'bg-purple-50 dark:bg-purple-950/30' }, 
+    { id: 'report', label: '4. Report', icon: 'FileText', colorClass: 'bg-emerald-500', textClass: 'text-emerald-600', borderClass: 'border-emerald-500', bgSoft: 'bg-emerald-50 dark:bg-emerald-950/30' }
 ];
 
 export const AUDIT_TYPES: Record<string, string> = {
@@ -90,25 +90,13 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "4.0.0-GOLD",
-        date: "2026-01-05",
+        version: "4.3.0-PLANNING",
+        date: "2026-01-08",
         features: [
-            "BREAKTHROUGH: Official Gold Release. Production Ready.",
-            "FEATURE: 'Evidence Matrix' - Structured, clause-by-clause evidence mapping interface.",
-            "FEATURE: 'Plain Text Export' - System-integration friendly reports (No Markdown/Tables).",
-            "ENGINE: 'Dual-Stream Synthesis' - AI now combines unstructured docs + structured matrix data.",
-            "PERFORMANCE: GPU-Accelerated transitions and 'Liquid Tab' navigation.",
-            "DOCS: Integrated full Project Documentation & User Guide."
-        ]
-    },
-    {
-        version: "3.5.0-STABLE",
-        date: "2026-01-04",
-        features: [
-            "BASELINE: Official Release Candidate. System stabilized and optimized.",
-            "PRIVACY SHIELD: Integrated PII Redaction engine to mask Emails/Phones before AI processing.",
-            "HYBRID AI ENGINE: Automatic switch between 'Gemini 3.0 Cloud' and 'Local Intelligence' (Offline Mode).",
-            "SMART FAILOVER: Multi-key pooling allows continuous operation even if primary quotas are exhausted."
+            "FEATURE: Audit Planning Matrix - Assess clause coverage before gathering evidence.",
+            "UX: Strict Process Requirement - Users must create a process to begin.",
+            "FIX: Sidebar Delete Button functionality.",
+            "UI: Dynamic Liquid Color bar."
         ]
     }
 ];

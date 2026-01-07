@@ -62,7 +62,18 @@ const RecallModal = ({ isOpen, onClose, onRestore }: RecallModalProps) => {
     };
 
     const getSnapshotStats = (snap: SessionSnapshot) => {
-        const evidenceLen = snap.data.evidence ? snap.data.evidence.length : 0;
+        let evidenceLen = 0;
+        // Check processes (New Format)
+        if (snap.data.processes && snap.data.processes.length > 0) {
+            evidenceLen = snap.data.processes.reduce((acc, p) => acc + (p.evidence ? p.evidence.length : 0), 0);
+        } else if ((snap.data as any).scopes && (snap.data as any).scopes.length > 0) {
+             // Check scopes (Legacy/Migration Format via cast)
+             evidenceLen = (snap.data as any).scopes.reduce((acc: any, scope: any) => acc + (scope.evidence ? scope.evidence.length : 0), 0);
+        } else if ((snap.data as any).evidence) {
+            // Check legacy (Old Format)
+            evidenceLen = (snap.data as any).evidence.length;
+        }
+        
         const clausesCount = snap.data.selectedClauses ? snap.data.selectedClauses.length : 0;
         const findingsCount = snap.data.analysisResult ? snap.data.analysisResult.length : 0;
         

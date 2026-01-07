@@ -156,16 +156,6 @@ export const StandardExplorer: React.FC<StandardExplorerProps> = ({
         );
     };
 
-    const getGroupColorClass = (title: string) => {
-        const t = title.toUpperCase();
-        if (t.includes('PLAN')) return 'bg-blue-600 dark:bg-blue-500 shadow-blue-500/20';
-        if (t.includes('SUPPORT')) return 'bg-purple-600 dark:bg-purple-500 shadow-purple-500/20';
-        if (t.includes('DO')) return 'bg-orange-600 dark:bg-orange-500 shadow-orange-500/20';
-        if (t.includes('CHECK') || t.includes('ACT')) return 'bg-emerald-600 dark:bg-emerald-500 shadow-emerald-500/20';
-        if (t.includes('ANNEX')) return 'bg-rose-600 dark:bg-rose-500 shadow-rose-500/20';
-        return 'bg-slate-800 dark:bg-slate-700';
-    };
-
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-gray-50/40 dark:bg-slate-950/40 w-full md:min-w-[390px]">
             <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-10 shrink-0 sticky top-0">
@@ -213,6 +203,13 @@ export const StandardExplorer: React.FC<StandardExplorerProps> = ({
                     ) : (
                         standard.groups.map(g => {
                             const isGroupExpanded = expandedGroups.includes(g.id) || !!searchQuery;
+                            // LIQUID SELECTION STYLE:
+                            // Use Indigo (App Theme) for expanded/active state, replacing hardcoded rainbow colors.
+                            // This unifies the visual language as requested.
+                            const groupColorClass = isGroupExpanded 
+                                ? 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' 
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700';
+
                             const matchesSearch = (c: Clause): boolean => {
                                 const term = searchQuery.toLowerCase();
                                 return c.code.toLowerCase().includes(term) || c.title.toLowerCase().includes(term) || c.description.toLowerCase().includes(term) || (c.subClauses ? c.subClauses.some(matchesSearch) : false);
@@ -226,14 +223,14 @@ export const StandardExplorer: React.FC<StandardExplorerProps> = ({
                                         <div className="flex items-center gap-3">
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); toggleGroupSelection(g); }}
-                                                className={`p-2 rounded-xl shadow-lg text-white ${getGroupColorClass(g.title)} hover:scale-110 active:scale-95 transition-transform duration-300`}
+                                                className={`p-2 rounded-xl transition-all duration-300 ${groupColorClass} hover:scale-110 active:scale-95`}
                                                 title="Click to Select/Deselect All in Group"
                                             >
                                                 <Icon name={g.icon} size={14}/>
                                             </button>
-                                            <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{g.title}</h4>
+                                            <h4 className={`text-xs font-black uppercase tracking-widest transition-colors ${isGroupExpanded ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-900 dark:text-white'}`}>{g.title}</h4>
                                         </div>
-                                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isGroupExpanded ? 'rotate-180' : ''}`}/>
+                                        <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform duration-300 ${isGroupExpanded ? 'rotate-180 text-indigo-500' : ''}`}/>
                                     </div>
                                     <div className={`grid transition-all duration-300 ease-in-out ${isGroupExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                                         <div className="overflow-hidden bg-white dark:bg-slate-900">

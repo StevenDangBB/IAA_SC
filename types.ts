@@ -27,10 +27,20 @@ export interface StandardsData {
 export interface AuditInfo {
     company: string;
     smo: string;
-    department: string;
-    interviewee: string;
     auditor: string;
     type: string;
+    // Interviewee removed from global scope, moved to AuditProcess
+}
+
+// --- NEW PROCESS ARCHITECTURE (formerly Scope) ---
+export interface AuditProcess {
+    id: string;
+    name: string; // e.g., "Purchasing", "Production", "Management"
+    evidence: string; // Raw text evidence for this process
+    interviewees: string[]; // List of people interviewed for this process
+    matrixData: Record<string, MatrixRow[]>; // Matrix data for this process
+    evidenceTags: EvidenceTag[];
+    uploadedFiles: any[]; // Store file references per process
 }
 
 export type FindingStatus = 'COMPLIANT' | 'NC_MAJOR' | 'NC_MINOR' | 'OFI' | 'N_A';
@@ -43,7 +53,9 @@ export interface AnalysisResult {
     suggestion: string;
     evidence: string;
     conclusion_report: string;
-    crossRefs?: string[]; // New: Cross-reference suggestions
+    crossRefs?: string[]; 
+    processId?: string; // Track which process this finding belongs to
+    processName?: string;
 }
 
 export interface FindingDetail {
@@ -55,9 +67,9 @@ export interface ApiKeyProfile {
     label: string;
     key: string;
     status: 'valid' | 'invalid' | 'quota_exceeded' | 'checking' | 'unknown' | 'referrer_error';
-    activeModel?: string; // The best model currently working for this key
-    lastResetDate?: string; // YYYY-MM-DD to track daily resets
-    latency: number; // in ms
+    activeModel?: string; 
+    lastResetDate?: string; 
+    latency: number; 
     lastChecked: string;
 }
 
@@ -65,21 +77,23 @@ export interface SessionSnapshot {
     id: string;
     timestamp: number;
     label: string;
-    triggerType: 'AUTO_SAVE' | 'MANUAL_BACKUP'; // How this snapshot was created
+    triggerType: 'AUTO_SAVE' | 'MANUAL_BACKUP'; 
     data: {
         standardKey: string;
         auditInfo: AuditInfo;
         selectedClauses: string[];
-        evidence: string;
+        
+        // Multi-Process Data Structure
+        activeProcessId: string;
+        processes: AuditProcess[];
+        
         analysisResult: AnalysisResult[] | null;
         selectedFindings: Record<string, boolean>;
         finalReportText: string | null;
-        evidenceTags?: EvidenceTag[]; // New field
-        matrixData?: Record<string, MatrixRow[]>; // New: Evidence Matrix Data
     };
 }
 
-// --- NEW TYPES FOR FEATURES ---
+// --- EXISTING TYPES ---
 
 export interface EvidenceTag {
     id: string;
@@ -113,4 +127,12 @@ export interface PromptTemplate {
     template: string;
     description: string;
     isSystemDefault?: boolean;
+}
+
+export interface UploadedFile {
+    id: string;
+    file: File;
+    status: 'pending' | 'processing' | 'success' | 'error';
+    result?: string;
+    error?: string;
 }

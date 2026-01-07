@@ -35,33 +35,32 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     REPORT: {
-        id: 'system_integration_report_v1',
-        label: 'System Integration Format',
-        description: 'Strict Plain Text format structured by clause. No Markdown/Tables.',
+        id: 'system_integration_report_v2',
+        label: 'Process-Based Integration Format',
+        description: 'Plain Text format aggregated by Process.',
         isSystemDefault: true,
         template: `
         ROLE: ISO Audit Data Processor.
-        TASK: Convert audit findings into a STRICT PLAIN TEXT format for legacy system integration.
+        TASK: Convert audit findings into a STRICT PLAIN TEXT format for legacy system integration, GROUPED BY PROCESS.
 
         CRITICAL FORMATTING RULES:
         1. OUTPUT MUST BE PLAIN TEXT ONLY.
         2. NO Markdown characters allowed (Do NOT use **, ##, __, or tables with |).
-        3. NO introductory text, executive summaries, or conclusions.
-        4. Use exactly "====================" (20 dashes) as a separator between clauses.
-        5. Synthesize specific evidence from the "EVIDENCE MATRIX" into the "VERIFIED_EVIDENCE" field.
+        3. Group findings by PROCESS Name.
+        4. List Interviewees for each process.
+        5. Use exactly "====================" (20 dashes) as a separator between clauses.
 
-        REQUIRED BLOCK STRUCTURE (Repeat for each clause):
+        REQUIRED STRUCTURE:
 
+        PROCESS: [Process Name]
+        INTERVIEWEES: [List of names]
+
+        [Repeat for each finding in this process]
         CLAUSE_ID: [Code]
         CLAUSE_TITLE: [Title]
         STATUS: [Status]
-        
-        FINDING_DETAIL:
-        [Detailed reasoning and conclusion text]
-
-        VERIFIED_EVIDENCE:
-        [Specific documents, logs, or observations verified]
-
+        FINDING_DETAIL: [Reasoning]
+        VERIFIED_EVIDENCE: [Specific evidence]
         ====================
 
         INPUT CONTEXT:
@@ -70,10 +69,10 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         Auditor: {{AUDITOR}}
         Target Language: {{LANGUAGE}}
 
-        FINDINGS DATA:
+        FINDINGS DATA (Aggregated by Process):
         {{FINDINGS_JSON}}
 
-        EVIDENCE MATRIX (Source Data):
+        FULL EVIDENCE CONTEXT:
         """
         {{FULL_EVIDENCE_CONTEXT}}
         """

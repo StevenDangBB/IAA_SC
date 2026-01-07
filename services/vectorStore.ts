@@ -44,12 +44,13 @@ class VectorStoreService {
         if (!text || !text.trim()) return null;
         try {
             const ai = new GoogleGenAI({ apiKey });
-            // FIXED: Parameter must be 'content' (singular) for single embedding request
+            // FIXED: Parameter must be 'contents' for embedding request in this SDK version
             const response = await ai.models.embedContent({
                 model: "text-embedding-004",
-                content: { parts: [{ text }] }
+                contents: { parts: [{ text }] }
             });
-            return response.embedding?.values || null;
+            // FIXED: Response property is 'embeddings' (array)
+            return response.embeddings?.[0]?.values || null;
         } catch (e) {
             console.error("Embedding Error", e);
             return null;

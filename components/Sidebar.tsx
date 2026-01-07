@@ -1,64 +1,49 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from './UI';
-import { StandardsData, AuditInfo, Clause, Group, Standard } from '../types';
-import { cleanAndParseJSON } from '../utils';
+import { Standard, Clause, Group } from '../types';
 import { STANDARDS_DATA } from '../constants';
 import { generateMissingDescriptions } from '../services/geminiService';
 import { AuditInfoForm } from './sidebar/AuditInfoForm';
 import { StandardExplorer } from './sidebar/StandardExplorer';
 import { IntegrityModal } from './modals/IntegrityModal';
+import { cleanAndParseJSON } from '../utils';
+
+// Contexts
+import { useAudit } from '../contexts/AuditContext';
+import { useUI } from '../contexts/UIContext';
+import { useStandardHealth } from '../hooks/useStandardHealth';
 
 interface SidebarProps {
     isOpen: boolean;
     width: number;
     setWidth: (w: number) => void;
-    standards: StandardsData;
-    standardKey: string;
-    setStandardKey: (k: string) => void;
-    auditInfo: AuditInfo;
-    setAuditInfo: (info: AuditInfo) => void;
-    selectedClauses: string[];
-    setSelectedClauses: React.Dispatch<React.SetStateAction<string[]>>;
-    onAddNewStandard: () => void;
-    onUpdateStandard: (std: Standard) => void;
-    onResetStandard: (key: string) => void;
-    onReferenceClause: (clause: Clause) => void;
-    showIntegrityModal: boolean;
-    setShowIntegrityModal: (show: boolean) => void;
-    knowledgeFileName: string | null;
-    knowledgeBase: string | null; 
-    onKnowledgeUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onClearKnowledge: () => void;
 }
 
-// WRAP IN REACT.MEMO: Crucial for performance to stop sidebar re-rendering on text input in main area
-const Sidebar: React.FC<SidebarProps> = React.memo(({ 
-    isOpen, width, setWidth, standards, standardKey, setStandardKey, 
-    auditInfo, setAuditInfo, selectedClauses, setSelectedClauses, 
-    onAddNewStandard, onUpdateStandard, onResetStandard, onReferenceClause, 
-    showIntegrityModal, setShowIntegrityModal, knowledgeFileName, knowledgeBase, onKnowledgeUpload, onClearKnowledge
-}) => {
+const Sidebar: React.FC<SidebarProps> = React.memo(({ isOpen, width, setWidth }) => {
     const sidebarRef = useRef<HTMLDivElement>(null);
     const [isResizing, setIsResizing] = useState(false);
-    
-    // UI State
     const [isMissionExpanded, setIsMissionExpanded] = useState(true);
     
-    // Logic State
+    // Integrity Logic State
     const [isRepairing, setIsRepairing] = useState(false);
     const [repairStats, setRepairStats] = useState<{ fixed: number, cleaned: number } | null>(null);
     const [repairedIds, setRepairedIds] = useState<string[]>([]);
 
-    const startResizing = (e: React.MouseEvent) => {
-        if ((e.target as Element).classList.contains('resize-handle')) {
-            e.preventDefault();
-            setIsResizing(true);
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none'; 
-        }
-    };
+    // Consume Context
+    const { 
+        standards, standardKey, setStandardKey, updateStandard, resetStandard, addCustomStandard,
+        auditInfo, setAuditInfo, selectedClauses, setSelectedClauses,
+        knowledgeBase, knowledgeFileName, setKnowledgeData, clearKnowledge,
+        processes, activeProcessId, addProcess, renameProcess, deleteProcess, setActiveProcessId
+    } = useAudit();
 
+    const { modals, toggleModal } = useUI();
+
+    // Derived Health
+    const health = useStandardHealth(standards, standardKey, knowledgeBase);
+
+    // Resizing Logic
     useEffect(() => {
         const stopResizing = () => {
             if (isResizing) {
@@ -86,94 +71,6 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
             window.removeEventListener('mouseup', stopResizing);
         };
     }, [isResizing, setWidth]);
-
-    // Handle collapse on scroll from child component
-    const handleContentScroll = () => {
-        if (isMissionExpanded) {
-            setIsMissionExpanded(false);
-        }
-    };
-
-    const runHealthCheck = () => {
-        if (!standardKey || !standards[standardKey]) return { isHealthy: false, score: 0, integrity: [], completeness: [] };
-        const data = standards[standardKey];
-        const integrity: { label: string, status: 'pass' | 'fail', detail: string }[] = [];
-        const completeness: { label: string, status: 'pass' | 'fail', detail: string }[] = [];
-        
-        const allClauses = data.groups.flatMap(g => g.clauses);
-        const flatten = (list: Clause[]): Clause[] => {
-            return list.reduce((acc, c) => {
-                acc.push(c);
-                if (c.subClauses) acc.push(...flatten(c.subClauses));
-                return acc;
-            }, [] as Clause[]);
-        };
-        const flatList = flatten(allClauses);
-
-        // 1. Structure Integrity
-        const missingDesc = flatList.filter(c => !c.description || c.description.trim().length < 2).length;
-        integrity.push({ 
-            label: 'Content Quality', 
-            status: missingDesc === 0 ? 'pass' : 'fail', 
-            detail: missingDesc === 0 ? 'Descriptions OK' : `${missingDesc} incomplete` 
-        });
-        
-        const uniqueCodes = new Set(flatList.map(c => c.code));
-        const duplicateCount = flatList.length - uniqueCodes.size;
-        integrity.push({ 
-            label: 'Data Cleanliness', 
-            status: duplicateCount === 0 ? 'pass' : 'fail', 
-            detail: duplicateCount === 0 ? 'Clean' : `${duplicateCount} Duplicates` 
-        });
-
-        // 2. Ground Truth Validation (If Source PDF exists)
-        if (knowledgeBase && knowledgeBase.length > 1000) {
-            let missingInSource = 0;
-            const sampleClauses = flatList.slice(0, 20); // Check a sample to avoid performance hit
-            sampleClauses.forEach(c => {
-                if (!knowledgeBase.includes(c.code)) missingInSource++;
-            });
-            
-            const ratio = missingInSource / sampleClauses.length;
-            const isSourceValid = ratio < 0.2; // Tolerable margin
-
-            completeness.push({
-                label: 'Source Verification',
-                status: isSourceValid ? 'pass' : 'fail',
-                detail: isSourceValid ? 'Matches Document' : `${(ratio*100).toFixed(0)}% Clauses Missing in Source`
-            });
-        } else {
-             completeness.push({
-                label: 'Source Verification',
-                status: 'fail',
-                detail: 'No Source Document Linked'
-            });
-        }
-
-        // 3. Standard Specific Checks
-        if (standardKey.includes("9001")) {
-            const crucial = ['8.4', '8.6', '8.7', '7.1.4'];
-            crucial.forEach(code => {
-                const found = flatList.some(c => c.code === code);
-                completeness.push({ label: `Clause ${code}`, status: found ? 'pass' : 'fail', detail: found ? 'Present' : 'Missing (Required)' });
-            });
-        }
-        
-        if (standardKey.includes("27001")) {
-            const annexItems = flatList.filter(c => c.code.startsWith("A."));
-            const isFullSet = annexItems.length >= 90; 
-            completeness.push({ label: 'Annex A Controls', status: isFullSet ? 'pass' : 'fail', detail: isFullSet ? `${annexItems.length} Controls (OK)` : `${annexItems.length}/93 (Incomplete)` });
-        }
-
-        const integrityPass = integrity.every(i => i.status === 'pass');
-        const completenessPass = completeness.every(i => i.status === 'pass');
-        const isHealthy = integrityPass && completenessPass;
-        const totalItems = integrity.length + completeness.length;
-        const passItems = integrity.filter(i => i.status === 'pass').length + completeness.filter(i => i.status === 'pass').length;
-        const score = Math.round((passItems / (totalItems || 1)) * 100);
-
-        return { isHealthy, score, integrity, completeness };
-    };
 
     const handleAutoRepair = async () => {
         if (!standardKey || !standards[standardKey]) return;
@@ -235,7 +132,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
                 g.clauses = cleanClauses(g.clauses);
             });
 
-            onUpdateStandard(currentStandard);
+            updateStandard(currentStandard);
             setRepairedIds(fixedIds);
             setRepairStats({ fixed: fixedIds.length, cleaned: duplicateRemovedCount });
             
@@ -248,30 +145,19 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
     };
 
     const handleReset = () => {
-        if(confirm("Are you sure? This will remove all AI repairs and revert to the original static data.")) {
-            onResetStandard(standardKey);
-            setShowIntegrityModal(false);
+        if(confirm("Are you sure? This will revert to original data.")) {
+            resetStandard(standardKey);
+            toggleModal('integrity', false);
             setRepairStats(null);
             setRepairedIds([]);
         }
     };
 
-    const auditFieldIconColor = "text-indigo-700 dark:text-indigo-400";
-    const health = runHealthCheck();
-    const isCustomStandard = !STANDARDS_DATA[standardKey] || (standards[standardKey] && standards[standardKey] !== STANDARDS_DATA[standardKey]);
-
     const standardOptions = (() => {
         const rawOptions = Object.keys(standards).map(k => ({ value: k, label: standards[k].name }));
-        const seen = new Set();
-        const unique = rawOptions.filter(item => {
-            const duplicate = seen.has(item.label);
-            seen.add(item.label);
-            return !duplicate;
-        });
-        return [...unique, {value: "ADD_NEW", label: "+ Add New Standard..."}];
+        return [...rawOptions, {value: "ADD_NEW", label: "+ Add New Standard..."}];
     })();
 
-    // Workflow Completion Calculation
     const infoCompletion = (() => {
         let score = 0;
         if (standardKey) score++;
@@ -281,25 +167,26 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
         return Math.min(4, score); 
     })();
 
+    const handleReference = (clause: Clause) => {
+        window.dispatchEvent(new CustomEvent('OPEN_REFERENCE', { detail: clause }));
+    };
+
     return (
         <div 
             ref={sidebarRef}
-            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-soft'} h-full dark:shadow-[5px_0_15px_-3px_rgba(0,0,0,0.5)]`} 
+            className={`${isOpen ? 'border-r' : 'w-0 border-0 overflow-hidden'} flex flex-col bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-2xl z-50 relative shrink-0 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-soft'} h-full`} 
             style={{ width: isOpen ? (window.innerWidth < 768 ? '100%' : width) : 0 }}
         >
-             {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={startResizing} />}
+             {isOpen && <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500 transition-colors z-50 group resize-handle hidden md:block" onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }} />}
             
-            {/* --- AUDIT MISSION CHARTER --- */}
             <div className={`flex-shrink-0 bg-white dark:bg-slate-900 w-full md:min-w-[390px] flex flex-col transition-all duration-400 ease-soft overflow-hidden`}>
                 <div 
                     className="flex items-center justify-between p-4 cursor-pointer group select-none hover:bg-gray-50 dark:hover:bg-slate-800/50"
                     onClick={() => setIsMissionExpanded(!isMissionExpanded)}
-                    title={isMissionExpanded ? "Collapse Mission Charter" : "Expand Mission Charter"}
                 >
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-hover:text-indigo-500 transition-colors">
                         <Icon name="Session8_Flag" size={14} className="text-indigo-500"/>
                         Audit Mission Charter
-                        <Icon name="ChevronDown" size={12} className={`transition-transform duration-300 text-slate-300 group-hover:text-indigo-400 ${isMissionExpanded ? 'rotate-180' : ''}`}/>
                     </h3>
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-0.5 items-center">
@@ -318,36 +205,40 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
                             setStandardKey={setStandardKey}
                             auditInfo={auditInfo}
                             setAuditInfo={setAuditInfo}
-                            onAddNewStandard={onAddNewStandard}
-                            onOpenIntegrity={() => setShowIntegrityModal(true)}
+                            onAddNewStandard={() => toggleModal('addStandard', true)}
+                            onOpenIntegrity={() => toggleModal('integrity', true)}
                             knowledgeFileName={knowledgeFileName}
-                            onKnowledgeUpload={onKnowledgeUpload}
-                            onClearKnowledge={onClearKnowledge}
+                            onKnowledgeUpload={(e) => {/* Handle in wrapper or here */}}
+                            onClearKnowledge={clearKnowledge}
                             health={health}
-                            auditFieldIconColor={auditFieldIconColor}
+                            auditFieldIconColor="text-indigo-700 dark:text-indigo-400"
                             standardOptions={standardOptions}
+                            scopes={processes}
+                            activeScopeId={activeProcessId}
+                            onAddScope={addProcess}
+                            onChangeScope={setActiveProcessId}
+                            onRenameScope={renameProcess}
+                            onDeleteScope={deleteProcess}
                         />
                     </div>
                 </div>
             </div>
 
-            {/* --- STANDARD EXPLORER --- */}
             <StandardExplorer 
                 standard={standards[standardKey]}
                 standardKey={standardKey}
                 selectedClauses={selectedClauses}
                 setSelectedClauses={setSelectedClauses}
-                onReferenceClause={onReferenceClause}
+                onReferenceClause={handleReference}
                 repairedIds={repairedIds}
-                onScrollTrigger={handleContentScroll}
+                onScrollTrigger={() => setIsMissionExpanded(false)}
             />
 
-            {/* --- INTEGRITY MODAL --- */}
             <IntegrityModal 
-                isOpen={showIntegrityModal}
-                onClose={() => setShowIntegrityModal(false)}
+                isOpen={modals.integrity}
+                onClose={() => toggleModal('integrity', false)}
                 health={health}
-                isCustomStandard={isCustomStandard}
+                isCustomStandard={!!standardKey && !STANDARDS_DATA[standardKey]}
                 onResetStandard={handleReset}
                 onAutoRepair={handleAutoRepair}
                 isRepairing={isRepairing}

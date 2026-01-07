@@ -1,11 +1,11 @@
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { Icon, SparkleLoader } from '../UI';
-import { UploadedFile } from '../../App'; 
-import { EvidenceTag, StandardsData, MatrixRow } from '../../types';
+import { UploadedFile, EvidenceTag, StandardsData, MatrixRow, Clause } from '../../types';
 import { EvidenceMatrix, EvidenceMatrixHandle } from './EvidenceMatrix'; 
 import { fileToBase64 } from '../../utils';
 import { generateOcrContent } from '../../services/geminiService';
+import { useAudit } from '../../contexts/AuditContext';
 
 interface EvidenceViewProps {
     evidence: string;
@@ -40,12 +40,14 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     textareaRef, tags = [], onAddTag, selectedClauses = [],
     standards, standardKey, matrixData, setMatrixData
 }) => {
+    // --- CONTEXT: PROCESS & INTERVIEWEES ---
+    const { activeProcess, activeProcessId, setActiveProcessId, processes, addInterviewee, removeInterviewee } = useAudit();
+    const [newInterviewee, setNewInterviewee] = useState("");
+
     // --- STATE ---
     const [isDragging, setIsDragging] = useState(false);
     const [isListening, setIsListening] = useState(false); 
-    const [viewMode, setViewMode] = useState<'document' | 'matrix'>('document'); 
     const [isMatrixProcessing, setIsMatrixProcessing] = useState(false);
-    const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, text: string, start: number, end: number } | null>(null);
 
     // --- REFS ---
     const fileTargetRef = useRef<Record<string, { clauseId: string, rowId: string }>>({});
@@ -53,7 +55,23 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     const recognitionRef = useRef<any>(null);
     const matrixRef = useRef<EvidenceMatrixHandle>(null);
 
-    // --- HANDLERS: VOICE ---
+    // --- CLAUSE SYNC LOGIC ---
+    // Merge clauses selected in Sidebar (global `selectedClauses`) AND clauses added via Matrix (Process `matrixData` keys)
+    // This solves the issue where ticked clauses in Planning view don't show up in Evidence Matrix.
+    const effectiveSelectedClauses = useMemo(() => {
+        const matrixKeys = matrixData ? Object.keys(matrixData) : [];
+        return Array.from(new Set([...selectedClauses, ...matrixKeys]));
+    }, [selectedClauses, matrixData]);
+
+    // --- INTERVIEWEE HANDLERS ---
+    const handleAddInterviewee = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && newInterviewee.trim()) {
+            addInterviewee(newInterviewee.trim());
+            setNewInterviewee("");
+        }
+    };
+
+    // --- HANDLERS: VOICE (Strictly Matrix) ---
     const toggleListening = useCallback(() => {
         if (isListening) {
             recognitionRef.current?.stop();
@@ -68,7 +86,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         }
         
         // Matrix Mode Safety Check
-        if (viewMode === 'matrix' && matrixRef.current && !matrixRef.current.getActiveRow()) {
+        if (matrixRef.current && !matrixRef.current.getActiveRow()) {
             alert("Please click inside a Matrix cell first to dictate.");
             return;
         }
@@ -90,10 +108,8 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 
                 if (finalTranscript) {
                     const cleanText = finalTranscript.trim();
-                    if (viewMode === 'matrix' && matrixRef.current) {
+                    if (matrixRef.current) {
                         matrixRef.current.handleExternalDictation(cleanText);
-                    } else {
-                        setEvidence(prev => prev + (prev ? " " : "") + cleanText);
                     }
                 }
             };
@@ -114,35 +130,23 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
             console.error("Failed to start recognition", e);
             setIsListening(false);
         }
-    }, [isListening, viewMode, evidenceLanguage, setEvidence]);
+    }, [isListening, evidenceLanguage]);
 
-    // --- HANDLERS: FILE PROCESSING ---
+    // --- HANDLERS: FILE PROCESSING (Strictly Matrix) ---
     const processNewFiles = useCallback((files: File[], targetOverride?: { clauseId: string, rowId: string }) => {
-        // Matrix Mode Handling
-        if (viewMode === 'matrix') {
-            const target = targetOverride || matrixRef.current?.getActiveRow();
-            if (!target) {
-                alert("Please select a specific cell in the Matrix to attach these files.");
-                return;
-            }
-            
-            const newFiles = files.map(f => {
-                const id = Math.random().toString(36).substr(2, 9);
-                fileTargetRef.current[id] = target;
-                return { id, file: f, status: 'pending' as const };
-            });
-            setUploadedFiles(prev => [...prev, ...newFiles]);
+        const target = targetOverride || matrixRef.current?.getActiveRow();
+        if (!target) {
+            alert("Please select a specific cell in the Matrix to attach these files.");
             return;
         }
-
-        // Document Mode Handling
-        const newFiles = files.map(f => ({
-            id: Math.random().toString(36).substr(2, 9),
-            file: f,
-            status: 'pending' as const
-        }));
+        
+        const newFiles = files.map(f => {
+            const id = Math.random().toString(36).substr(2, 9);
+            fileTargetRef.current[id] = target;
+            return { id, file: f, status: 'pending' as const };
+        });
         setUploadedFiles(prev => [...prev, ...newFiles]);
-    }, [viewMode, setUploadedFiles]);
+    }, [setUploadedFiles]);
 
     const handleMatrixOcrProcess = useCallback(async () => {
         const pendingFiles = uploadedFiles.filter(f => f.status === 'pending' || f.status === 'error');
@@ -159,9 +163,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     const base64 = await fileToBase64(fileEntry.file);
                     text = await generateOcrContent("Transcribe text.", base64, fileEntry.file.type);
                 } else if (fileEntry.file.type === 'application/pdf') {
-                     // For pure PDF text, standard OCR prompt works if converted to image or if backend supports it.
-                     // Here we assume standard OCR flow
-                     // NOTE: In a real app, you might want to use pdf.js locally first.
                      text = "[PDF Content extracted via OCR would go here]"; 
                 } else {
                     text = await fileEntry.file.text();
@@ -189,7 +190,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         setIsMatrixProcessing(false);
     }, [uploadedFiles, setUploadedFiles]);
 
-    // --- HANDLERS: DRAG & DROP & TAGGING ---
+    // --- HANDLERS: DRAG & DROP ---
     const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
     const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
     const handleDrop = useCallback((e: React.DragEvent) => {
@@ -200,91 +201,61 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         }
     }, [processNewFiles]);
 
-    const handleTextSelect = useCallback((e: React.MouseEvent) => {
-        if (viewMode === 'matrix' || !textareaRef.current) return;
-        const start = textareaRef.current.selectionStart;
-        const end = textareaRef.current.selectionEnd;
-        
-        if (start !== end) {
-            setSelectionMenu({ 
-                x: e.clientX, 
-                y: e.clientY, 
-                text: evidence.substring(start, end), 
-                start, 
-                end 
-            });
-        } else {
-            setSelectionMenu(null);
-        }
-    }, [viewMode, evidence]);
-
-    const confirmTag = (clauseId: string) => {
-        if (selectionMenu && onAddTag) {
-            onAddTag({
-                id: `tag_${Date.now()}`,
-                clauseId,
-                text: selectionMenu.text,
-                startIndex: selectionMenu.start,
-                endIndex: selectionMenu.end,
-                timestamp: Date.now()
-            });
-            setSelectionMenu(null);
-        }
-    };
-
     return (
         <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
             
-            {/* VIEW TOGGLE */}
-            <div className="flex justify-center -mt-2 mb-1">
-                <div className="flex bg-gray-100 dark:bg-slate-950 p-1 rounded-xl shadow-inner border border-gray-200 dark:border-slate-800">
-                    <button 
-                        onClick={() => setViewMode('document')}
-                        className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${viewMode === 'document' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+            {/* TOP BAR: PROCESS & INTERVIEWEE */}
+            <div className="flex flex-col md:flex-row items-center gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-1.5 shadow-sm">
+                {/* 1. Process Select */}
+                <div className="relative group w-full md:w-auto min-w-[180px] bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 flex items-center">
+                    <div className="absolute left-2 text-indigo-500 pointer-events-none">
+                        <Icon name="Session11_GridAdd" size={14}/>
+                    </div>
+                    <select 
+                        value={activeProcessId || ""} 
+                        onChange={(e) => setActiveProcessId(e.target.value)}
+                        className="w-full bg-transparent appearance-none pl-7 pr-6 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+                        title="Switch active process context"
                     >
-                        <Icon name="FileText" size={14}/> Document Mode
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('matrix')}
-                        className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${viewMode === 'matrix' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
-                    >
-                        <Icon name="LayoutList" size={14}/> Evidence Matrix
-                    </button>
+                        {processes.map(p => (
+                            <option key={p.id} value={p.id} className="text-slate-900 dark:text-white bg-white dark:bg-slate-900">
+                                {p.name}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="absolute right-2 pointer-events-none text-slate-400">
+                        <Icon name="ChevronDown" size={12}/>
+                    </div>
+                </div>
+
+                <div className="w-px h-6 bg-gray-200 dark:bg-slate-700 hidden md:block"></div>
+
+                {/* 2. Interviewee Input */}
+                <div className="flex-1 flex items-center gap-2 w-full overflow-x-auto custom-scrollbar px-1">
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">
+                        <Icon name="User" size={12}/> Persons:
+                    </div>
+                    {activeProcess?.interviewees?.map((name, idx) => (
+                        <span key={idx} className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800 whitespace-nowrap">
+                            {name}
+                            <button onClick={() => removeInterviewee(name)} className="hover:text-red-500"><Icon name="X" size={10}/></button>
+                        </span>
+                    ))}
+                    <input 
+                        className="bg-transparent border-b border-dashed border-gray-300 dark:border-slate-700 text-xs py-0.5 px-1 outline-none focus:border-indigo-500 min-w-[80px] dark:text-slate-300" 
+                        placeholder="+ Name..." 
+                        value={newInterviewee}
+                        onChange={e => setNewInterviewee(e.target.value)}
+                        onKeyDown={handleAddInterviewee}
+                    />
                 </div>
             </div>
 
             <div className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0 relative">
                 
-                {/* FLOATING TAG MENU */}
-                {selectionMenu && selectedClauses && selectedClauses.length > 0 && viewMode === 'document' && (
-                    <div 
-                        className="fixed z-[9999] bg-slate-900/90 backdrop-blur-md text-white p-2.5 rounded-xl shadow-2xl flex flex-col gap-2 animate-in zoom-in-95 duration-200 border border-slate-700/50 ring-1 ring-white/10 max-w-[200px]"
-                        style={{ top: selectionMenu.y - 120, left: Math.min(selectionMenu.x - 100, window.innerWidth - 220) }}
-                    >
-                        <div className="flex justify-between items-center border-b border-slate-700/50 pb-1.5 mb-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1">
-                                <Icon name="Tag" size={10}/> Tag As:
-                            </span>
-                            <button onClick={() => setSelectionMenu(null)} className="text-slate-400 hover:text-white bg-white/10 rounded-full p-0.5"><Icon name="X" size={10}/></button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 justify-start max-h-[150px] overflow-y-auto custom-scrollbar">
-                            {selectedClauses.map(clauseId => (
-                                <button 
-                                    key={clauseId}
-                                    onClick={() => confirmTag(clauseId)}
-                                    className="text-[10px] font-mono font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-lg transition-all active:scale-95 shadow-sm border border-indigo-500 hover:border-indigo-400"
-                                >
-                                    {clauseId}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900/90 rotate-45 border-r border-b border-slate-700/50"></div>
-                    </div>
-                )}
-
-                {/* MAIN CONTENT AREA */}
+                {/* MAIN CONTENT AREA - ALWAYS MATRIX */}
                 <div
-                    className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-col relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
+                    className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden flex flex-row relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
@@ -298,47 +269,21 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                         </div>
                     )}
                     
-                    {viewMode === 'document' ? (
-                        <textarea
-                            ref={textareaRef}
-                            className="flex-1 w-full h-full p-4 pb-6 bg-transparent resize-none focus:outline-none text-slate-700 dark:text-slate-300 font-medium text-sm leading-relaxed text-justify break-words whitespace-pre-wrap selection:bg-indigo-200 dark:selection:bg-indigo-900/60"
-                            placeholder="Paste audit evidence here or use Voice Dictation..."
-                            value={evidence}
-                            onChange={(e) => setEvidence(e.target.value)}
-                            onPaste={(e) => {
-                                if (e.clipboardData.files.length > 0) {
-                                    e.preventDefault();
-                                    processNewFiles(Array.from(e.clipboardData.files));
-                                }
-                            }}
-                            onMouseUp={handleTextSelect} 
-                        />
+                    {standards && standardKey && standards[standardKey] && matrixData && setMatrixData ? (
+                        <div className="flex-1 w-full h-full bg-gray-50/30 dark:bg-slate-950/30 p-2">
+                            <EvidenceMatrix 
+                                ref={matrixRef}
+                                standard={standards[standardKey]}
+                                selectedClauses={effectiveSelectedClauses}
+                                matrixData={matrixData}
+                                setMatrixData={setMatrixData}
+                                onPasteFiles={processNewFiles}
+                            />
+                        </div>
                     ) : (
-                        standards && standardKey && standards[standardKey] && matrixData && setMatrixData ? (
-                            <div className="flex-1 w-full h-full bg-gray-50/30 dark:bg-slate-950/30 p-2">
-                                <EvidenceMatrix 
-                                    ref={matrixRef}
-                                    standard={standards[standardKey]}
-                                    selectedClauses={selectedClauses}
-                                    matrixData={matrixData}
-                                    setMatrixData={setMatrixData}
-                                    onPasteFiles={processNewFiles}
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex-1 flex items-center justify-center text-slate-400">
-                                Please select a Standard to use Matrix Mode.
-                            </div>
-                        )
-                    )}
-                    
-                    {/* Floating Tags Indicator */}
-                    {tags.length > 0 && viewMode === 'document' && (
-                        <div className="absolute bottom-4 right-4 pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity">
-                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
-                                <Icon name="Tag" size={12}/>
-                                {tags.length} Evidence Tags
-                            </div>
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                            <Icon name="LayoutList" size={48} className="mb-4 opacity-30" />
+                            <p>Please select a Standard to view the Matrix.</p>
                         </div>
                     )}
                 </div>
@@ -346,11 +291,9 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 {/* UPLOAD QUEUE */}
                 {uploadedFiles.length > 0 && (
                     <div className="flex-shrink-0 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-2xl animate-in slide-in-from-bottom-5 duration-300 dark:shadow-inner">
-                        {viewMode === 'matrix' && (
-                            <div className="mb-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1">
-                                Matrix Queue: Files will attach to active cells
-                            </div>
-                        )}
+                        <div className="mb-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1">
+                            Matrix Queue: Files will attach to active cells
+                        </div>
                         <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
                             {uploadedFiles.map((fileEntry) => (
                                 <div key={fileEntry.id} className={`relative group flex-shrink-0 w-24 h-24 bg-white dark:bg-slate-800 rounded-xl shadow-sm border overflow-hidden transition-all duration-300 dark:shadow-lg ${fileEntry.status === 'error' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-100 dark:border-white/5'}`}>
@@ -387,7 +330,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                             ))}
                             <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
                                 <button 
-                                    onClick={viewMode === 'matrix' ? handleMatrixOcrProcess : onOcrProcess} 
+                                    onClick={handleMatrixOcrProcess} 
                                     disabled={(isOcrLoading || isMatrixProcessing) || !uploadedFiles.some(f => f.status === 'pending' || f.status === 'error')} 
                                     className="w-full h-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 flex flex-col items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 hover:scale-105 duration-300"
                                 >
@@ -401,10 +344,10 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
             </div>
             
             {/* ACTION TOOLBAR */}
-            <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
+            <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full py-2">
                 <div className="flex-none w-[52px] md:w-auto">
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
-                    <button onClick={() => fileInputRef.current?.click()} className={`w-full h-[52px] md:w-auto md:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${uploadedFiles.length > 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`} title={viewMode === 'matrix' ? "Upload to Active Matrix Cell" : "Upload Files"}>
+                    <button onClick={() => fileInputRef.current?.click()} className={`w-full h-[52px] md:w-auto md:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${uploadedFiles.length > 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`} title="Upload to Active Matrix Cell">
                         <Icon name={uploadedFiles.length > 0 ? "Demo1_MultiFiles" : "Demo8_GridPlus"} size={20} />
                         <span className="hidden md:inline">Upload</span>
                     </button>
@@ -413,7 +356,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 <button
                     onClick={toggleListening}
                     className={`flex-none w-[52px] md:w-auto md:px-4 h-[52px] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm border whitespace-nowrap ${isListening ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 animate-pulse' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500'}`}
-                    title={isListening ? "Click to Stop" : `Start Dictation (${evidenceLanguage.toUpperCase()})`}
+                    title={isListening ? "Click to Stop" : `Start Dictation (${evidenceLanguage.toUpperCase()}) to Active Cell`}
                 >
                     <Icon name="Mic" size={20} className={isListening ? "animate-pulse" : ""} />
                     <span className="hidden md:inline">

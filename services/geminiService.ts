@@ -5,8 +5,8 @@ import { cleanAndParseJSON } from "../utils";
 import { Standard, AnalysisResult } from "../types";
 import { PromptRegistry } from "./promptRegistry";
 import { VectorStore } from "./vectorStore";
-import { PrivacyService } from "./privacyService"; // NEW
-import { LocalIntelligence } from "./localIntelligence"; // NEW
+import { PrivacyService } from "./privacyService"; 
+import { LocalIntelligence } from "./localIntelligence";
 
 const getAiClient = (overrideKey?: string) => {
     let keyToUse = overrideKey;
@@ -32,7 +32,9 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
     const ai = new GoogleGenAI({ apiKey: key });
-    const probeModels = [...MODEL_HIERARCHY];
+    
+    // Create a probing list.
+    const probeModels = [...new Set([...MODEL_HIERARCHY, "gemini-1.5-flash"])];
     if (preferredModel && !probeModels.includes(preferredModel)) probeModels.unshift(preferredModel);
 
     let lastError: any = null;
@@ -49,27 +51,39 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             lastError = error;
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
-            if (status !== 404 && status !== 403 && !msg.includes("not found")) console.warn(`[Gemini Probe] ${model} failed:`, error);
-            if (msg.includes("key not valid") || status === 400 || msg.includes("invalid argument") || msg.includes("api_key")) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
-            if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded." };
+            console.warn(`[Gemini Probe] Model '${model}' failed: ${status} - ${msg}`);
+
+            if (msg.includes("key not valid") || msg.includes("api_key_invalid") || msg.includes("unauthenticated")) {
+                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
+            }
+
+            if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
+                return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded." };
+            }
+
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
                  any403 = true;
                  if (msg.includes("has not been used") || msg.includes("not enabled")) apiNotEnabled = true;
                  continue;
             }
-            if (status === 404 || msg.includes("not found")) continue;
+            continue;
         }
     }
+
     const msg = (lastError?.message || "").toLowerCase();
+    
     if (any403) {
-        if (apiNotEnabled) return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "API Not Enabled." };
-        return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (403)." };
+        if (apiNotEnabled) return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "API Not Enabled in Google Console." };
+        return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (Referrer/IP blocked)." };
     }
-    if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Error." };
-    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "Unknown error." };
+    
+    if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
+        return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Error." };
+    }
+
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "All models failed." };
 };
 
-// ... (fetchFullClauseText, parseStandardStructure, generateOcrContent kept same)
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
@@ -105,7 +119,6 @@ export const generateOcrContent = async (textPrompt: string, base64Data: string,
     return response.text || "";
 };
 
-// --- UPDATED ANALYSIS WITH PRIVACY & LOCAL FALLBACK ---
 export const generateAnalysis = async (
     clause: { code: string, title: string, description: string },
     standardName: string,
@@ -115,7 +128,6 @@ export const generateAnalysis = async (
     model?: string,
     usePrivacyShield: boolean = false
 ) => {
-    // 1. Check Offline Status
     if (!navigator.onLine) {
         console.log("Offline Mode: Using Local Intelligence");
         return LocalIntelligence.analyze(clause.code, clause.title, evidenceContext);
@@ -124,18 +136,15 @@ export const generateAnalysis = async (
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
     
-    // 2. RAG Search (Semantic)
     const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
     const ragKey = apiKey || ""; 
     const ragContext = await VectorStore.search(ragQuery, ragKey);
 
-    // 3. Privacy Shield Redaction
     let safeEvidence = evidenceContext + "\n\nTAGGED SECTIONS:\n" + tagsContext;
     if (usePrivacyShield) {
         safeEvidence = PrivacyService.redact(safeEvidence);
     }
 
-    // 4. Hydrate Prompt
     const template = PromptRegistry.getPrompt('ANALYSIS');
     const finalPrompt = PromptRegistry.hydrate(template.template, {
         STANDARD_NAME: standardName,
@@ -174,12 +183,23 @@ export const generateAnalysis = async (
         return response.text || "{}";
     } catch (e: any) {
         console.error("Analysis Error:", e);
-        // Fallback to local if API fails (network or quota)
+        if (targetModel !== "gemini-1.5-flash") {
+             try {
+                console.log("Retrying with fallback model: gemini-1.5-flash");
+                const retryResponse = await ai.models.generateContent({
+                    model: "gemini-1.5-flash",
+                    contents: finalPrompt,
+                    config
+                });
+                return retryResponse.text || "{}";
+             } catch (retryError) {
+                 console.error("Fallback Failed:", retryError);
+             }
+        }
         return LocalIntelligence.analyze(clause.code, clause.title, evidenceContext);
     }
 };
 
-// --- UPDATED REPORTING WITH MATRIX SYNTHESIS SUPPORT ---
 export const generateTextReport = async (
     data: { 
         company: string, 
@@ -188,7 +208,7 @@ export const generateTextReport = async (
         standard: string, 
         findings: any[], 
         lang: string,
-        fullEvidenceContext?: string // New Parameter for Matrix Data
+        fullEvidenceContext?: string
     },
     apiKey?: string, 
     model?: string
@@ -203,7 +223,7 @@ export const generateTextReport = async (
         AUDITOR: data.auditor,
         STANDARD_NAME: data.standard,
         FINDINGS_JSON: JSON.stringify(data.findings),
-        FULL_EVIDENCE_CONTEXT: data.fullEvidenceContext || "No granular evidence provided.", // Pass the Matrix data
+        FULL_EVIDENCE_CONTEXT: data.fullEvidenceContext || "No granular evidence provided.",
         LANGUAGE: data.lang === 'vi' ? 'Vietnamese' : 'English'
     });
 
@@ -215,7 +235,15 @@ export const generateTextReport = async (
         return response.text || "";
     } catch (e: any) {
         console.error("Reporting Error:", e);
-        throw new Error(e.message || "Report generation failed");
+        try {
+             const retryResponse = await ai.models.generateContent({
+                model: "gemini-1.5-flash",
+                contents: finalPrompt
+            });
+            return retryResponse.text || "";
+        } catch (retryErr) {
+            throw new Error(e.message || "Report generation failed");
+        }
     }
 };
 
@@ -227,5 +255,56 @@ export const generateMissingDescriptions = async (clauses: { code: string, title
     try {
         const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
         return response.text || "[]";
-    } catch (e) { return "[]"; }
+    } catch (e) { 
+        try {
+             const response = await ai.models.generateContent({ model: "gemini-1.5-flash", contents: prompt, config: { responseMimeType: "application/json" } });
+             return response.text || "[]";
+        } catch (err) { return "[]"; }
+    }
+};
+
+// --- NEW: AI PLANNING ---
+export const generateAuditPlan = async (
+    standardName: string, 
+    companyContext: string, 
+    existingProcesses: { id: string, name: string }[],
+    apiKey?: string, 
+    model?: string
+): Promise<{ newProcesses: { name: string, clauses: string[] }[], updates: { processId: string, clauses: string[] }[] }> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+    
+    const prompt = `
+    Role: Senior ISO Lead Auditor.
+    Task: Create/Update an Audit Plan Matrix for "${standardName}" applied to "${companyContext || 'Generic Company'}".
+    
+    1. If NO processes are provided, suggest 3-4 standard processes (e.g. Management, HR, Operations) and list applicable clause IDs (Codes ONLY) for each.
+    2. If processes ARE provided, map applicable clause IDs to them.
+    3. Return strictly JSON.
+    
+    Existing Processes provided: ${JSON.stringify(existingProcesses.map(p => ({ id: p.id, name: p.name })))}
+    
+    Output Format:
+    {
+        "newProcesses": [ { "name": "...", "clauses": ["4.1", "5.1", ...] } ],  // Only if needed or requested
+        "updates": [ { "processId": "...", "clauses": ["...", ...] } ] // For existing processes
+    }
+    `;
+
+    const targetModel = model || DEFAULT_GEMINI_MODEL;
+    try {
+        const response = await ai.models.generateContent({ 
+            model: targetModel, 
+            contents: prompt, 
+            config: { responseMimeType: "application/json" } 
+        });
+        const result = cleanAndParseJSON(response.text || "{}");
+        return {
+            newProcesses: result.newProcesses || [],
+            updates: result.updates || []
+        };
+    } catch (e) {
+        console.error("Auto-Plan Error", e);
+        return { newProcesses: [], updates: [] };
+    }
 };
