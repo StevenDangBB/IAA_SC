@@ -41,7 +41,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleSavePrompt = () => {
         PromptRegistry.updatePrompt(promptType, promptText);
-        // Visual feedback
         const btn = document.getElementById('save-prompt-btn');
         if(btn) { btn.innerText = "Saved!"; setTimeout(() => btn.innerText = "Save Prompt", 1000); }
     };
@@ -53,7 +52,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     return (
         <Modal isOpen={isOpen} title="Settings & Core Configuration" onClose={onClose}>
-            {/* Tab Header */}
             <div className="flex gap-2 mb-4 border-b border-gray-100 dark:border-slate-800 pb-2">
                 <button onClick={() => setTab('keys')} className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors ${tab === 'keys' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300' : 'text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                     API Keys
@@ -63,39 +61,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
             </div>
 
-            {/* TAB: KEYS (Existing Logic) */}
             {tab === 'keys' && (
                 <div className="space-y-6">
                     <div className="bg-gray-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-gray-100 dark:border-slate-700 dark:shadow-inner">
                         <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">API Key Pool Management</h4>
                         
-                        {/* Add Key Input Section */}
                         <div className="flex gap-2 mb-4">
                             <input
-                                type="password"
-                                placeholder="Enter Google Gemini API Key..."
-                                className="flex-1 p-2.5 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-600 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 transition-all dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
+                                type="text"
+                                autoComplete="off"
+                                data-form-type="other"
+                                placeholder="Paste Google Gemini API Key (starts with AIza...)"
+                                className="flex-1 p-2.5 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 transition-all dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
                                 value={newKeyInput}
-                                onChange={(e) => setNewKeyInput(e.target.value.trim())} // Auto-trim on input
-                                onBlur={() => setNewKeyInput(newKeyInput.trim())} // Ensure trimmed on blur
+                                onChange={(e) => setNewKeyInput(e.target.value.trim())}
                             />
-                            <button onClick={handleAddKey} disabled={isCheckingKey} className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs disabled:opacity-50 transition-colors shadow-sm">
+                            <button onClick={handleAddKey} disabled={isCheckingKey} className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs disabled:opacity-50 transition-colors shadow-sm min-w-[40px] flex items-center justify-center">
                                 {isCheckingKey ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Plus" />}
                             </button>
                         </div>
 
-                        {/* Key List Section */}
                         <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                             {apiKeys.map(k => {
-                                // Determine status indicator color and helper text
                                 let statusColor = 'bg-slate-300';
                                 let statusTitle = "Unknown Status";
                                 if (k.status === 'valid') { statusColor = 'bg-emerald-500 shadow-emerald-500/50'; statusTitle = "Active & Working"; }
                                 else if (k.status === 'checking') { statusColor = 'bg-yellow-500 animate-pulse'; statusTitle = "Validating..."; }
                                 else if (k.status === 'invalid') { statusColor = 'bg-red-500 shadow-red-500/50'; statusTitle = "Invalid / Auth Failed"; }
                                 else if (k.status === 'quota_exceeded') { statusColor = 'bg-orange-500'; statusTitle = "Quota Exceeded"; }
-                                else if (k.status === 'referrer_error') { statusColor = 'bg-purple-500'; statusTitle = "Blocked by Referrer Restriction"; }
-                                else if (k.status === 'unknown') { statusColor = 'bg-slate-400 border border-slate-500'; statusTitle = "Network Error / Unknown"; }
+                                else if (k.status === 'referrer_error') { statusColor = 'bg-purple-500'; statusTitle = "Referrer Blocked"; }
+                                else if (k.status === 'unknown') { statusColor = 'bg-slate-400 border border-slate-500'; statusTitle = "Network Error"; }
 
                                 return (
                                     <div key={k.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all duration-200 ${
@@ -103,16 +98,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                             ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-500/20 dark:border-indigo-500/50 shadow-sm' 
                                             : 'bg-white border-gray-100 dark:bg-slate-900 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-slate-500'
                                     }`}>
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            {/* Status Indicator with Tooltip */}
-                                            <div className="relative group/status">
-                                                <div className={`w-2.5 h-2.5 flex-shrink-0 rounded-full shadow-sm ring-1 ring-white/10 cursor-help ${statusColor}`}></div>
-                                                <div className="absolute left-4 top-0 bg-slate-800 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover/status:opacity-100 pointer-events-none transition-opacity z-50">
-                                                    {statusTitle}
-                                                </div>
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                            <div className="relative group/status" title={statusTitle}>
+                                                <div className={`w-2.5 h-2.5 flex-shrink-0 rounded-full shadow-sm ring-1 ring-white/10 ${statusColor}`}></div>
                                             </div>
                                             
-                                            <div className="flex flex-col min-w-0">
+                                            <div className="flex flex-col min-w-0 flex-1">
                                                 {editingKeyId === k.id ? (
                                                     <input 
                                                         autoFocus 
@@ -123,26 +114,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                         onKeyDown={e => e.key === 'Enter' && handleSaveLabel()} 
                                                     />
                                                 ) : (
-                                                    <span 
-                                                        onClick={() => handleStartEdit(k)} 
-                                                        className={`text-xs font-bold truncate cursor-pointer transition-colors ${
-                                                            k.id === activeKeyId ? 'text-indigo-700 dark:text-indigo-200' : 'text-slate-700 dark:text-slate-200 hover:text-indigo-500 dark:hover:text-indigo-400'
-                                                        }`}
-                                                    >
-                                                        {k.label}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span 
+                                                            onClick={() => handleStartEdit(k)} 
+                                                            className={`text-xs font-bold truncate cursor-pointer transition-colors ${
+                                                                k.id === activeKeyId ? 'text-indigo-700 dark:text-indigo-200' : 'text-slate-700 dark:text-slate-200 hover:text-indigo-500 dark:hover:text-indigo-400'
+                                                            }`}
+                                                        >
+                                                            {k.label}
+                                                        </span>
+                                                        {k.activeModel && (
+                                                            <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono">
+                                                                {k.activeModel.replace('gemini-', '').replace('-preview', '')}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
-                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">{k.key.substr(0, 8)}...</span>
+                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">{k.key.substr(0, 8)}...******</span>
                                             </div>
                                         </div>
                                         
                                         <div className="flex items-center gap-1">
-                                            {k.activeModel && <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">{k.activeModel.replace('gemini-', '').replace('-preview', '')}</span>}
                                             <button 
                                                 onClick={() => handleRefreshStatus(k.id)} 
                                                 disabled={k.status === 'checking'}
                                                 className={`p-1.5 text-slate-400 hover:text-indigo-500 dark:text-slate-500 dark:hover:text-indigo-400 transition-colors ${k.status === 'checking' ? 'animate-spin' : ''}`}
-                                                title="Re-check Status"
+                                                title="Force Check Quota"
                                             >
                                                 <Icon name={k.status === 'checking' ? "Loader" : "RefreshCw"} size={14} />
                                             </button>
@@ -169,8 +166,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl"><Icon name="Session10_Pulse" size={18} /></div>
                             <div>
-                                <h4 className="text-sm font-bold text-slate-800 dark:text-white">Auto Health Check</h4>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Periodically validate API keys in background</p>
+                                <h4 className="text-sm font-bold text-slate-800 dark:text-white">Smart Quota Rotation</h4>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Auto-check keys every 60s to restore high-tier models.</p>
                             </div>
                         </div>
                         <button onClick={() => toggleAutoCheck(!isAutoCheckEnabled)} className={`w-10 h-5 rounded-full transition-colors relative ${isAutoCheckEnabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}>
@@ -180,7 +177,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
             )}
 
-            {/* TAB: PROMPTS (New Logic) */}
             {tab === 'prompts' && (
                 <div className="flex flex-col h-[60vh]">
                     <div className="flex gap-2 mb-3">
@@ -206,7 +202,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             Save Prompt
                         </button>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-2 italic">Variables like {'{{STANDARD_NAME}}'} will be dynamically replaced.</p>
                 </div>
             )}
         </Modal>

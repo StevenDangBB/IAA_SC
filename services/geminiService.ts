@@ -49,22 +49,22 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-// --- VALIDATION ---
-export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
+// --- ROBUST VALIDATION WITH QUOTA PROBING ---
+export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
     
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Expanded probing list to ensure we find AT LEAST ONE working model
+    // Probing Strategy: Try models from Highest Tier to Lowest.
+    // Stop at the first one that works (200 OK).
+    // If 429 (Quota), continue to next model.
+    // If 403 (Invalid), stop immediately.
+
     const probeModels = [...MODEL_HIERARCHY];
-    if (preferredModel && !probeModels.includes(preferredModel)) probeModels.unshift(preferredModel);
-
     let lastError: any = null;
-    let any403 = false; // Permission denied (invalid key or referrer)
-    let apiNotEnabled = false;
+    let globalErrorType: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown' | undefined = undefined;
 
-    // Iterate through models. If ANY model works, the key is valid.
     for (const model of probeModels) {
         const start = performance.now();
         try {
@@ -72,52 +72,43 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
             await ai.models.generateContent({ model: model, contents: { parts: [{ text: "Hi" }] } });
             const end = performance.now();
             
-            // If we get here, this model works!
+            // Success! This model works.
             return { isValid: true, latency: Math.round(end - start), activeModel: model };
         } catch (error: any) {
             lastError = error;
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
-            // Debug log
-            // console.warn(`[Gemini Probe] Model '${model}' failed: ${status} - ${msg}`);
-
-            // Specific Checks that imply the KEY is bad, not just the model
+            // CASE 1: INVALID KEY (Stop immediately, no point trying other models)
             if (msg.includes("key not valid") || msg.includes("api_key_invalid") || msg.includes("unauthenticated")) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
             }
 
+            // CASE 2: PERMISSION DENIED / REFERRER (Stop immediately)
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 any403 = true;
-                 if (msg.includes("has not been used") || msg.includes("not enabled")) apiNotEnabled = true;
-                 // Don't return yet, other models might have permissions? Unlikely for 403 but possible for restricted keys.
+                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (Referrer/IP blocked)." };
             }
             
+            // CASE 3: QUOTA EXCEEDED (Continue loop to try lower tier model)
             if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-                // Quota is tricky. One model might be out, another might work. Continue probing.
-                // But track it.
+                globalErrorType = 'quota_exceeded';
+                continue; // TRY NEXT MODEL
             }
-            continue;
+
+            // CASE 4: NETWORK ERROR (Stop, usually client side)
+            if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
+                return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Connection Failed." };
+            }
         }
     }
 
-    // If we exit the loop, NO model worked. Analyze the last or accumulated errors.
-    const msg = (lastError?.message || "").toLowerCase();
-    
-    if (any403) {
-        if (apiNotEnabled) return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "API Not Enabled in Google Console." };
-        return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (Referrer/IP blocked)." };
-    }
-    
-    if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
-        return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Error." };
-    }
-    
-    if (msg.includes("quota") || msg.includes("exhausted") || (lastError?.status === 429)) {
-        return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded." };
+    // If we get here, ALL models failed.
+    // If we saw at least one Quota Exceeded, that's the reason.
+    if (globalErrorType === 'quota_exceeded') {
+        return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "All models exhausted quota." };
     }
 
-    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "All models failed check." };
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "Validation failed." };
 };
 
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {

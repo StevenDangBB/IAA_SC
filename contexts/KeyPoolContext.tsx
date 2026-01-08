@@ -96,19 +96,43 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
         }
     }, [activeKeyId, hasInitialized.current]); // Intentionally simpler dependency
 
-    // Background Check Loop
+    // Background Smart Rotation Logic
     useEffect(() => {
         if (!isAutoCheckEnabled) return;
+        
         const interval = setInterval(() => {
-            if (!isCheckingKey && apiKeys.length > 0) performBackgroundHealthCheck();
-        }, 60000);
+            // Only check ONE key at a time to avoid rate limits (DDOS behavior)
+            // Strategy: Find the "stalest" key (oldest check time)
+            if (!isCheckingKey && apiKeysRef.current.length > 0) {
+                performSingleSmartCheck();
+            }
+        }, 60000); // Run cycle every 60 seconds
+        
         return () => clearInterval(interval);
-    }, [isAutoCheckEnabled, isCheckingKey, apiKeys]);
+    }, [isAutoCheckEnabled]);
 
-    const performBackgroundHealthCheck = async () => {
-        const sorted = [...apiKeys].sort((a, b) => new Date(a.lastChecked || 0).getTime() - new Date(b.lastChecked || 0).getTime());
+    const performSingleSmartCheck = async () => {
+        const keys = apiKeysRef.current;
+        if (keys.length === 0) return;
+
+        // Sort by lastChecked (oldest first). 
+        // Handle missing lastChecked as epoch 0
+        const sorted = [...keys].sort((a, b) => {
+            const timeA = a.lastChecked ? new Date(a.lastChecked).getTime() : 0;
+            const timeB = b.lastChecked ? new Date(b.lastChecked).getTime() : 0;
+            return timeA - timeB;
+        });
+
         const candidate = sorted[0];
-        if (candidate) await refreshKeyStatus(candidate.id);
+        
+        // Only check if it hasn't been checked in the last 5 minutes to avoid spamming a single key
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        const lastTime = candidate.lastChecked ? new Date(candidate.lastChecked).getTime() : 0;
+
+        if (lastTime < fiveMinutesAgo) {
+            console.log(`[KeyPool] Background refreshing stale key: ${candidate.label}`);
+            await refreshKeyStatus(candidate.id);
+        }
     };
 
     const determineCapabilities = async (key: string) => {
@@ -200,8 +224,11 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
 
     const checkAllKeys = async () => {
         setIsCheckingKey(true);
+        // Sequential check to avoid burst
         for(const k of apiKeys) {
             await refreshKeyStatus(k.id);
+            // Slight delay between checks
+            await new Promise(r => setTimeout(r, 200)); 
         }
         setIsCheckingKey(false);
     };
