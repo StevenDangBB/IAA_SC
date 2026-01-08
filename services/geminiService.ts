@@ -10,6 +10,8 @@ import { LocalIntelligence } from "./localIntelligence";
 
 const getAiClient = (overrideKey?: string) => {
     let keyToUse = overrideKey;
+    
+    // 1. Check Fixed/Env Keys
     if (!keyToUse && MY_FIXED_KEYS.length > 0) keyToUse = MY_FIXED_KEYS[0];
     if (!keyToUse) {
         try {
@@ -21,7 +23,27 @@ const getAiClient = (overrideKey?: string) => {
         } catch (e) {}
     }
     if (!keyToUse && typeof process !== 'undefined' && process.env) keyToUse = process.env.API_KEY;
+    
+    // 2. Check Legacy Storage
     if (!keyToUse) keyToUse = localStorage.getItem("iso_api_key") || "";
+
+    // 3. Check Key Pool Storage (New Architecture Failsafe)
+    if (!keyToUse) {
+        try {
+            const poolRaw = localStorage.getItem("iso_api_keys");
+            const activeId = localStorage.getItem("iso_active_key_id");
+            if (poolRaw) {
+                const pool = JSON.parse(poolRaw);
+                if (Array.isArray(pool) && pool.length > 0) {
+                    const activeKey = pool.find((k: any) => k.id === activeId);
+                    keyToUse = activeKey ? activeKey.key : pool[0].key;
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to retrieve key from pool storage", e);
+        }
+    }
+
     const apiKey = (keyToUse || "").trim();
     if (!apiKey) return null;
     return new GoogleGenAI({ apiKey });

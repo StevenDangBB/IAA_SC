@@ -1,11 +1,13 @@
 
 import { useAudit } from '../contexts/AuditContext';
+import { useKeyPool } from '../contexts/KeyPoolContext';
 import { fetchFullClauseText } from '../services/geminiService';
 import { LocalIntelligence } from '../services/localIntelligence';
 import { Clause } from '../types';
 
 export const useReferenceLookup = () => {
     const { knowledgeBase, standards, standardKey } = useAudit();
+    const { getActiveKey } = useKeyPool();
 
     const handleLookup = async (clause: Clause) => {
         // 1. Dispatch Open Event (shows modal with loading state)
@@ -39,8 +41,11 @@ export const useReferenceLookup = () => {
         // Only reached if knowledgeBase is missing OR extraction failed.
         try {
             const stdName = standards[standardKey]?.name || "";
+            const activeKeyProfile = getActiveKey();
+            const apiKey = activeKeyProfile?.key || "";
+
             // We pass knowledgeBase to AI if available, so it can try extraction if our regex failed
-            const result = await fetchFullClauseText(clause, stdName, knowledgeBase);
+            const result = await fetchFullClauseText(clause, stdName, knowledgeBase, apiKey);
             const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { detail: result });
             window.dispatchEvent(updateEvent);
         } catch (e) {
