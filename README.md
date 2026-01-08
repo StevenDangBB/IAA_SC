@@ -1,46 +1,58 @@
-# ISO Audit Assistant
 
-## Hướng dẫn cài đặt và chạy (Manual Setup)
+# ISO Audit Assistant (Project Onyx)
 
-Bạn đang ở trong môi trường **GitHub Codespaces** (VS Code trên trình duyệt). Để chạy ứng dụng, bạn cần sử dụng **Terminal**.
+**Version:** 4.4.0-BASELINE
+**Engine:** Google Gemini 3.0 Pro / Flash 3.0
 
-### Bước 1: Mở Terminal
-Nhìn lên thanh menu phía trên cùng, chọn **Terminal** -> **New Terminal**.
-Một cửa sổ dòng lệnh sẽ hiện ra ở phía dưới màn hình.
+Professional ISO Audit Assistant leveraging Gemini AI for compliance analysis, OCR evidence extraction, and automated reporting.
 
-### Bước 2: Cài đặt thư viện
-Gõ lệnh sau vào Terminal và nhấn Enter:
-```bash
-npm install
-```
-Chờ một chút để nó tải các thư viện về (bạn sẽ thấy thư mục `node_modules` xuất hiện).
+## 🚀 Deployment & Installation
 
-### Bước 3: Cấu hình API Key (Quan trọng)
-Ứng dụng cần Key của Google Gemini để hoạt động. **LƯU Ý QUAN TRỌNG:** Vite yêu cầu biến môi trường phải bắt đầu bằng `VITE_`.
+### 1. Prerequisites
+- Node.js 18+
+- Google Gemini API Key
 
-1. Chuột phải vào khoảng trống ở thanh bên trái (nơi hiện danh sách file), chọn **New File**.
-2. Đặt tên file là `.env`.
-3. Mở file `.env` đó và dán nội dung sau (thay thế bằng Key của bạn):
-```env
-VITE_API_KEY=AIzaSy...KEY_CUA_BAN_O_DAY
-```
-*Nếu bạn deploy lên GitHub Pages/Actions, hãy vào Settings -> Secrets và tạo secret tên là `VITE_API_KEY`.*
+### 2. Manual Setup (Codespaces / Local)
 
-### Bước 4: Chạy ứng dụng (Chế độ Test)
-Gõ lệnh sau vào Terminal:
-```bash
-npm run dev
-```
-Sau khi chạy, bạn sẽ thấy dòng chữ `Local: http://localhost:5173/`. Giữ phím `Ctrl` và click vào link đó để mở web.
+1. **Install Dependencies:**
+   ```bash
+   npm install
+   ```
 
-### Bước 5: Đưa lên mạng (Deploy/Publish)
-Nếu bạn muốn tạo link web để gửi cho người khác:
-1. Gõ lệnh build:
+2. **Configure API Key:**
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_API_KEY=AIzaSy...YOUR_KEY_HERE
+   ```
+
+3. **Start Dev Server:**
+   ```bash
+   npm run dev
+   ```
+
+### 3. Production Build
 ```bash
 npm run build
+# The 'dist' folder is now ready for deployment (Netlify, Vercel, GitHub Pages)
 ```
-2. Gõ lệnh deploy:
+
+## 🛡️ Checkpoint System (Backup Strategy)
+
+This project uses a rigorous checkpoint system to snapshot stable baselines.
+
+**To create a new snapshot:**
 ```bash
-npm run deploy
+npm run checkpoint
 ```
-Sau đó vào **Settings** của GitHub Repository -> **Pages** để lấy link web.
+This will create a timestamped backup in the `_backups` directory, preserving all source code and configuration.
+
+## 🌟 Key Features (v4.4.0)
+
+- **Performance Core:** React Memoization for high-speed table rendering (Matrix/Planning).
+- **Dual-Stream Analysis:** Combines Structured Matrix evidence with Unstructured Documents.
+- **Privacy Shield:** Client-side PII redaction before AI transmission.
+- **Offline Intelligence:** Heuristic fallback engine when API is unavailable.
+- **Strict Process Architecture:** Data is organized by specific audit processes (e.g., HR, IT, Ops).
+
+## ⚠️ Important Note
+This application relies on `IndexedDB` for vector storage and large file handling. Clearing browser data will remove locally cached Knowledge Base files (though audit text data is persisted in LocalStorage).

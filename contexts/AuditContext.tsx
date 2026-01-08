@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult } from '../types';
+import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings } from '../types';
 import { DEFAULT_AUDIT_INFO, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
 
@@ -18,6 +18,10 @@ interface AuditContextType {
     auditInfo: AuditInfo;
     setAuditInfo: (info: AuditInfo) => void;
     
+    // Privacy
+    privacySettings: PrivacySettings;
+    setPrivacySettings: React.Dispatch<React.SetStateAction<PrivacySettings>>;
+
     // Process Management
     processes: AuditProcess[];
     activeProcessId: string | null;
@@ -27,7 +31,7 @@ interface AuditContextType {
     renameProcess: (id: string, name: string) => void;
     deleteProcess: (id: string) => void;
     batchUpdateProcessClauses: (updates: { processId: string, clauses: string[] }[]) => void;
-    toggleProcessClause: (processId: string, clauseId: string) => void; // NEW FUNCTION
+    toggleProcessClause: (processId: string, clauseId: string) => void; 
     
     // Interviewee Management
     addInterviewee: (name: string) => void;
@@ -67,11 +71,22 @@ interface AuditContextType {
 
 const AuditContext = createContext<AuditContextType | undefined>(undefined);
 
-export const AuditProvider = ({ children }: { children: ReactNode }) => {
+const DEFAULT_PRIVACY: PrivacySettings = {
+    maskCompany: true,
+    maskSmo: true,
+    maskPeople: true,
+    maskEmail: true,
+    maskPhone: true,
+    maskAddress: true,
+    maskIP: true
+};
+
+export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     // --- STATE ---
     const [customStandards, setCustomStandards] = useState<StandardsData>({});
     const [standardKey, setStandardKey] = useState<string>("");
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
+    const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(DEFAULT_PRIVACY);
     
     // Processes (Start Empty)
     const [processes, setProcesses] = useState<AuditProcess[]>([]);
@@ -354,12 +369,14 @@ export const AuditProvider = ({ children }: { children: ReactNode }) => {
         setFinalReportText(null);
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
+        setPrivacySettings(DEFAULT_PRIVACY);
     };
 
     const restoreSession = (data: any) => {
         if (data.standardKey) setStandardKey(data.standardKey);
         if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
         if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
+        if (data.privacySettings) setPrivacySettings(data.privacySettings);
         
         if (data.processes && data.processes.length > 0) {
             setProcesses(data.processes);
@@ -384,6 +401,7 @@ export const AuditProvider = ({ children }: { children: ReactNode }) => {
         <AuditContext.Provider value={{
             standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
             auditInfo, setAuditInfo,
+            privacySettings, setPrivacySettings,
             processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
             addInterviewee, removeInterviewee,
             evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,

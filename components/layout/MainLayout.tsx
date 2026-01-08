@@ -3,10 +3,12 @@ import React from 'react';
 import { Header } from '../Header';
 import Sidebar from '../Sidebar';
 import { useUI } from '../../contexts/UIContext';
-import { Toast, CommandPaletteModal } from '../UI';
+import { useAudit } from '../../contexts/AuditContext';
+import { Toast } from '../UI';
 import { SettingsModal } from '../modals/SettingsModal';
 import { AddStandardModal } from '../modals/AddStandardModal';
 import { IntegrityModal } from '../modals/IntegrityModal';
+import { PrivacySettingsModal } from '../modals/PrivacySettingsModal';
 import RecallModal from '../RecallModal';
 import ProjectInfoModal from '../ReleaseNotesModal';
 
@@ -21,6 +23,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
         isSidebarOpen, setSidebarOpen, sidebarWidth, setSidebarWidth,
         toastMsg, showToast, modals, toggleModal 
     } = useUI();
+    
+    const { privacySettings, setPrivacySettings } = useAudit();
 
     return (
         <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
@@ -53,12 +57,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
             </main>
 
             {/* Modals Manager */}
-            <CommandPaletteModal 
-                isOpen={modals.cmdPalette} 
-                onClose={() => toggleModal('cmdPalette', false)} 
-                actions={commandActions} 
-                onSelectAction={(a: any) => a.action()} 
-            />
             
             <ProjectInfoModal 
                 isOpen={modals.about} 
@@ -69,6 +67,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
                 isOpen={modals.recall}
                 onClose={() => toggleModal('recall', false)}
                 onRestore={onRestoreSnapshot}
+            />
+            
+            <PrivacySettingsModal
+                isOpen={modals.privacy}
+                onClose={() => toggleModal('privacy', false)}
+                settings={privacySettings}
+                setSettings={setPrivacySettings}
             />
         </div>
     );

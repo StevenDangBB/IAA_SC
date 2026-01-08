@@ -31,45 +31,55 @@ const getAiClient = (overrideKey?: string) => {
 export const validateApiKey = async (rawKey: string, preferredModel?: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
+    
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Create a probing list.
-    const probeModels = [...new Set([...MODEL_HIERARCHY, "gemini-1.5-flash"])];
+    // Expanded probing list to ensure we find AT LEAST ONE working model
+    const probeModels = [...MODEL_HIERARCHY];
     if (preferredModel && !probeModels.includes(preferredModel)) probeModels.unshift(preferredModel);
 
     let lastError: any = null;
-    let any403 = false;
+    let any403 = false; // Permission denied (invalid key or referrer)
     let apiNotEnabled = false;
 
+    // Iterate through models. If ANY model works, the key is valid.
     for (const model of probeModels) {
         const start = performance.now();
         try {
+            // Use a tiny prompt to minimize latency and cost
             await ai.models.generateContent({ model: model, contents: { parts: [{ text: "Hi" }] } });
             const end = performance.now();
+            
+            // If we get here, this model works!
             return { isValid: true, latency: Math.round(end - start), activeModel: model };
         } catch (error: any) {
             lastError = error;
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
-            console.warn(`[Gemini Probe] Model '${model}' failed: ${status} - ${msg}`);
+            
+            // Debug log
+            // console.warn(`[Gemini Probe] Model '${model}' failed: ${status} - ${msg}`);
 
+            // Specific Checks that imply the KEY is bad, not just the model
             if (msg.includes("key not valid") || msg.includes("api_key_invalid") || msg.includes("unauthenticated")) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
-            }
-
-            if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-                return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded." };
             }
 
             if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
                  any403 = true;
                  if (msg.includes("has not been used") || msg.includes("not enabled")) apiNotEnabled = true;
-                 continue;
+                 // Don't return yet, other models might have permissions? Unlikely for 403 but possible for restricted keys.
+            }
+            
+            if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
+                // Quota is tricky. One model might be out, another might work. Continue probing.
+                // But track it.
             }
             continue;
         }
     }
 
+    // If we exit the loop, NO model worked. Analyze the last or accumulated errors.
     const msg = (lastError?.message || "").toLowerCase();
     
     if (any403) {
@@ -80,8 +90,12 @@ export const validateApiKey = async (rawKey: string, preferredModel?: string): P
     if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
         return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Error." };
     }
+    
+    if (msg.includes("quota") || msg.includes("exhausted") || (lastError?.status === 429)) {
+        return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "Quota Exceeded." };
+    }
 
-    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "All models failed." };
+    return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "All models failed check." };
 };
 
 export const fetchFullClauseText = async (clause: { code: string, title: string }, standardName: string, contextData: string | null, apiKey?: string, model?: string): Promise<{ en: string; vi: string }> => {
@@ -94,9 +108,76 @@ export const fetchFullClauseText = async (clause: { code: string, title: string 
     } else {
         prompt = `Provide verbatim text for ${standardName} Clause [${clause.code}] ${clause.title}. Output JSON: {"en": "...", "vi": "..."}`;
     }
-    const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
-    const parsed = cleanAndParseJSON(response.text || "{}");
-    return { en: parsed?.en || "N/A", vi: parsed?.vi || "N/A" };
+    
+    // Try primary, then fallback
+    try {
+        const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
+        const parsed = cleanAndParseJSON(response.text || "{}");
+        return { en: parsed?.en || "N/A", vi: parsed?.vi || "N/A" };
+    } catch (e) {
+        console.warn("Primary fetch failed, trying fallback model...");
+        try {
+             const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
+             const parsed = cleanAndParseJSON(response.text || "{}");
+             return { en: parsed?.en || "N/A", vi: parsed?.vi || "N/A" };
+        } catch (e2) {
+            throw e;
+        }
+    }
+};
+
+// --- NEW FUNCTION: FULL STANDARD MAPPING ---
+export const mapStandardRequirements = async (standardName: string, clauseCodes: string[], sourceText: string, apiKey?: string, model?: string): Promise<Record<string, string>> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+    
+    // Fallback chain
+    const modelsToTry = model ? [model] : ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp"];
+
+    const prompt = `
+    Role: ISO Standard Analyst.
+    Task: Extract the EXACT, VERBATIM content for the requested clauses from the provided Standard Document Source.
+    
+    Instructions:
+    1. Look for the specific clause numbers provided in the list.
+    2. Extract the full text (requirements) associated with that clause.
+    3. PRESERVE formatting, newlines, and bullet points.
+    4. If a clause code is not found in the text, return "Content not found in source document."
+    
+    Clauses to Extract: ${JSON.stringify(clauseCodes)}
+    
+    Source Text:
+    """
+    ${sourceText.substring(0, 800000)} 
+    """
+    
+    Output Format: JSON Object where Key = Clause Code (e.g. "4.1"), Value = Verbatim Text.
+    {
+      "4.1": "The organization shall determine external and internal issues...",
+      "4.2": "..."
+    }
+    `;
+
+    for (const targetModel of modelsToTry) {
+        try {
+            console.log(`Mapping Standard with model: ${targetModel}`);
+            const response = await ai.models.generateContent({ 
+                model: targetModel, 
+                contents: prompt, 
+                config: { responseMimeType: "application/json" } 
+            });
+            const result = cleanAndParseJSON(response.text || "{}");
+            if (result && Object.keys(result).length > 0) {
+                return result;
+            }
+        } catch (e: any) {
+            console.warn(`Mapping failed on ${targetModel}:`, e.message);
+            // Continue to next model
+        }
+    }
+    
+    console.error("All models failed to map standard requirements.");
+    return {};
 };
 
 export const parseStandardStructure = async (rawText: string, standardName: string, apiKey?: string, model?: string): Promise<Standard | null> => {
@@ -183,11 +264,11 @@ export const generateAnalysis = async (
         return response.text || "{}";
     } catch (e: any) {
         console.error("Analysis Error:", e);
-        if (targetModel !== "gemini-1.5-flash") {
+        if (targetModel !== "gemini-3-flash-preview") {
              try {
-                console.log("Retrying with fallback model: gemini-1.5-flash");
+                console.log("Retrying with fallback model: gemini-3-flash-preview");
                 const retryResponse = await ai.models.generateContent({
-                    model: "gemini-1.5-flash",
+                    model: "gemini-3-flash-preview",
                     contents: finalPrompt,
                     config
                 });
@@ -237,7 +318,7 @@ export const generateTextReport = async (
         console.error("Reporting Error:", e);
         try {
              const retryResponse = await ai.models.generateContent({
-                model: "gemini-1.5-flash",
+                model: "gemini-3-flash-preview",
                 contents: finalPrompt
             });
             return retryResponse.text || "";
@@ -257,7 +338,7 @@ export const generateMissingDescriptions = async (clauses: { code: string, title
         return response.text || "[]";
     } catch (e) { 
         try {
-             const response = await ai.models.generateContent({ model: "gemini-1.5-flash", contents: prompt, config: { responseMimeType: "application/json" } });
+             const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
              return response.text || "[]";
         } catch (err) { return "[]"; }
     }

@@ -18,7 +18,7 @@ interface UIContextType {
         integrity: boolean;
         recall: boolean;
         addStandard: boolean;
-        cmdPalette: boolean;
+        privacy: boolean;
     };
     toggleModal: (modal: keyof UIContextType['modals'], state?: boolean) => void;
     
@@ -29,7 +29,7 @@ interface UIContextType {
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
 
-export const UIProvider = ({ children }: { children: ReactNode }) => {
+export const UIProvider = ({ children }: React.PropsWithChildren<{}>) => {
     // Theme
     const [isDarkMode, setIsDarkMode] = useState(true);
     useEffect(() => {
@@ -54,7 +54,7 @@ export const UIProvider = ({ children }: { children: ReactNode }) => {
         integrity: false,
         recall: false,
         addStandard: false,
-        cmdPalette: false,
+        privacy: false,
     });
 
     const toggleModal = (modal: keyof typeof modals, state?: boolean) => {

@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.3.0-PLANNING"; 
-export const BUILD_TIMESTAMP = "2026-01-08 14:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.4.0-BASELINE"; 
+export const BUILD_TIMESTAMP = "2026-02-01 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -89,6 +89,17 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "4.4.0-BASELINE",
+        date: "2026-02-01",
+        features: [
+            "CORE: System Baseline Established. Major refactoring of rendering engine.",
+            "PERF: Optimized Matrix and Planning views using React Memoization for high FPS.",
+            "UX: Smoother transitions and reduced layout thrashing.",
+            "CLEANUP: Removed legacy code paths and consolidated types.",
+            "STABILITY: Production-ready checkpoint."
+        ]
+    },
     {
         version: "4.3.0-PLANNING",
         date: "2026-01-08",

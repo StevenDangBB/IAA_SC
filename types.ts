@@ -32,6 +32,16 @@ export interface AuditInfo {
     // Interviewee removed from global scope, moved to AuditProcess
 }
 
+export interface PrivacySettings {
+    maskCompany: boolean;
+    maskSmo: boolean;
+    maskPeople: boolean; // Auditee/Interiewees
+    maskEmail: boolean;
+    maskPhone: boolean;
+    maskAddress: boolean;
+    maskIP: boolean;
+}
+
 // --- NEW PROCESS ARCHITECTURE (formerly Scope) ---
 export interface AuditProcess {
     id: string;
@@ -82,6 +92,7 @@ export interface SessionSnapshot {
         standardKey: string;
         auditInfo: AuditInfo;
         selectedClauses: string[];
+        privacySettings?: PrivacySettings;
         
         // Multi-Process Data Structure
         activeProcessId: string;

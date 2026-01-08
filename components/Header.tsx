@@ -12,10 +12,11 @@ export const Header: React.FC = () => {
         isDarkMode, toggleDarkMode 
     } = useUI();
     
-    const { standards, standardKey } = useAudit();
+    const { standards, standardKey, privacySettings } = useAudit();
     const { apiKeys } = useKeyPool();
 
     const isSystemHealthy = useMemo(() => apiKeys.some(k => k.status === 'valid'), [apiKeys]);
+    const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
 
     const displayBadge = useMemo(() => {
         const currentStandardName = standards[standardKey]?.name || "";
@@ -48,9 +49,15 @@ export const Header: React.FC = () => {
                 </div>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
-                <button onClick={() => toggleModal('cmdPalette', true)} className="p-2 rounded-xl text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all active:scale-95" title="Command Palette (Ctrl+K)">
-                    <Icon name="Session6_Zap" size={20}/>
+                {/* Privacy Shield Button */}
+                <button 
+                    onClick={() => toggleModal('privacy', true)} 
+                    className={`p-2 rounded-xl transition-all active:scale-95 border ${isPrivacyActive ? 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-100 border-transparent dark:hover:bg-slate-800'}`} 
+                    title={isPrivacyActive ? "Privacy Shield Active" : "Configure Privacy Shield"}
+                >
+                    <Icon name="ShieldEye" size={20}/>
                 </button>
+
                 <div className="hidden lg:block"><FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir: 'increase' | 'decrease') => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} /></div>
                 <button onClick={toggleDarkMode} className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition-all"><Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/></button>
                 <button onClick={() => toggleModal('settings', true)} className="group relative w-8 h-8 flex items-center justify-center transition-all" title="Connection Status">
