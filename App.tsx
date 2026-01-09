@@ -38,6 +38,9 @@ const AppContent = () => {
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [referenceState, setReferenceState] = useState({ isOpen: false, clause: null, fullText: {en:"", vi:""}, isLoading: false });
     
+    // Fix: Add State for New Key Input (was missing in previous version causing input lock)
+    const [newKeyInput, setNewKeyInput] = useState(""); 
+
     // Event Listeners
     useEffect(() => {
         // Event to OPEN the modal (loading state)
@@ -66,6 +69,15 @@ const AppContent = () => {
 
     const currentTabConfig = TABS_CONFIG.find(t => t.id === layoutMode) || TABS_CONFIG[0];
     const showProcessBlocker = (!activeProcessId || processes.length === 0) && layoutMode !== 'planning';
+
+    const handleAddKeyWrapper = async () => {
+        if (await addKey(newKeyInput)) {
+            setNewKeyInput("");
+            showToast("API Key Added Successfully");
+        } else {
+            showToast("Failed: Key Invalid or Quota Exhausted");
+        }
+    };
 
     return (
         <MainLayout commandActions={[]} onRestoreSnapshot={restoreSession}>
@@ -146,8 +158,11 @@ const AppContent = () => {
             {/* Modals */}
             <SettingsModal 
                 isOpen={modals.settings} onClose={() => toggleModal('settings', false)} 
-                apiKeys={apiKeys} newKeyInput="" setNewKeyInput={() => {}} isCheckingKey={isCheckingKey}
-                handleAddKey={() => { const i = document.querySelector('input[type="password"]') as HTMLInputElement; if(i) addKey(i.value); }} 
+                apiKeys={apiKeys} 
+                newKeyInput={newKeyInput} 
+                setNewKeyInput={setNewKeyInput} 
+                isCheckingKey={isCheckingKey}
+                handleAddKey={handleAddKeyWrapper}
                 activeKeyId={activeKeyId} editingKeyId={null} editLabelInput="" setEditLabelInput={() => {}}
                 handleSaveLabel={() => {}} handleStartEdit={() => {}} handleRefreshStatus={refreshKeyStatus} handleDeleteKey={deleteKey}
                 isAutoCheckEnabled={isAutoCheckEnabled} toggleAutoCheck={toggleAutoCheck}
