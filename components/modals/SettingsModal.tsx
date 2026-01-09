@@ -69,18 +69,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex gap-2 mb-4">
                             <input
                                 type="text"
-                                name="google_gen_token_field" 
-                                id="gen_api_field"
+                                name="search_query_custom" 
+                                id="custom_search_input_x"
                                 autoComplete="off"
                                 autoCorrect="off"
                                 autoCapitalize="off"
                                 spellCheck="false"
-                                data-form-type="other"
                                 data-lpignore="true" 
                                 placeholder="Paste Google Gemini API Key (starts with AIza...)"
                                 className="flex-1 p-2.5 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 transition-all dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
                                 value={newKeyInput}
-                                onChange={(e) => setNewKeyInput(e.target.value.trim())}
+                                onChange={(e) => setNewKeyInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
                             />
                             <button onClick={handleAddKey} disabled={isCheckingKey} className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs disabled:opacity-50 transition-colors shadow-sm min-w-[40px] flex items-center justify-center">

@@ -71,11 +71,18 @@ const AppContent = () => {
     const showProcessBlocker = (!activeProcessId || processes.length === 0) && layoutMode !== 'planning';
 
     const handleAddKeyWrapper = async () => {
-        if (await addKey(newKeyInput)) {
+        const status = await addKey(newKeyInput);
+        
+        if (status === 'valid') {
             setNewKeyInput("");
-            showToast("API Key Added Successfully");
+            showToast("Success: API Key is Active");
+        } else if (status === 'quota_exceeded') {
+            setNewKeyInput("");
+            showToast("Added: Key Quota Exhausted (Will rotate automatically)");
+        } else if (status === 'duplicate') {
+            showToast("Info: Key already exists in pool");
         } else {
-            showToast("Failed: Key Invalid or Quota Exhausted");
+            showToast("Failed: Invalid API Key or Network Error");
         }
     };
 

@@ -8,7 +8,7 @@ interface KeyPoolContextType {
     apiKeys: ApiKeyProfile[];
     activeKeyId: string;
     isCheckingKey: boolean;
-    addKey: (key: string, label?: string) => Promise<boolean>;
+    addKey: (key: string, label?: string) => Promise<string>; // Changed return type to string status
     deleteKey: (id: string) => void;
     refreshKeyStatus: (id: string) => Promise<void>;
     checkAllKeys: () => Promise<void>;
@@ -145,9 +145,9 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
         };
     };
 
-    const addKey = async (key: string, label?: string) => {
-        if (!key.trim()) return false;
-        if (apiKeys.some(k => k.key === key.trim())) return false;
+    const addKey = async (key: string, label?: string): Promise<string> => {
+        if (!key.trim()) return 'empty';
+        if (apiKeys.some(k => k.key === key.trim())) return 'duplicate';
         
         setIsCheckingKey(true);
         const caps = await determineCapabilities(key);
@@ -162,17 +162,22 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
             lastChecked: new Date().toISOString()
         };
 
-        const newKeys = [...apiKeys, newProfile];
-        setApiKeys(newKeys);
-        localStorage.setItem("iso_api_keys", JSON.stringify(newKeys));
-        
-        if (apiKeys.length === 0 || caps.status === 'valid') {
-            setActiveKeyId(newProfile.id);
-            localStorage.setItem("iso_active_key_id", newProfile.id);
+        // Allow adding if valid OR quota_exceeded
+        // This is crucial for public deployments where initial check might hit 429
+        if (caps.status === 'valid' || caps.status === 'quota_exceeded') {
+            const newKeys = [...apiKeys, newProfile];
+            setApiKeys(newKeys);
+            localStorage.setItem("iso_api_keys", JSON.stringify(newKeys));
+            
+            // If this is the only key, or it's valid, make it active
+            if (apiKeys.length === 0 || caps.status === 'valid') {
+                setActiveKeyId(newProfile.id);
+                localStorage.setItem("iso_active_key_id", newProfile.id);
+            }
         }
         
         setIsCheckingKey(false);
-        return caps.status === 'valid';
+        return caps.status;
     };
 
     const deleteKey = (id: string) => {
