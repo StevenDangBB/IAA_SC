@@ -24,11 +24,11 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     ];
 
     const techStackData = [
-        { layer: "Frontend", tech: "React 18 + Vite", role: "Component Lifecycle, State Management", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20" },
+        { layer: "Architecture", tech: "React + Vite + Modal Manager", role: "Modular Component System", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20" },
         { layer: "Styling", tech: "Tailwind CSS", role: "Utility-first styling, Dark mode adaptive", color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-50 dark:bg-cyan-900/20" },
         { layer: "AI Engine", tech: "Google Gemini 3.0 Pro", role: "Reasoning, Analysis, Vision OCR", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
-        { layer: "Storage", tech: "IndexedDB + LocalStorage", role: "Vector Store, Session Persistence", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20" },
-        { layer: "Processing", tech: "Web Workers", role: "Non-blocking file parsing & chunking", color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50 dark:bg-rose-900/20" }
+        { layer: "State", tech: "Context API + Refs", role: "High-Performance Reactive State", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20" },
+        { layer: "Processing", tech: "Dual-Stream Synthesis", role: "Matrix + Unstructured Data Merging", color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50 dark:bg-rose-900/20" }
     ];
 
     return (
@@ -37,44 +37,43 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 
                 {/* --- HEADER --- */}
                 <div className="flex-shrink-0 relative overflow-hidden group border-b border-gray-100 dark:border-slate-800">
-                    {/* Background */}
-                    <div className="absolute inset-0 bg-slate-900">
-                        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                        <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+                    {/* Background - Quantum Mesh Effect */}
+                    <div className="absolute inset-0 bg-slate-950">
+                        <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f46e51a_1px,transparent_1px),linear-gradient(to_bottom,#4f46e51a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
+                        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 animate-pulse-slow"></div>
+                        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 animate-pulse-slow" style={{ animationDelay: '1s' }}></div>
                     </div>
 
                     <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 p-2 bg-slate-800/50 rounded-full hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><Icon name="X" size={20}/></button>
 
                     <div className="relative px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row items-center md:items-start gap-6 z-10">
-                        {/* Avatar */}
-                        <div className="relative flex-shrink-0 mb-4 md:mb-0">
-                            <div className="relative w-20 h-20 rounded-full p-0.5 bg-slate-900 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl mx-auto md:mx-0">
-                                {!imgError ? (
-                                    <img src="./author.png" alt="Author" className="w-full h-full rounded-full object-cover" onError={() => setImgError(true)} />
-                                ) : (
-                                    <div className="w-full h-full rounded-full flex items-center justify-center bg-black relative">
-                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1e1b4b_0%,_#000000_100%)]"></div>
-                                        <div className="relative z-10 transform scale-110"><Icon name="TDLogo" size={48} /></div>
-                                    </div>
-                                )}
+                        {/* Avatar / Logo */}
+                        <div className="relative flex-shrink-0 mb-4 md:mb-0 group/logo">
+                            <div className="relative w-24 h-24 rounded-2xl p-1 bg-gradient-to-br from-slate-800 to-slate-950 ring-1 ring-white/10 z-10 overflow-hidden shadow-2xl mx-auto md:mx-0 flex items-center justify-center backdrop-blur-xl">
+                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-cyan-500/20 opacity-0 group-hover/logo:opacity-100 transition-opacity duration-700"></div>
+                                <div className="transform scale-150 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+                                    <Icon name="TDLogo" size={64} />
+                                </div>
                             </div>
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 text-center md:text-left">
-                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-2">
-                                ISO Audit Pro <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200 text-lg align-top ml-1">GOLD</span>
+                            <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-cyan-200 tracking-tight leading-none mb-2 drop-shadow-sm">
+                                ISO Audit Pro
                             </h2>
-                            <p className="text-slate-400 text-sm font-medium mb-4">The AI-Powered Compliance Assistant</p>
+                            <p className="text-indigo-200/70 text-sm font-medium mb-6 tracking-wide uppercase">
+                                Next-Gen Compliance Intelligence
+                            </p>
                             
                             <div className="flex flex-wrap gap-2 justify-center md:justify-start">
                                 {tabs.map(t => (
                                     <button
                                         key={t.id}
                                         onClick={() => setActiveTab(t.id as any)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 ${activeTab === t.id ? 'bg-white text-indigo-900 shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-105' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700 hover:text-white border border-white/5'}`}
                                     >
-                                        <Icon name={t.icon} size={14}/> {t.label}
+                                        <Icon name={t.icon} size={16}/> {t.label}
                                     </button>
                                 ))}
                             </div>
@@ -88,7 +87,8 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     {/* OVERVIEW TAB */}
                     {activeTab === 'overview' && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
-                            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm">
+                            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-gray-100 dark:border-slate-800 pb-2">System Status</h4>
                                 <div className="grid grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-y-3 gap-x-4 items-center">
                                     <span className="text-sm font-medium text-slate-500 text-right">Version</span>
@@ -96,13 +96,13 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                                     <span className="text-sm font-medium text-slate-500 text-right">Build</span>
                                     <span className="font-mono text-[10px] text-slate-500 break-words">{BUILD_TIMESTAMP}</span>
                                     <span className="text-sm font-medium text-slate-500 text-right">Engine</span>
-                                    <span className="font-mono text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded w-fit">Gemini 3.0 Pro</span>
+                                    <span className="font-mono text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded w-fit border border-amber-100 dark:border-amber-800">Gemini 3.0 Pro</span>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {KEY_CAPABILITIES.map((cap, idx) => (
-                                    <div key={idx} className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 flex items-start gap-3">
+                                    <div key={idx} className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 flex items-start gap-3 hover:border-indigo-200 dark:hover:border-indigo-900 transition-colors">
                                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400"><Icon name={cap.icon} size={20}/></div>
                                         <div>
                                             <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200">{cap.title}</h5>
@@ -118,17 +118,32 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     {activeTab === 'guide' && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
                             <section>
-                                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-3">Workflow</h3>
-                                <ol className="list-decimal list-inside space-y-3 text-sm text-slate-600 dark:text-slate-300 marker:text-indigo-500 marker:font-bold">
-                                    <li><strong>Setup:</strong> Select a Standard (e.g., ISO 9001) from the Sidebar. Upload a source PDF if available for better accuracy.</li>
-                                    <li><strong>Evidence Gathering:</strong>
-                                        <ul className="list-disc list-inside ml-5 mt-2 space-y-2 text-slate-500">
-                                            <li>Use <strong>Document Mode</strong> for unstructured text, OCR images, or voice dictation.</li>
-                                            <li>Use <strong>Evidence Matrix</strong> for structured, clause-by-clause mapping (Recommended for GAP analysis).</li>
-                                        </ul>
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-3">Audit Workflow</h3>
+                                <ol className="list-decimal list-inside space-y-4 text-sm text-slate-600 dark:text-slate-300 marker:text-indigo-500 marker:font-bold">
+                                    <li className="pl-2">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">Planning Phase:</span>
+                                        <p className="mt-1 ml-1 text-slate-500 text-xs leading-relaxed">
+                                            Define processes in the Sidebar. Use the <strong>Planning View</strong> (Matrix) to map which ISO clauses apply to which process. This creates the scope for your audit.
+                                        </p>
                                     </li>
-                                    <li><strong>Analysis:</strong> Select clauses in the Sidebar and click "Analyze". The AI uses Dual-Stream Synthesis to combine your raw evidence and matrix data.</li>
-                                    <li><strong>Reporting:</strong> Review findings, adjust conclusions, and generate the final report. You can export as formatted text or strict Plain Text for system integration.</li>
+                                    <li className="pl-2">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">Execution Phase:</span>
+                                        <p className="mt-1 ml-1 text-slate-500 text-xs leading-relaxed">
+                                            Switch to <strong>Audit View</strong>. Select a process and input evidence. You can type, dictate voice notes, or drag-and-drop files directly into specific clause rows.
+                                        </p>
+                                    </li>
+                                    <li className="pl-2">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">Analysis & Findings:</span>
+                                        <p className="mt-1 ml-1 text-slate-500 text-xs leading-relaxed">
+                                            Click "Analyze". The AI synthesizes your matrix data and uploaded files to determine compliance. Review findings in the <strong>Findings View</strong>.
+                                        </p>
+                                    </li>
+                                    <li className="pl-2">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">Reporting:</span>
+                                        <p className="mt-1 ml-1 text-slate-500 text-xs leading-relaxed">
+                                            Generate a final executive summary. Export structured data for your ERP or QMS software.
+                                        </p>
+                                    </li>
                                 </ol>
                             </section>
 
@@ -194,9 +209,9 @@ const ProjectInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                                         { title: "Report Synthesizer", desc: "Generates final audit reports in Markdown or Plain Text for system integration." },
                                         { title: "Vector Store", desc: "Client-side vector database (IndexedDB) for semantic search of large standards." },
                                         { title: "Neural Pool", desc: "Multi-key management system with smart failover and quota handling." },
-                                        { title: "Session Time Machine", desc: "Snapshot-based state management allowing rollbacks to previous audit points." }
+                                        { title: "Modal Manager", desc: "Centralized overlay system for handling dialogs and alerts efficiently." }
                                     ].map((feature, i) => (
-                                        <div key={i} className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-700">
+                                        <div key={i} className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors">
                                             <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-1">{feature.title}</h5>
                                             <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug">{feature.desc}</p>
                                         </div>

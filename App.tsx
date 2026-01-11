@@ -10,45 +10,37 @@ import { FindingsView } from './components/views/FindingsView';
 import { ReportView } from './components/views/ReportView';
 import { PlanningView } from './components/views/PlanningView'; 
 import ReferenceClauseModal from './components/ReferenceClauseModal';
-import { SettingsModal } from './components/modals/SettingsModal';
-import { AddStandardModal } from './components/modals/AddStandardModal';
+import { ModalManager } from './components/managers/ModalManager';
 import { Icon } from './components/UI';
 import { TABS_CONFIG } from './constants';
 import { useAutoSave } from './hooks/useAutoSave';
 import { UploadedFile } from './types'; 
-import { processSourceFile } from './utils';
 
 const AppContent = () => {
     const [layoutMode, setLayoutMode] = useState('planning'); 
     
     // Hooks & Context
-    const { isSidebarOpen, sidebarWidth, showToast, modals, toggleModal, setSidebarOpen } = useUI();
+    const { isSidebarOpen, sidebarWidth, showToast, modals, toggleModal } = useUI();
     const { 
         evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,
-        selectedClauses, standards, standardKey, auditInfo,
-        setKnowledgeData, analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings,
+        selectedClauses, standards, standardKey,
+        analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings,
         finalReportText, setFinalReportText, resetSession, restoreSession,
-        addCustomStandard, setStandardKey, activeProcessId, processes 
+        activeProcessId, processes 
     } = useAudit();
 
-    const { apiKeys, addKey, deleteKey, refreshKeyStatus, checkAllKeys, activeKeyId, isCheckingKey, isAutoCheckEnabled, toggleAutoCheck } = useKeyPool();
+    const { addKey } = useKeyPool();
     const { lastSavedTime, isSaving, createManualBackup } = useAutoSave();
 
     // Local State
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [referenceState, setReferenceState] = useState({ isOpen: false, clause: null, fullText: {en:"", vi:""}, isLoading: false });
-    
-    // Fix: Add State for New Key Input (was missing in previous version causing input lock)
     const [newKeyInput, setNewKeyInput] = useState(""); 
 
     // Event Listeners
     useEffect(() => {
-        // Event to OPEN the modal (loading state)
         const handleRef = (e: CustomEvent) => setReferenceState({ isOpen: true, clause: e.detail, fullText: {en:"", vi:""}, isLoading: true });
-        
-        // Event to UPDATE the modal content (success/fail from sidebar logic)
         const handleRefUpdate = (e: CustomEvent) => setReferenceState(prev => ({ ...prev, fullText: e.detail, isLoading: false }));
-        
         const handleSwitch = (e: CustomEvent) => { if (e.detail) setLayoutMode(e.detail); };
         
         window.addEventListener('OPEN_REFERENCE', handleRef as any);
@@ -61,7 +53,6 @@ const AppContent = () => {
         };
     }, []);
 
-    // Helper: Dynamic Color Class for Header
     const liquidColorClass = useMemo(() => {
         const config = TABS_CONFIG.find(t => t.id === layoutMode);
         return config ? `${config.colorClass} ${config.borderClass}` : 'bg-slate-500 border-slate-600';
@@ -72,17 +63,16 @@ const AppContent = () => {
 
     const handleAddKeyWrapper = async () => {
         const status = await addKey(newKeyInput);
-        
         if (status === 'valid') {
             setNewKeyInput("");
             showToast("Success: API Key is Active");
         } else if (status === 'quota_exceeded') {
             setNewKeyInput("");
-            showToast("Added: Key Quota Exhausted (Will rotate automatically)");
+            showToast("Added: Key Quota Exhausted");
         } else if (status === 'duplicate') {
-            showToast("Info: Key already exists in pool");
+            showToast("Info: Key already exists");
         } else {
-            showToast("Failed: Invalid API Key or Network Error");
+            showToast("Failed: Invalid API Key");
         }
     };
 
@@ -162,28 +152,12 @@ const AppContent = () => {
                 )}
             </div>
 
-            {/* Modals */}
-            <SettingsModal 
-                isOpen={modals.settings} onClose={() => toggleModal('settings', false)} 
-                apiKeys={apiKeys} 
-                newKeyInput={newKeyInput} 
-                setNewKeyInput={setNewKeyInput} 
-                isCheckingKey={isCheckingKey}
+            {/* Centralized Modal Manager */}
+            <ModalManager 
+                onRestoreSnapshot={restoreSession}
+                newKeyInput={newKeyInput}
+                setNewKeyInput={setNewKeyInput}
                 handleAddKey={handleAddKeyWrapper}
-                activeKeyId={activeKeyId} editingKeyId={null} editLabelInput="" setEditLabelInput={() => {}}
-                handleSaveLabel={() => {}} handleStartEdit={() => {}} handleRefreshStatus={refreshKeyStatus} handleDeleteKey={deleteKey}
-                isAutoCheckEnabled={isAutoCheckEnabled} toggleAutoCheck={toggleAutoCheck}
-            />
-
-            <AddStandardModal
-                isOpen={modals.addStandard} onClose={() => toggleModal('addStandard', false)}
-                onAdd={async (name, file) => {
-                    toggleModal('addStandard', false);
-                    const newKey = `CUSTOM_${Date.now()}`;
-                    if(file) { const text = await processSourceFile(file); setKnowledgeData(text, file.name); }
-                    addCustomStandard(newKey, { name, description: "Custom", groups: [] });
-                    setStandardKey(newKey);
-                }}
             />
 
             <ReferenceClauseModal

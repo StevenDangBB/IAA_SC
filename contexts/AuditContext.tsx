@@ -120,6 +120,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         
         setProcesses(prev => prev.map(p => {
             if (p.id === activeProcessId) {
+                // Only update if something actually changed to avoid cycles
                 if (p.evidence !== evidence || p.matrixData !== matrixData || p.evidenceTags !== evidenceTags) {
                     return { ...p, evidence, matrixData, evidenceTags };
                 }
@@ -129,6 +130,8 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }, [evidence, matrixData, evidenceTags, activeProcessId]);
 
     // Load process data into view when ID changes
+    // CRITICAL: We only trigger this when activeProcessId changes, NOT when 'processes' changes
+    // This prevents the 'processes' update loop from reverting user input in 'matrixData'
     useEffect(() => {
         if (!activeProcessId) {
             setEvidence("");
@@ -186,16 +189,12 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setProcesses(prev => prev.map(p => p.id === id ? { ...p, name } : p));
     };
 
-    // FIXED DELETE - Completely separate state updates
     const deleteProcess = (idToDelete: string) => {
-        // 1. Determine new Active ID based on current state
         if (activeProcessId === idToDelete) {
             const remaining = processes.filter(p => p.id !== idToDelete);
             const nextId = remaining.length > 0 ? remaining[0].id : null;
             setActiveProcessId(nextId);
         }
-
-        // 2. Update Process List
         setProcesses(prev => prev.filter(p => p.id !== idToDelete));
     };
 
@@ -217,6 +216,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     };
 
     const batchUpdateProcessClauses = (updates: { processId: string, clauses: string[] }[]) => {
+        // 1. Prepare updates for the processes array (Storage)
         setProcesses(prev => prev.map(p => {
             const update = updates.find(u => u.processId === p.id);
             if (update) {
@@ -240,27 +240,28 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return p;
         }));
         
-        // Force immediate update if active process is modified
-        if (updates.some(u => u.processId === activeProcessId)) {
-             const activeUpdate = updates.find(u => u.processId === activeProcessId);
-             if (activeUpdate) {
-                 setMatrixData(prev => {
-                     const next = { ...prev };
-                     const standard = standards[standardKey];
-                     activeUpdate.clauses.forEach(cid => {
-                         if(!next[cid]) {
-                             const c = findClauseInStandard(cid, standard);
-                             next[cid] = [{ id: `${cid}_req_0`, requirement: c?.description || "Req", evidenceInput: "", status: 'pending' }];
-                         }
-                     });
-                     return next;
+        // 2. IMMEDIATE SYNC: If the active process is affected, update the View state instantly
+        // This ensures real-time feedback without waiting for effect cycles
+        const activeUpdate = updates.find(u => u.processId === activeProcessId);
+        if (activeUpdate) {
+             setMatrixData(prev => {
+                 const next = { ...prev };
+                 const standard = standards[standardKey];
+                 activeUpdate.clauses.forEach(cid => {
+                     if(!next[cid]) {
+                         const c = findClauseInStandard(cid, standard);
+                         const desc = c?.description || "Requirement";
+                         next[cid] = [{ id: `${cid}_req_0`, requirement: desc, evidenceInput: "", status: 'pending' }];
+                     }
                  });
-             }
+                 return next;
+             });
         }
     };
 
-    // NEW FUNCTION: Toggle specific clause for specific process (Add/Remove)
+    // Toggle specific clause for specific process (Add/Remove)
     const toggleProcessClause = (processId: string, clauseId: string) => {
+        // 1. Update Storage (Processes Array)
         setProcesses(prev => prev.map(p => {
             if (p.id !== processId) return p;
 
@@ -269,13 +270,14 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 // DELETE
                 delete newMatrixData[clauseId];
             } else {
-                // ADD
+                // ADD - PRE-LOAD DESCRIPTION HERE
                 const standard = standards[standardKey];
                 const clause = findClauseInStandard(clauseId, standard);
                 const desc = clause?.description || "Requirement";
+                
                 newMatrixData[clauseId] = [{
                     id: `${clauseId}_req_0`,
-                    requirement: desc,
+                    requirement: desc, // Load real text immediately
                     evidenceInput: "",
                     status: 'pending'
                 }];
@@ -283,7 +285,8 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return { ...p, matrixData: newMatrixData };
         }));
 
-        // If the toggled process is currently active, we must sync the local matrixData state
+        // 2. IMMEDIATE SYNC: If the process is currently active on screen, update the View State directly.
+        // This makes the toggle feel instant in the UI.
         if (activeProcessId === processId) {
             setMatrixData(prev => {
                 const next = { ...prev };

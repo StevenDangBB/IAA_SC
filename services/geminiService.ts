@@ -49,62 +49,59 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
-// --- ROBUST VALIDATION WITH QUOTA PROBING ---
+// --- ROBUST VALIDATION WITH HIERARCHICAL PROBING ---
 export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
     
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Probing Strategy: Try models from Highest Tier to Lowest.
-    // Stop at the first one that works (200 OK).
-    // If 429 (Quota), continue to next model.
-    // If 403 (Invalid), stop immediately.
-
+    // Probing Strategy: Try models from Highest Tier (e.g. 3-Pro) to Lowest (1.5-Flash).
+    // This ensures we always use the "Highest Available Modal" as requested.
+    
     const probeModels = [...MODEL_HIERARCHY];
     let lastError: any = null;
-    let globalErrorType: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown' | undefined = undefined;
+    let quotaHit = false;
 
     for (const model of probeModels) {
         const start = performance.now();
         try {
+            console.log(`Probing model: ${model}...`);
             // Use a tiny prompt to minimize latency and cost
             await ai.models.generateContent({ model: model, contents: { parts: [{ text: "Hi" }] } });
             const end = performance.now();
             
-            // Success! This model works.
+            // Success! This is the highest tier model that works.
             return { isValid: true, latency: Math.round(end - start), activeModel: model };
         } catch (error: any) {
             lastError = error;
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
             
-            // CASE 1: INVALID KEY (Stop immediately, no point trying other models)
-            if (msg.includes("key not valid") || msg.includes("api_key_invalid") || msg.includes("unauthenticated")) {
-                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
+            // CASE 1: INVALID KEY / PERMISSION (Stop immediately, no point trying other models)
+            if (msg.includes("key not valid") || msg.includes("api_key_invalid") || msg.includes("unauthenticated") || status === 403 || msg.includes("permission denied")) {
+                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key or Permissions." };
             }
 
-            // CASE 2: PERMISSION DENIED / REFERRER (Stop immediately)
-            if (status === 403 || msg.includes("permission denied") || msg.includes("referrer")) {
-                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Access Denied (Referrer/IP blocked)." };
-            }
-            
-            // CASE 3: QUOTA EXCEEDED (Continue loop to try lower tier model)
+            // CASE 2: QUOTA EXCEEDED (Continue loop to try lower tier model)
             if (status === 429 || msg.includes("quota") || msg.includes("exhausted")) {
-                globalErrorType = 'quota_exceeded';
+                console.warn(`Model ${model} quota exhausted. Falling back...`);
+                quotaHit = true;
                 continue; // TRY NEXT MODEL
             }
 
-            // CASE 4: NETWORK ERROR (Stop, usually client side)
+            // CASE 3: NETWORK ERROR (Stop, usually client side)
             if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
                 return { isValid: false, latency: 0, errorType: 'network_error', errorMessage: "Network Connection Failed." };
             }
+            
+            // Unknown errors -> Log and try next (could be model specific outage)
+            console.warn(`Model ${model} check failed:`, msg);
         }
     }
 
     // If we get here, ALL models failed.
-    // If we saw at least one Quota Exceeded, that's the reason.
-    if (globalErrorType === 'quota_exceeded') {
+    if (quotaHit) {
         return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "All models exhausted quota." };
     }
 

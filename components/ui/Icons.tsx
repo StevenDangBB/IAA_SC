@@ -7,16 +7,47 @@ export const Icons: Record<string, React.ReactNode> = {
     TDLogo: (
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
-                <linearGradient id="tealNeonGrad" x1="100%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#00f2c3" stopOpacity="1" />
-                    <stop offset="100%" stopColor="#0098f0" stopOpacity="1" />
+                <linearGradient id="quantumGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#22d3ee" /> {/* Cyan */}
+                    <stop offset="50%" stopColor="#a855f7" /> {/* Purple */}
+                    <stop offset="100%" stopColor="#f472b6" /> {/* Pink */}
                 </linearGradient>
+                <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                    <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+                    <stop offset="40%" stopColor="#6366f1" stopOpacity="0.6" />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                </radialGradient>
+                <filter id="neonBlur" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                    <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                </filter>
             </defs>
-            <path d="M 20 20 H 65 L 55 30 H 30 V 65 L 20 75 V 20 Z" fill="url(#tealNeonGrad)"/>
-            <path fillRule="evenodd" clipRule="evenodd" 
-                  d="M 40 40 H 60 C 75 40, 85 50, 85 65 C 85 80, 75 90, 60 90 H 35 L 45 80 H 60 C 70 80, 75 75, 75 65 C 75 55, 70 50, 60 50 H 50 V 40 Z" 
-                  fill="url(#tealNeonGrad)"/>
-            <path d="M 30 65 L 60 35" stroke="white" strokeWidth="0.5" strokeOpacity="0.3"/>
+            
+            {/* Orbital Rings */}
+            <circle cx="50" cy="50" r="35" stroke="url(#quantumGrad)" strokeWidth="2" strokeOpacity="0.3" transform="rotate(45 50 50)"/>
+            <ellipse cx="50" cy="50" rx="40" ry="15" stroke="#22d3ee" strokeWidth="1" strokeOpacity="0.5" transform="rotate(-30 50 50)"/>
+            <ellipse cx="50" cy="50" rx="40" ry="15" stroke="#a855f7" strokeWidth="1" strokeOpacity="0.5" transform="rotate(30 50 50)"/>
+            
+            {/* Central Hexagon */}
+            <path 
+                d="M50 25 L71.65 37.5 V62.5 L50 75 L28.35 62.5 V37.5 Z" 
+                fill="none" 
+                stroke="url(#quantumGrad)" 
+                strokeWidth="3" 
+                filter="url(#neonBlur)"
+            />
+            
+            {/* Inner Core */}
+            <circle cx="50" cy="50" r="10" fill="url(#coreGlow)" />
+            <circle cx="50" cy="50" r="4" fill="#ffffff" />
+            
+            {/* Data Nodes */}
+            <circle cx="50" cy="25" r="2" fill="#22d3ee" />
+            <circle cx="71.65" cy="62.5" r="2" fill="#a855f7" />
+            <circle cx="28.35" cy="62.5" r="2" fill="#f472b6" />
         </svg>
     ),
     TDSolidLink: (

@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.5.0-INSIGHT"; 
-export const BUILD_TIMESTAMP = "2026-02-15 14:30:00 (GMT+7)"; 
+export const APP_VERSION = "5.0.0-QUANTUM"; 
+export const BUILD_TIMESTAMP = "2026-03-01 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -90,6 +90,18 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "5.0.0-QUANTUM",
+        date: "2026-03-01",
+        features: [
+            "ARCH: Massive Code Refactoring & Component Decoupling for superior stability.",
+            "CORE: Implemented 'ModalManager' centralized architecture.",
+            "UI: New 'Planning Toolbar' and optimized Planning View for large datasets.",
+            "PERF: Enhanced React Memoization on Matrix and Planning tables.",
+            "VISUAL: Brand new Holographic/Futuristic Identity.",
+            "FIX: Solved default clause text loading issues in Context."
+        ]
+    },
+    {
         version: "4.5.0-INSIGHT",
         date: "2026-02-15",
         features: [
@@ -108,16 +120,6 @@ export const RELEASE_NOTES = [
             "UX: Smoother transitions and reduced layout thrashing.",
             "CLEANUP: Removed legacy code paths and consolidated types.",
             "STABILITY: Production-ready checkpoint."
-        ]
-    },
-    {
-        version: "4.3.0-PLANNING",
-        date: "2026-01-08",
-        features: [
-            "FEATURE: Audit Planning Matrix - Assess clause coverage before gathering evidence.",
-            "UX: Strict Process Requirement - Users must create a process to begin.",
-            "FIX: Sidebar Delete Button functionality.",
-            "UI: Dynamic Liquid Color bar."
         ]
     }
 ];
