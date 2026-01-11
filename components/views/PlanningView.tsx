@@ -1,38 +1,23 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useRef, memo, useCallback } from 'react';
 import { Icon } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
 import { Clause } from '../../types';
 import { useUI } from '../../contexts/UIContext';
 import { cleanFileName, copyToClipboard } from '../../utils';
-import { PlanningRow } from './planning/PlanningRow';
-import { PlanningToolbar } from './planning/PlanningToolbar';
 
-// Helper: Restore distinctive colors for groups
-const getGroupStyle = (id: string) => {
-    const key = id.toUpperCase();
-    if (key.includes('PLAN')) return 'bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800';
-    if (key.includes('SUPPORT')) return 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-    if (key.includes('DO')) return 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800';
-    if (key.includes('CHECK') || key.includes('ACT')) return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-    if (key.includes('ANNEX')) return 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800';
-    return 'bg-gray-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700';
-};
+// --- INTERNAL TYPES ---
+interface PlanningRowProps {
+    clause: Clause;
+    level: number;
+    processes: any[];
+    isExpanded: boolean;
+    onToggleDescription: (id: string) => void;
+    onCopyCitation: (text: string) => void;
+    onSmartToggle: (procId: string, clause: Clause) => void; // Changed from onTogglePlan
+}
 
-// Flatten logic that preserves hierarchy level
-const getGroupClauses = (clauses: Clause[]) => {
-    const flat: { clause: Clause, level: number }[] = [];
-    const traverse = (list: Clause[], level: number) => {
-        list.forEach(c => {
-            flat.push({ clause: c, level });
-            if(c.subClauses) traverse(c.subClauses, level + 1);
-        });
-    };
-    traverse(clauses, 0);
-    return flat;
-};
-
-// --- HELPER: Get all descendant IDs (Duplicated for consistency, ideally utils) ---
+// --- HELPER: Get all descendant IDs ---
 const getFlatClauseIds = (clause: Clause): string[] => {
     let ids = [clause.id];
     if (clause.subClauses) {
@@ -43,6 +28,101 @@ const getFlatClauseIds = (clause: Clause): string[] => {
     return ids;
 };
 
+// --- MEMOIZED ROW COMPONENT ---
+const PlanningRow = memo(({ 
+    clause, level, processes, isExpanded, onToggleDescription, onCopyCitation, onSmartToggle 
+}: PlanningRowProps) => {
+    
+    // Memoize the flat list of IDs for this row (to calculate status quickly)
+    const selfAndDescendants = useMemo(() => getFlatClauseIds(clause), [clause]);
+    const isParent = clause.subClauses && clause.subClauses.length > 0;
+
+    return (
+        <tr className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors group">
+            <td className="p-2 border-r border-gray-100 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-gray-50 dark:group-hover:bg-slate-800/30 z-10 align-top">
+                <div className={`flex flex-col gap-1 ${level > 0 ? 'ml-4 border-l-2 border-gray-200 dark:border-slate-800 pl-2' : ''}`}>
+                    <div className="flex items-center gap-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${level === 0 ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'text-slate-400'}`}>
+                            {clause.code}
+                        </span>
+                        <span className={`text-xs truncate ${level === 0 ? 'font-bold text-slate-800 dark:text-slate-200' : 'font-medium text-slate-600 dark:text-slate-400'}`}>
+                            {clause.title}
+                        </span>
+                    </div>
+                    
+                    {level === 0 && (
+                        <div className="relative group/desc pr-4">
+                            <div 
+                                onClick={() => onToggleDescription(clause.id)}
+                                className={`text-[10px] text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-800 dark:hover:text-slate-200 transition-colors font-serif italic text-left whitespace-pre-wrap leading-relaxed ${isExpanded ? '' : 'line-clamp-3'}`}
+                                title="Click to toggle full text"
+                            >
+                                {clause.description}
+                            </div>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onCopyCitation(clause.description); }}
+                                className="absolute top-0 right-0 opacity-0 group-hover/desc:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-600 bg-white/80 dark:bg-slate-900/80 rounded"
+                                title="Copy Citation"
+                            >
+                                <Icon name="Copy" size={12}/>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </td>
+            {processes.map(p => {
+                // Determine Status
+                let status: 'all' | 'some' | 'none' = 'none';
+                
+                if (isParent) {
+                    const activeCount = selfAndDescendants.reduce((acc, id) => acc + (p.matrixData[id] ? 1 : 0), 0);
+                    if (activeCount === selfAndDescendants.length) status = 'all';
+                    else if (activeCount > 0) status = 'some';
+                } else {
+                    status = p.matrixData[clause.id] ? 'all' : 'none';
+                }
+
+                return (
+                    <td key={`${p.id}_${clause.id}`} className="p-1 text-center border-r border-gray-50 dark:border-slate-800/50 last:border-0 relative align-middle">
+                        <div className="flex justify-center">
+                            <button
+                                onClick={() => onSmartToggle(p.id, clause)}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                                    status === 'all' 
+                                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/40 transform scale-105' 
+                                        : status === 'some'
+                                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 border border-orange-200 dark:border-orange-800'
+                                            : 'bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-300'
+                                }`}
+                                title={status === 'all' ? "Fully Planned" : status === 'some' ? "Partially Planned (Click to Fill)" : "Click to Plan"}
+                            >
+                                {status === 'all' && (isParent ? <Icon name="CheckCircle2" size={14}/> : <Icon name="CheckThick" size={14}/>)}
+                                {status === 'some' && <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>}
+                            </button>
+                        </div>
+                    </td>
+                );
+            })}
+        </tr>
+    );
+}, (prev, next) => {
+    if (prev.isExpanded !== next.isExpanded) return false;
+    if (prev.processes.length !== next.processes.length) return false;
+    
+    // Deep check if matrixData changed for relevant IDs
+    // We check purely based on the clause ID existence in matrixData
+    const hasChange = prev.processes.some((pp, idx) => {
+        const np = next.processes[idx];
+        // Optimization: Just check root ID for non-parents, checking all descendants is expensive but necessary for parents visual update
+        // We will trust React's speed here for now, or could optimize further.
+        // Simple check: reference equality of matrixData object (unlikely to work due to immutable updates creating new objs)
+        return pp.matrixData !== np.matrixData;
+    });
+    
+    return !hasChange; 
+});
+
+
 export const PlanningView = () => {
     const { 
         standards, standardKey, processes, 
@@ -51,14 +131,44 @@ export const PlanningView = () => {
     
     const { showToast, setSidebarOpen } = useUI();
     const [search, setSearch] = useState("");
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Collapsible States
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
     
+    // UI State for Export Menu
+    const [showExportMenu, setShowExportMenu] = useState(false);
+
     const currentStandard = standards[standardKey];
 
+    // Helper: Restore distinctive colors for groups
+    const getGroupStyle = (id: string) => {
+        const key = id.toUpperCase();
+        if (key.includes('PLAN')) return 'bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800';
+        if (key.includes('SUPPORT')) return 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+        if (key.includes('DO')) return 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800';
+        if (key.includes('CHECK') || key.includes('ACT')) return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+        if (key.includes('ANNEX')) return 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+        return 'bg-gray-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700';
+    };
+
+    // Flatten logic that preserves hierarchy level
+    const getGroupClauses = useMemo(() => (clauses: Clause[]) => {
+        const flat: { clause: Clause, level: number }[] = [];
+        const traverse = (list: Clause[], level: number) => {
+            list.forEach(c => {
+                flat.push({ clause: c, level });
+                if(c.subClauses) traverse(c.subClauses, level + 1);
+            });
+        };
+        traverse(clauses, 0);
+        return flat;
+    }, []); // Stable reference
+
     // --- SMART TOGGLE HANDLER ---
+    // This handles both single clauses and Parent Groups (Batching)
     const handleSmartToggle = useCallback((processId: string, clause: Clause) => {
         const proc = processes.find(p => p.id === processId);
         if (!proc) return;
@@ -67,16 +177,25 @@ export const PlanningView = () => {
         const isGroup = allIds.length > 1;
 
         if (!isGroup) {
+            // Simple Toggle
             toggleProcessClause(processId, clause.id);
         } else {
+            // Batch Logic
             const activeCount = allIds.reduce((acc, id) => acc + (proc.matrixData[id] ? 1 : 0), 0);
             const isFullyActive = activeCount === allIds.length;
 
             if (isFullyActive) {
+                // If all are selected, deselect ALL (Sequence of toggles - might be slow for huge lists but fine for ISO)
+                // Better: We should ideally have a batchRemove, but toggleProcessClause handles removal efficiently enough via state
+                // Since toggleProcessClause is single, we iterate.
+                // NOTE: To avoid render thrashing, we might want a batchRemove. 
+                // Currently context only has batchUpdate (Add). 
+                // Workaround: We iterate toggle. Context state update is fast.
                 allIds.forEach(id => {
                     if (proc.matrixData[id]) toggleProcessClause(processId, id);
                 });
             } else {
+                // If partial or none, select MISSING ones (Batch Add)
                 const toAdd = allIds.filter(id => !proc.matrixData[id]);
                 if (toAdd.length > 0) {
                     batchUpdateProcessClauses([{ processId, clauses: toAdd }]);
@@ -141,6 +260,7 @@ export const PlanningView = () => {
     const handleToggleAll = () => {
         if (!currentStandard) return;
         const allGroupIds = currentStandard.groups.map(g => g.id);
+        
         if (areAllCollapsed) {
             setCollapsedGroups(new Set());
         } else {
@@ -168,6 +288,10 @@ export const PlanningView = () => {
             total: total
         };
     }, [currentStandard, processes]);
+
+    const radius = 24;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (coverageStats.percent / 100) * circumference;
 
     // Filter Logic
     const filteredGroups = useMemo(() => {
@@ -198,6 +322,7 @@ export const PlanningView = () => {
         link.click();
         document.body.removeChild(link);
         showToast("JSON Template exported.");
+        setShowExportMenu(false);
     };
 
     const handleExportTxt = () => {
@@ -230,15 +355,19 @@ export const PlanningView = () => {
         link.click();
         document.body.removeChild(link);
         showToast("TXT Scope exported.");
+        setShowExportMenu(false);
     };
 
-    const handleImportTemplate = (file: File) => {
+    const handleImportTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
                 const content = ev.target?.result as string;
                 const templateData = JSON.parse(content);
                 if (!Array.isArray(templateData)) throw new Error("Invalid format");
+                
                 templateData.forEach((item: any) => {
                     if (item.name) addProcess(item.name); 
                 });
@@ -246,25 +375,104 @@ export const PlanningView = () => {
             } catch (err) { showToast("Import failed."); }
         };
         reader.readAsText(file);
+        e.target.value = '';
     };
 
-    // Render logic moved to Toolbar component where possible
-    
+    if (!currentStandard) return (
+        <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-gray-50/30 dark:bg-slate-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800 m-4">
+            <Icon name="Book" size={48} className="mb-4 opacity-20"/>
+            <p className="font-bold text-slate-500">No Standard Selected</p>
+            <button onClick={() => setSidebarOpen(true)} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg text-xs font-bold flex items-center gap-2">
+                <Icon name="LayoutList" size={16}/> Select Standard
+            </button>
+        </div>
+    );
+
     return (
         <div className="h-full flex flex-col animate-fade-in-up gap-4 relative">
-            <PlanningToolbar 
-                standardName={currentStandard?.name || "Unknown"}
-                coveragePercent={coverageStats.percent}
-                coverageCovered={coverageStats.covered}
-                coverageTotal={coverageStats.total}
-                search={search}
-                setSearch={setSearch}
-                onImport={handleImportTemplate}
-                onExportTemplate={handleExportTemplate}
-                onExportTxt={handleExportTxt}
-                onSetSidebarOpen={setSidebarOpen}
-                hasStandard={!!currentStandard}
-            />
+            
+            {/* Header / Stats */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0">
+                <div className="flex items-center gap-6">
+                    <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
+                        <svg className="transform -rotate-90 w-16 h-16">
+                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-100 dark:text-slate-800" />
+                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="text-indigo-500 transition-all duration-1000 ease-out" strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute text-xs font-black text-slate-700 dark:text-white">{coverageStats.percent}%</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">{currentStandard.name}</h3>
+                        <p className="text-xs text-slate-500">
+                            <span className="font-bold text-indigo-500">{coverageStats.covered}</span> of {coverageStats.total} clauses mapped.
+                        </p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64 group">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                            <Icon name="Search" size={16}/>
+                        </div>
+                        <input 
+                            ref={searchInputRef}
+                            className="w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
+                            placeholder="Filter clauses..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                        />
+                        {search && (
+                            <button 
+                                onClick={() => { setSearch(""); searchInputRef.current?.focus(); }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"
+                            >
+                                <Icon name="X" size={14} />
+                            </button>
+                        )}
+                    </div>
+                    
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImportTemplate} />
+                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600" title="Import Plan">
+                        <Icon name="UploadCloud" size={18}/>
+                    </button>
+                    
+                    {/* Unified Export Button */}
+                    <div className="relative">
+                        <button 
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className="p-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600 flex items-center gap-2"
+                            title="Export Options"
+                        >
+                            <Icon name="Download" size={18}/>
+                            <span className="text-xs font-bold hidden md:inline">Export</span>
+                        </button>
+                        
+                        {showExportMenu && (
+                            <>
+                                <div className="fixed inset-0 z-20" onClick={() => setShowExportMenu(false)}></div>
+                                {/* Z-INDEX INCREASED TO [60] TO OVERLAP STICKY TABLE HEADERS */}
+                                <div className="absolute top-full right-0 mt-2 z-[60] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-xl w-48 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="px-3 py-2 bg-gray-50 dark:bg-slate-950 border-b border-gray-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                        Select Export Format
+                                    </div>
+                                    <button 
+                                        onClick={handleExportTemplate}
+                                        className="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2 transition-colors"
+                                    >
+                                        <Icon name="Grid" size={16}/> JSON (Template)
+                                    </button>
+                                    <button 
+                                        onClick={handleExportTxt}
+                                        className="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2 transition-colors"
+                                    >
+                                        <Icon name="FileText" size={16}/> TXT (Scope Text)
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
 
             {/* MATRIX CONTAINER */}
             <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col">
@@ -309,7 +517,7 @@ export const PlanningView = () => {
                                 {filteredGroups.map(group => {
                                     const isCollapsed = collapsedGroups.has(group.id);
                                     const groupStyle = getGroupStyle(group.id);
-                                    const groupFlatList = useMemo(() => getGroupClauses(group.clauses), [group.clauses]);
+                                    const groupFlatList = getGroupClauses(group.clauses);
 
                                     return (
                                         <React.Fragment key={group.id}>
@@ -328,6 +536,7 @@ export const PlanningView = () => {
                                                     </div>
                                                 </td>
                                                 {processes.map(p => {
+                                                    // Determine check state for this process in this group
                                                     const flatIds: string[] = [];
                                                     const traverse = (list: Clause[]) => list.forEach(c => { flatIds.push(c.id); if(c.subClauses) traverse(c.subClauses); });
                                                     traverse(group.clauses);
@@ -350,6 +559,7 @@ export const PlanningView = () => {
                                                 })}
                                             </tr>
 
+                                            {/* CLAUSE ROWS */}
                                             {!isCollapsed && groupFlatList.map(({ clause, level }) => (
                                                 <PlanningRow 
                                                     key={clause.id}

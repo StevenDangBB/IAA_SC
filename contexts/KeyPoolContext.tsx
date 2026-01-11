@@ -1,14 +1,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { ApiKeyProfile } from '../types';
-import { MY_FIXED_KEYS } from '../constants';
+import { MODEL_HIERARCHY, MY_FIXED_KEYS } from '../constants';
 import { validateApiKey } from '../services/geminiService';
 
 interface KeyPoolContextType {
     apiKeys: ApiKeyProfile[];
     activeKeyId: string;
     isCheckingKey: boolean;
-    addKey: (key: string, label?: string) => Promise<string>;
+    addKey: (key: string, label?: string) => Promise<string>; // Changed return type to string status
     deleteKey: (id: string) => void;
     refreshKeyStatus: (id: string) => Promise<void>;
     checkAllKeys: () => Promise<void>;
@@ -24,21 +24,24 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [apiKeys, setApiKeys] = useState<ApiKeyProfile[]>([]);
     const [activeKeyId, setActiveKeyId] = useState<string>("");
     const [isCheckingKey, setIsCheckingKey] = useState(false);
-    const [isAutoCheckEnabled, setIsAutoCheckEnabled] = useState(true); // Default to true for reliability
+    const [isAutoCheckEnabled, setIsAutoCheckEnabled] = useState(false);
     
+    // Refs to access latest state in async callbacks without dependency loops
     const apiKeysRef = useRef<ApiKeyProfile[]>([]);
     const activeKeyIdRef = useRef<string>("");
-    const hasMounted = useRef(false);
     
     // Sync refs
     useEffect(() => { apiKeysRef.current = apiKeys; }, [apiKeys]);
     useEffect(() => { activeKeyIdRef.current = activeKeyId; }, [activeKeyId]);
 
-    // --- INITIALIZATION ---
+    // Track initialization
+    const hasInitialized = useRef(false);
+
+    // Initial Load
     useEffect(() => {
         try {
             const stored = localStorage.getItem("iso_api_keys");
-            let loadedKeys: ApiKeyProfile[] = stored ? JSON.parse(stored) : [];
+            const loadedKeys: ApiKeyProfile[] = stored ? JSON.parse(stored) : [];
             const existingKeySet = new Set(loadedKeys.map(k => k.key));
             let hasChanges = false;
             
@@ -49,7 +52,7 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
                         id: `env_key_${index}_${Math.random().toString(36).substr(2, 5)}`, 
                         label: `Env Key ${index + 1}`, 
                         key: fixedKey, 
-                        status: 'checking', // START AS CHECKING to avoid Red Flash
+                        status: 'unknown', 
                         latency: 0, 
                         lastChecked: new Date().toISOString() 
                     });
@@ -57,55 +60,53 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 }
             });
 
-            // Ensure loaded keys have a neutral state on boot if they were 'checking'
-            loadedKeys = loadedKeys.map(k => ({
-                ...k,
-                status: k.status === 'checking' ? 'unknown' : k.status
-            }));
-
-            if (loadedKeys.length > 0 && !loadedKeys.some(k => k.id === activeKeyId)) {
-                // If local storage has an active ID, use it, otherwise default to first
-                const savedActiveId = localStorage.getItem("iso_active_key_id");
-                const targetId = savedActiveId && loadedKeys.some(k => k.id === savedActiveId) ? savedActiveId : loadedKeys[0].id;
-                setActiveKeyId(targetId);
-                // Also set this key to 'checking' visually so UI shows yellow
-                loadedKeys = loadedKeys.map(k => k.id === targetId ? { ...k, status: 'checking' as const } : k);
-            }
-
             setApiKeys(loadedKeys);
             if(hasChanges) localStorage.setItem("iso_api_keys", JSON.stringify(loadedKeys));
+
+            const savedActiveId = localStorage.getItem("iso_active_key_id");
+            if (savedActiveId && loadedKeys.some(k => k.id === savedActiveId)) {
+                setActiveKeyId(savedActiveId);
+            } else if (loadedKeys.length > 0) {
+                setActiveKeyId(loadedKeys[0].id);
+            }
             
-            const autoCheck = localStorage.getItem('iso_auto_check');
-            if (autoCheck !== null) setIsAutoCheckEnabled(autoCheck === 'true');
+            const autoCheck = localStorage.getItem('iso_auto_check') === 'true';
+            setIsAutoCheckEnabled(autoCheck);
             
-            hasMounted.current = true;
+            hasInitialized.current = true;
 
         } catch (e) { console.error("Key Load Error", e); }
     }, []);
 
-    // --- IMMEDIATE VALIDATION ON MOUNT ---
+    // Startup Validation Effect - Runs when activeKeyId is set and we have keys
     useEffect(() => {
-        if (!hasMounted.current) return;
-        if (!activeKeyId) return;
+        if (!hasInitialized.current) return;
+        if (!activeKeyId || apiKeys.length === 0) return;
 
-        // Force check the active key immediately on load to ensure status is fresh
-        // We use a small timeout to allow the initial render to paint the 'checking' state
-        const timer = setTimeout(() => {
-            refreshKeyStatus(activeKeyId);
-        }, 100);
+        const currentKey = apiKeys.find(k => k.id === activeKeyId);
+        
+        // If key exists and status is NOT valid (e.g. unknown, invalid from prev session), re-check it.
+        // We exclude 'checking' to avoid double-trigger.
+        if (currentKey && currentKey.status !== 'valid' && currentKey.status !== 'checking') {
+            // Use a small timeout to let the UI render the initial state first
+            const timer = setTimeout(() => {
+                refreshKeyStatus(activeKeyId);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [activeKeyId, hasInitialized.current]); // Intentionally simpler dependency
 
-        return () => clearTimeout(timer);
-    }, [activeKeyId, hasMounted.current]); // Depend on activeKeyId change to re-verify if user switches keys
-
-    // --- BACKGROUND ROTATION ---
+    // Background Smart Rotation Logic
     useEffect(() => {
         if (!isAutoCheckEnabled) return;
         
         const interval = setInterval(() => {
+            // Only check ONE key at a time to avoid rate limits (DDOS behavior)
+            // Strategy: Find the "stalest" key (oldest check time)
             if (!isCheckingKey && apiKeysRef.current.length > 0) {
                 performSingleSmartCheck();
             }
-        }, 45000); // Check every 45s (Optimized frequency)
+        }, 60000); // Run cycle every 60 seconds
         
         return () => clearInterval(interval);
     }, [isAutoCheckEnabled]);
@@ -114,17 +115,8 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
         const keys = apiKeysRef.current;
         if (keys.length === 0) return;
 
-        // Prioritize: 
-        // 1. Active Key if it's not valid
-        // 2. Oldest checked key
-        
-        const activeKey = keys.find(k => k.id === activeKeyIdRef.current);
-        if (activeKey && activeKey.status !== 'valid' && activeKey.status !== 'checking') {
-            console.log(`[KeyPool] Auto-repairing active key: ${activeKey.label}`);
-            await refreshKeyStatus(activeKey.id);
-            return;
-        }
-
+        // Sort by lastChecked (oldest first). 
+        // Handle missing lastChecked as epoch 0
         const sorted = [...keys].sort((a, b) => {
             const timeA = a.lastChecked ? new Date(a.lastChecked).getTime() : 0;
             const timeB = b.lastChecked ? new Date(b.lastChecked).getTime() : 0;
@@ -132,6 +124,8 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
         });
 
         const candidate = sorted[0];
+        
+        // Only check if it hasn't been checked in the last 5 minutes to avoid spamming a single key
         const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
         const lastTime = candidate.lastChecked ? new Date(candidate.lastChecked).getTime() : 0;
 
@@ -168,11 +162,14 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
             lastChecked: new Date().toISOString()
         };
 
+        // Allow adding if valid OR quota_exceeded
+        // This is crucial for public deployments where initial check might hit 429
         if (caps.status === 'valid' || caps.status === 'quota_exceeded') {
             const newKeys = [...apiKeys, newProfile];
             setApiKeys(newKeys);
             localStorage.setItem("iso_api_keys", JSON.stringify(newKeys));
             
+            // If this is the only key, or it's valid, make it active
             if (apiKeys.length === 0 || caps.status === 'valid') {
                 setActiveKeyId(newProfile.id);
                 localStorage.setItem("iso_active_key_id", newProfile.id);
@@ -198,15 +195,18 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
     };
 
     const refreshKeyStatus = useCallback(async (id: string) => {
+        // Use Ref to find key to avoid closure staleness
         const currentKeys = apiKeysRef.current;
         const profile = currentKeys.find(k => k.id === id);
         
-        if (!profile) return;
+        if (!profile) {
+            console.warn(`Key refresh failed: ID ${id} not found in pool.`);
+            return;
+        }
 
-        // Optimistic Update: Set to checking immediately so UI reflects activity
+        // Optimistic Update
         setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'checking' } : k));
         
-        // Non-blocking check
         try {
             const caps = await determineCapabilities(profile.key);
             
@@ -225,18 +225,15 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
             console.error("Critical error during key refresh", error);
             setApiKeys(prev => prev.map(k => k.id === id ? { ...k, status: 'unknown' } : k));
         }
-    }, []);
+    }, []); // Empty dependency since we use refs
 
     const checkAllKeys = async () => {
         setIsCheckingKey(true);
-        // Prioritize Active Key first
-        if (activeKeyId) await refreshKeyStatus(activeKeyId);
-        
+        // Sequential check to avoid burst
         for(const k of apiKeys) {
-            if (k.id !== activeKeyId) {
-                await refreshKeyStatus(k.id);
-                await new Promise(r => setTimeout(r, 200)); 
-            }
+            await refreshKeyStatus(k.id);
+            // Slight delay between checks
+            await new Promise(r => setTimeout(r, 200)); 
         }
         setIsCheckingKey(false);
     };
