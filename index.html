@@ -4,25 +4,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- CRITICAL FIX: 'no-referrer-when-downgrade' ensures the full URL is sent as Referer header.
-         Without this, browsers may strip the path/origin on localhost, causing Google API 403 errors. -->
     <meta name="referrer" content="no-referrer-when-downgrade" />
     <title>ISO Audit Pro</title>
     <script>
-        // Robust polyfill for process.env
         window.process = window.process || {};
         window.process.env = window.process.env || {};
         if (!window.process.env.NODE_ENV) {
             window.process.env.NODE_ENV = 'production';
         }
-        // Placeholder for API_KEY if needed for runtime injection
         window.process.env.API_KEY = window.process.env.API_KEY || ''; 
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
-        // Initialize PDF.js worker
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
@@ -33,20 +28,28 @@
                 extend: {
                     colors: {
                         slate: { 850: '#1e293b', 950: '#020617' },
-                        'nc-major': '#dc2626',
-                        'nc-minor': '#f59e0b',
-                        'ofi': '#4f46e5',
+                        'nc-major': '#ef4444',
+                        'nc-minor': '#f97316',
+                        'ofi': '#3b82f6',
                         'compliant-na': '#10b981',
+                        'glass-border': 'rgba(255,255,255,0.1)',
+                        'glass-bg': 'rgba(255,255,255,0.05)',
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+                        'depth': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        'depth-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        'glow': '0 0 15px rgba(99, 102, 241, 0.3)',
                     },
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['ui-monospace', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
                     },
                     transitionTimingFunction: {
-                        'spring': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Bouncy
-                        'fluid': 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Smooth overshoot
-                        'soft': 'cubic-bezier(0.4, 0, 0.2, 1)', // Apple-like
-                        'expo': 'cubic-bezier(0.19, 1, 0.22, 1)', // Snappy
+                        'spring': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)', 
+                        'fluid': 'cubic-bezier(0.34, 1.56, 0.64, 1)', 
+                        'soft': 'cubic-bezier(0.4, 0, 0.2, 1)', 
+                        'expo': 'cubic-bezier(0.19, 1, 0.22, 1)', 
                     },
                     animation: {
                         'brain-wave': 'brainWave 3s ease infinite',
@@ -55,10 +58,10 @@
                         'spin-reverse': 'spinReverse 3s linear infinite',
                         'pulse-slow': 'pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         'infinity-spin': 'infinitySpin 3s linear infinite',
-                        'fade-in-up': 'fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+                        'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
                         'zoom-in-spring': 'zoomInSpring 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1)',
-                        'accordion-down': 'accordionDown 0.2s ease-out',
-                        'accordion-up': 'accordionUp 0.2s ease-out',
+                        'accordion-down': 'accordionDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        'accordion-up': 'accordionUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                         'shake': 'shake 0.6s cubic-bezier(.36,.07,.19,.97) both',
                     },
                     keyframes: {
@@ -89,20 +92,20 @@
                             '100%': { transform: 'rotate(360deg)' },
                         },
                         fadeInUp: {
-                            '0%': { opacity: 0, transform: 'translateY(10px)' },
+                            '0%': { opacity: 0, transform: 'translateY(15px)' },
                             '100%': { opacity: 1, transform: 'translateY(0)' },
                         },
                         zoomInSpring: {
-                            '0%': { opacity: 0, transform: 'scale(0.95)' },
+                            '0%': { opacity: 0, transform: 'scale(0.92)' },
                             '100%': { opacity: 1, transform: 'scale(1)' },
                         },
                         accordionDown: {
-                            from: { height: 0 },
-                            to: { height: 'var(--radix-accordion-content-height)' },
+                            from: { height: 0, opacity: 0 },
+                            to: { height: 'var(--radix-accordion-content-height)', opacity: 1 },
                         },
                         accordionUp: {
-                            from: { height: 'var(--radix-accordion-content-height)' },
-                            to: { height: 0 },
+                            from: { height: 'var(--radix-accordion-content-height)', opacity: 1 },
+                            to: { height: 0, opacity: 0 },
                         },
                         shake: {
                             '10%, 90%': { transform: 'translateX(-1px)' },
@@ -115,7 +118,7 @@
             }
         }
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         body { 
             font-family: 'Inter', sans-serif; 
@@ -125,71 +128,53 @@
             -moz-osx-font-smoothing: grayscale;
         }
         
-        /* Global Font Scaling - Updated base to 17px for better desktop legibility */
         :root { --font-scale: 1.0; }
-        html { font-size: calc(17px * var(--font-scale)); scroll-behavior: smooth; }
+        html { font-size: calc(16px * var(--font-scale)); scroll-behavior: smooth; }
         
-        /* Dynamic selection colors are now handled in App.tsx based on layoutMode */
-        /* Default fallback */
-        ::selection { background-color: rgba(99, 102, 241, 0.2); color: #312e81; }
-        .dark ::selection { background-color: rgba(99, 102, 241, 0.4); color: #e0e7ff; }
-
-        /* Hardware Acceleration for Animations */
-        .animate-fade-in-up, .transition-transform, .ease-soft {
+        /* Selection fallback handled in App.tsx */
+        
+        /* Hardware Acceleration */
+        .animate-fade-in-up, .transition-transform, .ease-soft, .group:hover, .group:active {
             will-change: transform, opacity;
-            transform: translateZ(0); /* Trigger GPU */
+            transform: translateZ(0); 
             backface-visibility: hidden;
         }
 
-        /* Smooth Scrolling for Containers */
+        /* Modern Scrollbar */
         .custom-scrollbar { scroll-behavior: smooth; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; transition: background 0.3s; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .dark ::-webkit-scrollbar-thumb { background: #475569; }
-        .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
         
         input:focus, select:focus, textarea:focus { outline: none; }
         
-        .btn-brain-wave {
-            background: linear-gradient(270deg, #4f46e5, #8b5cf6, #ec4899, #4f46e5);
-            background-size: 300% 300%; animation: brainWave 3s ease infinite; z-index: 1;
-        }
-
-        /* SHRIMP EFFECT: High energy shimmer for Ready State */
+        /* Shrimp / Gradient Button */
         .btn-shrimp {
-            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, #f472b6 50%, #8b5cf6 75%, #6366f1 100%);
-            background-size: 200% auto;
-            animation: shrimpMove 2s linear infinite, shrimpPulse 2s ease-in-out infinite;
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            background-size: 200% 200%;
+            animation: gradientMove 4s ease infinite;
             color: white;
             border: 1px solid rgba(255,255,255,0.2);
             z-index: 10;
         }
-        
-        @keyframes shrimpMove {
-            0% { background-position: 200% 0; }
-            100% { background-position: 0% 0; }
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
-        @keyframes shrimpPulse {
-            0%, 100% { box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); transform: scale(1); }
-            50% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.7); transform: scale(1.02); }
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
-
-        /* Language Toggle Pill High Contrast */
+        /* Lang Pill */
         .lang-pill-container {
-            background-color: #e2e8f0;
+            background-color: #f1f5f9;
             border-radius: 9999px;
-            padding: 4px;
+            padding: 3px;
             display: flex;
             align-items: center;
-            border: 1px solid #cbd5e1;
-            transition: all 0.3s ease;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s ease;
         }
         .dark .lang-pill-container {
             background-color: #0f172a; 
@@ -198,8 +183,8 @@
         .lang-pill-btn {
             border-radius: 9999px;
             padding: 2px 10px;
-            font-size: 0.7rem;
-            font-weight: 800;
+            font-size: 0.65rem;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
@@ -207,22 +192,11 @@
             background-color: #4f46e5;
             color: #ffffff;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            transform: scale(1.05);
         }
-        .lang-pill-inactive {
-            color: #64748b; 
-        }
-        .lang-pill-inactive:hover {
-            color: #1e293b;
-            background-color: rgba(0,0,0,0.05);
-        }
-        .dark .lang-pill-inactive {
-            color: #94a3b8;
-        }
-        .dark .lang-pill-inactive:hover {
-            color: #ffffff;
-            background-color: rgba(255,255,255,0.1);
-        }
+        .lang-pill-inactive { color: #64748b; }
+        .lang-pill-inactive:hover { color: #334155; }
+        .dark .lang-pill-inactive { color: #94a3b8; }
+        .dark .lang-pill-inactive:hover { color: #f8fafc; }
     </style>
 
 <script type="importmap">
@@ -244,12 +218,12 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-O4fl-Z4d.js"></script>
+  <script type="module" crossorigin src="./assets/index-BYAgp4Yo.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
 </head>
-<body class="bg-gray-100 text-slate-800 h-screen transition-colors duration-500 ease-soft">
+<body class="bg-slate-50 text-slate-900 h-screen transition-colors duration-500 ease-soft antialiased overflow-hidden">
     <div id="root" class="h-full w-full"></div>
 </body>
 </html>
