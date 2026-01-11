@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.5.0-INSIGHT"; 
-export const BUILD_TIMESTAMP = "2026-02-15 14:30:00 (GMT+7)"; 
+export const APP_VERSION = "5.0.0-PERFORMANCE"; 
+export const BUILD_TIMESTAMP = "2026-03-01 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -90,34 +90,33 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "5.0.0-PERFORMANCE",
+        date: "2026-03-01",
+        features: [
+            "CORE: Major Refactoring & Code Cleanup. Tech debt cleared.",
+            "UI/UX: Modern 'Glassmorphism' Interface with depth and smooth motion.",
+            "PERF: Optimized Rendering Engine for Matrix & Findings views.",
+            "BASELINE: System Snapshot Created for Stability."
+        ]
+    },
+    {
         version: "4.5.0-INSIGHT",
         date: "2026-02-15",
         features: [
             "CORE: Enhanced Reference Lookup with Local Intelligence preference.",
-            "UI: Renamed 'Evidence' tab to 'Audit' for clarity and standard alignment.",
-            "UX: Improved file drag-and-drop zones in Audit view.",
-            "PERF: Reduced bundle size with optimized imports."
+            "UI: Renamed 'Evidence' tab to 'Audit' for clarity.",
+            "UX: Improved file drag-and-drop zones.",
+            "PERF: Reduced bundle size."
         ]
     },
     {
         version: "4.4.0-BASELINE",
         date: "2026-02-01",
         features: [
-            "CORE: System Baseline Established. Major refactoring of rendering engine.",
-            "PERF: Optimized Matrix and Planning views using React Memoization for high FPS.",
-            "UX: Smoother transitions and reduced layout thrashing.",
-            "CLEANUP: Removed legacy code paths and consolidated types.",
+            "CORE: System Baseline Established.",
+            "PERF: Optimized Matrix and Planning views.",
+            "UX: Smoother transitions.",
             "STABILITY: Production-ready checkpoint."
-        ]
-    },
-    {
-        version: "4.3.0-PLANNING",
-        date: "2026-01-08",
-        features: [
-            "FEATURE: Audit Planning Matrix - Assess clause coverage before gathering evidence.",
-            "UX: Strict Process Requirement - Users must create a process to begin.",
-            "FIX: Sidebar Delete Button functionality.",
-            "UI: Dynamic Liquid Color bar."
         ]
     }
 ];
