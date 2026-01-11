@@ -129,8 +129,10 @@
         :root { --font-scale: 1.0; }
         html { font-size: calc(17px * var(--font-scale)); scroll-behavior: smooth; }
         
-        ::selection { background-color: #4f46e5 !important; color: #ffffff !important; }
-        .dark ::selection { background-color: #fbbf24 !important; color: #000000 !important; }
+        /* Dynamic selection colors are now handled in App.tsx based on layoutMode */
+        /* Default fallback */
+        ::selection { background-color: rgba(99, 102, 241, 0.2); color: #312e81; }
+        .dark ::selection { background-color: rgba(99, 102, 241, 0.4); color: #e0e7ff; }
 
         /* Hardware Acceleration for Animations */
         .animate-fade-in-up, .transition-transform, .ease-soft {
@@ -242,12 +244,12 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-C390suAb.js"></script>
+  <script type="module" crossorigin src="./assets/index-CIlpuGnT.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/vendor-BhE6lIor.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-react--UE8qFvL.js">
   <link rel="modulepreload" crossorigin href="./assets/vendor-genai-C0GBL7S7.js">
 </head>
-<body class="bg-gray-100 text-slate-800 h-screen selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-500 ease-soft">
+<body class="bg-gray-100 text-slate-800 h-screen transition-colors duration-500 ease-soft">
     <div id="root" class="h-full w-full"></div>
 </body>
 </html>
