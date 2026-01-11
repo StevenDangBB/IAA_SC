@@ -1,8 +1,11 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
 import { TABS_CONFIG } from '../../constants';
+import { performShadowReview } from '../../services/geminiService';
+import { useKeyPool } from '../../contexts/KeyPoolContext';
+import { useUI } from '../../contexts/UIContext';
 
 interface FindingsViewProps {
     analysisResult: AnalysisResult[] | null;
@@ -29,6 +32,12 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 }) => {
     const findingsContainerRef = useRef<HTMLDivElement>(null);
     const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const { getActiveKey } = useKeyPool();
+    const { showToast } = useUI();
+    
+    // Local state for Shadow Review
+    const [reviewLoading, setReviewLoading] = useState<string | null>(null); // Clause ID
+    const [reviews, setReviews] = useState<Record<string, string>>({});
 
     const themeConfig = TABS_CONFIG.find(t => t.id === 'findings')!;
 
@@ -45,7 +54,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             newArr[index] = { ...newArr[index], [field]: value };
             return newArr;
         });
-        // Auto-scroll on status change
         if (field === 'status' && analysisResult) {
             const nextIndex = index + 1;
             if (nextIndex < analysisResult.length && findingRefs.current[nextIndex]) {
@@ -54,18 +62,36 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         }
     };
 
+    const handleShadowReview = async (e: React.MouseEvent, finding: AnalysisResult) => {
+        e.stopPropagation();
+        const keyProfile = getActiveKey();
+        if (!keyProfile) return showToast("API Key Required for Review");
+        
+        setReviewLoading(finding.clauseId);
+        try {
+            const critique = await performShadowReview(finding, keyProfile.key, keyProfile.activeModel);
+            setReviews(prev => ({ ...prev, [finding.clauseId]: critique }));
+        } catch (err) {
+            showToast("Review Failed");
+        } finally {
+            setReviewLoading(null);
+        }
+    };
+
     const getFindingColorStyles = (status: FindingStatus) => {
         switch (status) {
-            case 'COMPLIANT': return { bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500', headerText: 'text-emerald-600 dark:text-emerald-400 border-emerald-600 dark:border-emerald-400' };
-            case 'NC_MAJOR': return { bg: 'bg-red-600', text: 'text-red-700 dark:text-red-300', pill: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', border: 'border-red-600', headerText: 'text-red-600 dark:text-red-400 border-red-600 dark:border-red-400' };
-            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300', border: 'border-orange-500', headerText: 'text-orange-500 dark:text-orange-400 border-orange-500 dark:border-orange-400' };
-            case 'OFI': return { bg: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', border: 'border-blue-500', headerText: 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400' };
-            default: return { bg: 'bg-slate-500', text: 'text-slate-600', pill: 'bg-slate-100 text-slate-500', border: 'border-slate-300', headerText: 'text-slate-500 border-slate-300' };
+            case 'COMPLIANT': return { bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500' };
+            case 'NC_MAJOR': return { bg: 'bg-red-600', text: 'text-red-700 dark:text-red-300', pill: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', border: 'border-red-600' };
+            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300', border: 'border-orange-500' };
+            case 'OFI': return { bg: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', border: 'border-blue-500' };
+            default: return { bg: 'bg-slate-500', text: 'text-slate-600', pill: 'bg-slate-100 text-slate-500', border: 'border-slate-300' };
         }
     };
 
     const renderFindingCard = (res: AnalysisResult, idx: number, isCondensed = false) => {
         const styles = getFindingColorStyles(res.status as FindingStatus);
+        const reviewText = reviews[res.clauseId];
+        const isReviewing = reviewLoading === res.clauseId;
 
         return (
             <div
@@ -75,17 +101,26 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                 style={{ animationDelay: `${idx * 50}ms` }}
                 onClick={() => setSelectedFindings(prev => ({ ...prev, [res.clauseId]: !prev[res.clauseId] }))}
             >
-                <div className="absolute top-4 right-4 z-10">
+                {/* Header Controls */}
+                <div className="absolute top-4 right-4 z-10 flex gap-2">
+                    <button 
+                        onClick={(e) => handleShadowReview(e, res)}
+                        disabled={isReviewing}
+                        className={`p-1.5 rounded-full transition-all border ${reviewText ? 'bg-purple-100 text-purple-600 border-purple-200' : 'bg-gray-100 text-slate-400 hover:text-purple-600 hover:bg-purple-50 border-transparent'}`}
+                        title="AI Shadow Review (Critique Finding)"
+                    >
+                        {isReviewing ? <Icon name="Loader" className="animate-spin" size={14}/> : <Icon name="ShieldEye" size={14}/>}
+                    </button>
                     {selectedFindings[res.clauseId] ? (
-                        <div className="animate-in zoom-in spin-in-180 duration-300 bg-emerald-100 dark:bg-emerald-900/30 rounded-full p-1">
-                            <Icon name="CheckThick" size={18} className="text-emerald-600 dark:text-emerald-400" />
+                        <div className="bg-emerald-100 dark:bg-emerald-900/30 rounded-full p-1 text-emerald-600 dark:text-emerald-400">
+                            <Icon name="CheckThick" size={18} />
                         </div>
                     ) : (
                         <div className="w-6 h-6 rounded-full border-2 border-gray-200 dark:border-slate-700 group-hover:border-indigo-400 transition-colors"></div>
                     )}
                 </div>
 
-                <div className="pr-8">
+                <div className="pr-12">
                     <div className="flex items-center gap-3 mb-4 flex-wrap">
                         <span className="text-xs font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700">{res.clauseId}</span>
                         <div className="relative group/badge" onClick={e => e.stopPropagation()}>
@@ -100,15 +135,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                 <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OFI">OFI</option>
                             </select>
                         </div>
-                        {res.crossRefs && res.crossRefs.length > 0 && (
-                            <div className="flex gap-1.5 flex-wrap">
-                                {res.crossRefs.map((ref, rIdx) => (
-                                    <span key={rIdx} className="text-[9px] border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-md font-mono bg-indigo-50 dark:bg-indigo-900/10">
-                                        {ref}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
                     </div>
 
                     <div className="mb-4">
@@ -132,7 +158,18 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         </div>
                     </div>
 
-                    {res.suggestion && (
+                    {/* Shadow Review Result */}
+                    {reviewText && (
+                        <div className="mt-3 p-3 bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-400 rounded-r-lg animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Icon name="ShieldEye" size={12} className="text-purple-600"/>
+                                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase">AI Reviewer Note</span>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 italic leading-relaxed">"{reviewText}"</p>
+                        </div>
+                    )}
+
+                    {res.suggestion && !reviewText && (
                         <div className="flex gap-2 items-start mt-3 opacity-80 group-hover:opacity-100 transition-opacity">
                             <div className="p-1 bg-amber-100 dark:bg-amber-900/30 rounded-full text-amber-600 dark:text-amber-400 shrink-0">
                                 <Icon name="Lightbulb" size={10} />
@@ -160,21 +197,16 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                 
                 {isAnalyzeLoading && (
                     <div className="h-full flex flex-col items-center justify-center">
+                        {/* Loading State UI kept same as before */}
                         <div className="relative w-28 h-28 mb-8">
                             <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900/50 rounded-full opacity-50"></div>
                             <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin"></div>
                             <div className="absolute inset-4 border-r-4 border-purple-500 rounded-full animate-spin-reverse opacity-70"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <Icon name="BrainCircuit" size={32} className="text-indigo-500 animate-pulse"/>
-                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center"><Icon name="BrainCircuit" size={32} className="text-indigo-500 animate-pulse"/></div>
                         </div>
-                        <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse mb-3">
-                            AI Auditor Working
-                        </h3>
+                        <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse mb-3">AI Auditor Working</h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1 bg-white/50 dark:bg-slate-800/50 px-4 py-1 rounded-full shadow-sm">{loadingMessage}</p>
-                        <p className="text-xs text-slate-400 font-mono mt-2 opacity-80">
-                            {currentAnalyzingClause && `Analyzing Clause: [${currentAnalyzingClause}]`}
-                        </p>
+                        <p className="text-xs text-slate-400 font-mono mt-2 opacity-80">{currentAnalyzingClause && `Analyzing Clause: [${currentAnalyzingClause}]`}</p>
                     </div>
                 )}
 
@@ -194,71 +226,35 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                     <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
                                     <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
                                 </div>
-
                                 <div className="overflow-y-auto custom-scrollbar max-h-[40vh]">
                                     {analysisResult.map((item, idx) => {
                                         const isSelected = focusedFindingIndex === idx;
                                         return (
-                                            <div
-                                                key={idx}
-                                                onClick={() => setFocusedFindingIndex(idx)}
-                                                className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
-                                            >
-                                                <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                                                    {item.clauseId}
-                                                </div>
-                                                <div className="flex items-center justify-center h-full w-full">
-                                                    {item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}
-                                                </div>
-                                                <div className="flex items-center justify-center h-full w-full">
-                                                    {item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}
-                                                </div>
-                                                <div className="flex items-center justify-center h-full w-full">
-                                                    {item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}
-                                                </div>
-                                                <div className="flex items-center justify-center h-full w-full">
-                                                    {item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}
-                                                </div>
+                                            <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                                                <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
                                             </div>
                                         );
                                     })}
                                 </div>
                             </div>
-
                             {/* Detail Panel */}
                             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border border-gray-100 dark:border-slate-800 p-2 shadow-inner">
-                                {analysisResult[focusedFindingIndex] ? (
-                                    renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true)
-                                ) : (
-                                    <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">Select a row above to view details</div>
-                                )}
+                                {analysisResult[focusedFindingIndex] ? renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true) : <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">Select a row above to view details</div>}
                             </div>
                         </div>
                     )
                 )}
             </div>
-            
-            {/* TOOLBAR */}
+            {/* Toolbar kept same as before */}
             <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
                 <div className="flex-1 md:flex-none md:w-auto h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1 flex items-center shadow-sm min-w-0 dark:shadow-md">
-                    <button
-                        onClick={() => setViewMode('list')}
-                        className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'list' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
-                        title="List View"
-                    >
-                        <Icon name="LayoutList" size={18} />
-                        <span className="hidden md:inline text-xs font-bold">List</span>
-                    </button>
-                    <button
-                        onClick={() => setViewMode('matrix')}
-                        className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'matrix' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
-                        title="Matrix View"
-                    >
-                        <Icon name="Grid" size={18} />
-                        <span className="hidden md:inline text-xs font-bold">Matrix</span>
-                    </button>
+                    <button onClick={() => setViewMode('list')} className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'list' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`} title="List View"><Icon name="LayoutList" size={18} /><span className="hidden md:inline text-xs font-bold">List</span></button>
+                    <button onClick={() => setViewMode('matrix')} className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'matrix' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`} title="Matrix View"><Icon name="Grid" size={18} /><span className="hidden md:inline text-xs font-bold">Matrix</span></button>
                 </div>
-
                 <button onClick={() => onExport('notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-6 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md hover:shadow-lg">
                     <Icon name="Download" />
                     <span className="hidden md:inline">Export Findings</span>
