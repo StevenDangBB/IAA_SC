@@ -17,7 +17,7 @@ export const Icon = ({ name, size = 18, className = "", onClick }: { name: strin
     return <span className={className} onClick={onClick}>{iconNode}</span>;
 };
 
-export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultText, onIconClick, iconTitle }: any) => (
+export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultText, onIconClick, iconTitle, id }: any) => (
     <div className="relative group">
         <div 
             className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 z-10 flex items-center justify-center ${onIconClick ? 'cursor-pointer pointer-events-auto hover:scale-110 active:scale-95' : 'pointer-events-none'}`}
@@ -27,6 +27,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
             <div className={iconColor}><Icon name={icon} size={16} /></div>
         </div>
         <select 
+            id={id}
             value={value} 
             onChange={onChange}
             className={`w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}

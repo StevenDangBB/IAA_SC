@@ -370,11 +370,32 @@ export const PlanningView = () => {
         e.target.value = '';
     };
 
+    const handleSelectStandardFocus = () => {
+        setSidebarOpen(true);
+        setTimeout(() => {
+            const el = document.getElementById('sidebar-standard-select');
+            if (el) {
+                el.focus();
+                try {
+                    // Try to open the dropdown if supported by browser API (newer Chromes)
+                    if ('showPicker' in el) {
+                        (el as any).showPicker();
+                    } else {
+                        // Fallback: click it (works in some contexts)
+                        el.click(); 
+                    }
+                } catch (e) {
+                    // Ignore focus-only fallback
+                }
+            }
+        }, 300);
+    };
+
     if (!currentStandard) return (
         <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-gray-50/30 dark:bg-slate-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800 m-4 animate-fade-in-up">
             <Icon name="Book" size={48} className="mb-4 opacity-20"/>
             <p className="font-bold text-slate-500">No Standard Selected</p>
-            <button onClick={() => setSidebarOpen(true)} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg text-xs font-bold flex items-center gap-2">
+            <button onClick={handleSelectStandardFocus} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg text-xs font-bold flex items-center gap-2">
                 <Icon name="LayoutList" size={16}/> Select Standard
             </button>
         </div>

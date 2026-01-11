@@ -161,6 +161,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Audit Standard</label>
                 <div className="relative group/source">
                     <IconSelect 
+                        id="sidebar-standard-select"
                         icon={sourceIcon}
                         iconColor={`${sourceColor} transition-all duration-300 ${cursorClass}`}
                         value={standardKey} 
