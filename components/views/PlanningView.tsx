@@ -5,6 +5,7 @@ import { useAudit } from '../../contexts/AuditContext';
 import { Clause } from '../../types';
 import { useUI } from '../../contexts/UIContext';
 import { cleanFileName, copyToClipboard } from '../../utils';
+import { TABS_CONFIG } from '../../constants';
 
 // --- INTERNAL TYPES ---
 interface PlanningRowProps {
@@ -38,11 +39,11 @@ const PlanningRow = memo(({
     const isParent = clause.subClauses && clause.subClauses.length > 0;
 
     return (
-        <tr className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors group">
-            <td className="p-2 border-r border-gray-100 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-gray-50 dark:group-hover:bg-slate-800/30 z-10 align-top">
+        <tr className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors group duration-300 ease-fluid">
+            <td className="p-2 border-r border-gray-100 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-gray-50 dark:group-hover:bg-slate-800/30 z-10 align-top transition-colors duration-300 ease-fluid">
                 <div className={`flex flex-col gap-1 ${level > 0 ? 'ml-4 border-l-2 border-gray-200 dark:border-slate-800 pl-2' : ''}`}>
                     <div className="flex items-center gap-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${level === 0 ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'text-slate-400'}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${level === 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700' : 'text-slate-400'}`}>
                             {clause.code}
                         </span>
                         <span className={`text-xs truncate ${level === 0 ? 'font-bold text-slate-800 dark:text-slate-200' : 'font-medium text-slate-600 dark:text-slate-400'}`}>
@@ -87,7 +88,7 @@ const PlanningRow = memo(({
                         <div className="flex justify-center">
                             <button
                                 onClick={() => onSmartToggle(p.id, clause)}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ease-spring ${
                                     status === 'all' 
                                         ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/40 transform scale-105' 
                                         : status === 'some'
@@ -113,9 +114,6 @@ const PlanningRow = memo(({
     // We check purely based on the clause ID existence in matrixData
     const hasChange = prev.processes.some((pp, idx) => {
         const np = next.processes[idx];
-        // Optimization: Just check root ID for non-parents, checking all descendants is expensive but necessary for parents visual update
-        // We will trust React's speed here for now, or could optimize further.
-        // Simple check: reference equality of matrixData object (unlikely to work due to immutable updates creating new objs)
         return pp.matrixData !== np.matrixData;
     });
     
@@ -131,6 +129,7 @@ export const PlanningView = () => {
     
     const { showToast, setSidebarOpen } = useUI();
     const [search, setSearch] = useState("");
+    const [exportLang, setExportLang] = useState<'en' | 'vi'>('en');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,20 +137,22 @@ export const PlanningView = () => {
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
     
-    // UI State for Export Menu
-    const [showExportMenu, setShowExportMenu] = useState(false);
-
     const currentStandard = standards[standardKey];
+    
+    // --- COLOR THEME SYNC ---
+    // Retrieve the color configuration specifically for 'planning' to sync with Liquid Tab
+    const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
 
-    // Helper: Restore distinctive colors for groups
-    const getGroupStyle = (id: string) => {
-        const key = id.toUpperCase();
-        if (key.includes('PLAN')) return 'bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800';
-        if (key.includes('SUPPORT')) return 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-        if (key.includes('DO')) return 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800';
-        if (key.includes('CHECK') || key.includes('ACT')) return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-        if (key.includes('ANNEX')) return 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800';
-        return 'bg-gray-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700';
+    // Helper: Unified Group Style based on Active Tab Theme
+    const getPDCAStyle = (groupId: string) => {
+        const key = groupId.toUpperCase();
+        if (key.includes('PLAN')) return 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-l-4 border-orange-500';
+        if (key.includes('SUPPORT')) return 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-l-4 border-blue-500';
+        if (key.includes('DO')) return 'bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 border-l-4 border-cyan-500';
+        if (key.includes('CHECK') || key.includes('ACT')) return 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-l-4 border-emerald-500';
+        if (key.includes('ANNEX')) return 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-l-4 border-purple-500';
+        // Fallback
+        return `${themeConfig.bgSoft} border-l-4 ${themeConfig.borderClass} ${themeConfig.textClass}`;
     };
 
     // Flatten logic that preserves hierarchy level
@@ -168,7 +169,6 @@ export const PlanningView = () => {
     }, []); // Stable reference
 
     // --- SMART TOGGLE HANDLER ---
-    // This handles both single clauses and Parent Groups (Batching)
     const handleSmartToggle = useCallback((processId: string, clause: Clause) => {
         const proc = processes.find(p => p.id === processId);
         if (!proc) return;
@@ -177,25 +177,16 @@ export const PlanningView = () => {
         const isGroup = allIds.length > 1;
 
         if (!isGroup) {
-            // Simple Toggle
             toggleProcessClause(processId, clause.id);
         } else {
-            // Batch Logic
             const activeCount = allIds.reduce((acc, id) => acc + (proc.matrixData[id] ? 1 : 0), 0);
             const isFullyActive = activeCount === allIds.length;
 
             if (isFullyActive) {
-                // If all are selected, deselect ALL (Sequence of toggles - might be slow for huge lists but fine for ISO)
-                // Better: We should ideally have a batchRemove, but toggleProcessClause handles removal efficiently enough via state
-                // Since toggleProcessClause is single, we iterate.
-                // NOTE: To avoid render thrashing, we might want a batchRemove. 
-                // Currently context only has batchUpdate (Add). 
-                // Workaround: We iterate toggle. Context state update is fast.
                 allIds.forEach(id => {
                     if (proc.matrixData[id]) toggleProcessClause(processId, id);
                 });
             } else {
-                // If partial or none, select MISSING ones (Batch Add)
                 const toAdd = allIds.filter(id => !proc.matrixData[id]);
                 if (toAdd.length > 0) {
                     batchUpdateProcessClauses([{ processId, clauses: toAdd }]);
@@ -322,7 +313,6 @@ export const PlanningView = () => {
         link.click();
         document.body.removeChild(link);
         showToast("JSON Template exported.");
-        setShowExportMenu(false);
     };
 
     const handleExportTxt = () => {
@@ -336,26 +326,28 @@ export const PlanningView = () => {
         currentStandard?.groups.forEach(g => traverse(g.clauses));
 
         let output = "";
+        if (exportLang === 'vi') output += `NGÀY XUẤT: ${new Date().toLocaleDateString('vi-VN')}\nTIÊU CHUẨN: ${currentStandard.name}\n====================\n\n`;
+        else output += `EXPORT DATE: ${new Date().toLocaleDateString()}\nSTANDARD: ${currentStandard.name}\n====================\n\n`;
+
         processes.forEach(p => {
             const clauses = Object.keys(p.matrixData)
                 .map(id => codeMap[id] || id) 
                 .sort((a,b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
             
             if (clauses.length > 0) {
-                output += `Process: ${p.name}\n`;
-                output += `List chosen clause: [${clauses.join(', ')}]\n\n`;
+                output += `${exportLang === 'vi' ? 'QUY TRÌNH' : 'PROCESS'}: ${p.name}\n`;
+                output += `${exportLang === 'vi' ? 'ĐIỀU KHOẢN' : 'SCOPE'}: [${clauses.join(', ')}]\n\n`;
             }
         });
 
         const blob = new Blob([output], { type: "text/plain" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `${cleanFileName(currentStandard.name)}_Scope.txt`;
+        link.download = `${cleanFileName(currentStandard.name)}_Scope_${exportLang}.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        showToast("TXT Scope exported.");
-        setShowExportMenu(false);
+        showToast(`TXT Scope exported (${exportLang.toUpperCase()}).`);
     };
 
     const handleImportTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -379,7 +371,7 @@ export const PlanningView = () => {
     };
 
     if (!currentStandard) return (
-        <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-gray-50/30 dark:bg-slate-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800 m-4">
+        <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-gray-50/30 dark:bg-slate-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800 m-4 animate-fade-in-up">
             <Icon name="Book" size={48} className="mb-4 opacity-20"/>
             <p className="font-bold text-slate-500">No Standard Selected</p>
             <button onClick={() => setSidebarOpen(true)} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg text-xs font-bold flex items-center gap-2">
@@ -392,19 +384,19 @@ export const PlanningView = () => {
         <div className="h-full flex flex-col animate-fade-in-up gap-4 relative">
             
             {/* Header / Stats */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0 transition-colors duration-500 ease-fluid">
                 <div className="flex items-center gap-6">
                     <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
                         <svg className="transform -rotate-90 w-16 h-16">
                             <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-100 dark:text-slate-800" />
-                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="text-indigo-500 transition-all duration-1000 ease-out" strokeLinecap="round" />
+                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className={`${themeConfig.textClass.replace('text-', 'text-opacity-80 ')} transition-all duration-1000 ease-out`} strokeLinecap="round" />
                         </svg>
                         <span className="absolute text-xs font-black text-slate-700 dark:text-white">{coverageStats.percent}%</span>
                     </div>
                     <div className="flex flex-col gap-1">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">{currentStandard.name}</h3>
                         <p className="text-xs text-slate-500">
-                            <span className="font-bold text-indigo-500">{coverageStats.covered}</span> of {coverageStats.total} clauses mapped.
+                            <span className={`font-bold ${themeConfig.textClass}`}>{coverageStats.covered}</span> of {coverageStats.total} clauses mapped.
                         </p>
                     </div>
                 </div>
@@ -436,46 +428,20 @@ export const PlanningView = () => {
                         <Icon name="UploadCloud" size={18}/>
                     </button>
                     
-                    {/* Unified Export Button */}
-                    <div className="relative">
-                        <button 
-                            onClick={() => setShowExportMenu(!showExportMenu)}
-                            className="p-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600 flex items-center gap-2"
-                            title="Export Options"
-                        >
-                            <Icon name="Download" size={18}/>
-                            <span className="text-xs font-bold hidden md:inline">Export</span>
-                        </button>
-                        
-                        {showExportMenu && (
-                            <>
-                                <div className="fixed inset-0 z-20" onClick={() => setShowExportMenu(false)}></div>
-                                {/* Z-INDEX INCREASED TO [60] TO OVERLAP STICKY TABLE HEADERS */}
-                                <div className="absolute top-full right-0 mt-2 z-[60] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-xl w-48 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                    <div className="px-3 py-2 bg-gray-50 dark:bg-slate-950 border-b border-gray-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                        Select Export Format
-                                    </div>
-                                    <button 
-                                        onClick={handleExportTemplate}
-                                        className="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2 transition-colors"
-                                    >
-                                        <Icon name="Grid" size={16}/> JSON (Template)
-                                    </button>
-                                    <button 
-                                        onClick={handleExportTxt}
-                                        className="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2 transition-colors"
-                                    >
-                                        <Icon name="FileText" size={16}/> TXT (Scope Text)
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                    {/* JSON Export Button */}
+                    <button 
+                        onClick={handleExportTemplate}
+                        className="p-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600 flex items-center gap-2"
+                        title="Export Template (JSON)"
+                    >
+                        <Icon name="Grid" size={18}/>
+                        <span className="text-xs font-bold hidden md:inline">Template</span>
+                    </button>
                 </div>
             </div>
 
             {/* MATRIX CONTAINER */}
-            <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col">
+            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col transition-colors duration-500 ease-fluid`}>
                 {processes.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                         <p className="mb-4">No processes defined.</p>
@@ -486,25 +452,25 @@ export const PlanningView = () => {
                 ) : (
                     <div className="flex-1 overflow-auto custom-scrollbar relative">
                         <table className="w-full text-left border-collapse">
-                            <thead className="bg-gray-50 dark:bg-slate-950 sticky top-0 z-30 shadow-sm">
+                            <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
                                 <tr>
                                     {/* HEADER CELL - CLICKABLE TOGGLE */}
                                     <th 
-                                        className="p-3 border-b border-r border-gray-200 dark:border-slate-800 sticky left-0 bg-gray-50 dark:bg-slate-950 z-40 min-w-[300px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group select-none"
+                                        className={`p-3 border-b border-r border-gray-200 dark:border-slate-800 sticky left-0 z-40 min-w-[300px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group select-none ${themeConfig.bgSoft}`}
                                         onClick={handleToggleAll}
                                         title={areAllCollapsed ? "Click to Expand All" : "Click to Collapse All"}
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${themeConfig.textClass}`}>
                                                 Clause Reference
                                             </span>
                                         </div>
                                     </th>
                                     {processes.map(p => (
-                                        <th key={p.id} className="p-3 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider border-b border-gray-200 dark:border-slate-800 min-w-[120px] text-center">
+                                        <th key={p.id} className={`p-3 text-[10px] font-bold uppercase tracking-wider border-b border-gray-200 dark:border-slate-800 min-w-[120px] text-center ${themeConfig.textClass}`}>
                                             <div className="flex flex-col items-center gap-2">
                                                 <span className="truncate max-w-[100px]" title={p.name}>{p.name}</span>
-                                                <span className="text-[10px] font-bold bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-md shadow-indigo-500/30">
+                                                <span className="text-[10px] font-bold bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full shadow-sm">
                                                     {Object.keys(p.matrixData).length}
                                                 </span>
                                             </div>
@@ -516,13 +482,14 @@ export const PlanningView = () => {
                             <tbody className="divide-y divide-gray-100 dark:divide-slate-800/50">
                                 {filteredGroups.map(group => {
                                     const isCollapsed = collapsedGroups.has(group.id);
-                                    const groupStyle = getGroupStyle(group.id);
+                                    // Use new PDCA Color Logic
+                                    const groupStyle = getPDCAStyle(group.id); 
                                     const groupFlatList = getGroupClauses(group.clauses);
 
                                     return (
                                         <React.Fragment key={group.id}>
                                             {/* GROUP HEADER ROW */}
-                                            <tr className={`sticky z-20 hover:brightness-95 transition-all ${groupStyle}`}>
+                                            <tr className={`sticky z-20 hover:brightness-95 transition-all duration-500 ease-fluid ${groupStyle}`}>
                                                 <td 
                                                     className="p-2 border-r border-black/5 dark:border-white/5 font-black text-xs uppercase tracking-widest sticky left-0 z-20 bg-inherit shadow-sm cursor-pointer"
                                                     onClick={() => toggleGroupCollapse(group.id)}
@@ -579,6 +546,23 @@ export const PlanningView = () => {
                         </table>
                     </div>
                 )}
+            </div>
+            
+            {/* BOTTOM TOOLBAR FOR EXPORT TXT */}
+            <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
+                <div className="flex-1"></div> {/* Spacer */}
+                <button 
+                    onClick={handleExportTxt} 
+                    disabled={processes.length === 0} 
+                    className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md"
+                >
+                    <Icon name="FileText" />
+                    <span className="hidden md:inline">Export Scope (TXT)</span>
+                    <div className="lang-pill-container">
+                        <span onClick={(e) => { e.stopPropagation(); setExportLang('en'); }} className={`lang-pill-btn ${exportLang === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                        <span onClick={(e) => { e.stopPropagation(); setExportLang('vi'); }} className={`lang-pill-btn ${exportLang === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                    </div>
+                </button>
             </div>
         </div>
     );

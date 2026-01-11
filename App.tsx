@@ -12,11 +12,13 @@ import { PlanningView } from './components/views/PlanningView';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { AddStandardModal } from './components/modals/AddStandardModal';
+import { ExportProgressModal, ExportState } from './components/modals/ExportProgressModal';
 import { Icon } from './components/UI';
 import { TABS_CONFIG } from './constants';
 import { useAutoSave } from './hooks/useAutoSave';
-import { UploadedFile } from './types'; 
-import { processSourceFile } from './utils';
+import { UploadedFile, AnalysisResult, FindingsViewMode } from './types'; 
+import { processSourceFile, cleanFileName } from './utils';
+import { generateAnalysis, generateTextReport, translateChunk } from './services/geminiService';
 
 const AppContent = () => {
     const [layoutMode, setLayoutMode] = useState('planning'); 
@@ -28,7 +30,7 @@ const AppContent = () => {
         selectedClauses, standards, standardKey, auditInfo,
         setKnowledgeData, analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings,
         finalReportText, setFinalReportText, resetSession, restoreSession,
-        addCustomStandard, setStandardKey, activeProcessId, processes 
+        addCustomStandard, setStandardKey, activeProcessId, processes, privacySettings
     } = useAudit();
 
     const { apiKeys, addKey, deleteKey, refreshKeyStatus, checkAllKeys, activeKeyId, isCheckingKey, isAutoCheckEnabled, toggleAutoCheck } = useKeyPool();
@@ -37,9 +39,33 @@ const AppContent = () => {
     // Local State
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [referenceState, setReferenceState] = useState({ isOpen: false, clause: null, fullText: {en:"", vi:""}, isLoading: false });
-    
-    // Fix: Add State for New Key Input (was missing in previous version causing input lock)
+    const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
+    const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState("");
     const [newKeyInput, setNewKeyInput] = useState(""); 
+
+    // Report State
+    const [isReportLoading, setIsReportLoading] = useState(false);
+    const [reportLoadingMessage, setReportLoadingMessage] = useState("");
+    const [reportTemplate, setReportTemplate] = useState("");
+    const [reportTemplateName, setReportTemplateName] = useState("");
+    const [isTemplateProcessing, setIsTemplateProcessing] = useState(false);
+
+    // View States (UI Persistence)
+    const [findingsViewMode, setFindingsViewMode] = useState<FindingsViewMode>('list');
+    const [focusedFindingIndex, setFocusedFindingIndex] = useState(0);
+    const [evidenceLanguage, setEvidenceLanguage] = useState<'en' | 'vi'>('en');
+    const [notesLanguage, setNotesLanguage] = useState<'en' | 'vi'>('en');
+    const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
+
+    // Export State
+    const [exportState, setExportState] = useState<ExportState>({
+        isOpen: false, isPaused: false, isFinished: false,
+        totalChunks: 0, processedChunksCount: 0,
+        chunks: [], results: [], error: null,
+        currentType: 'report', targetLang: 'en'
+    });
+    const [rescueKey, setRescueKey] = useState("");
+    const [isRescuing, setIsRescuing] = useState(false);
 
     // Event Listeners
     useEffect(() => {
@@ -85,6 +111,396 @@ const AppContent = () => {
             showToast("Failed: Invalid API Key or Network Error");
         }
     };
+
+    // --- ANALYSIS LOGIC ---
+    const isReadyForAnalysis = useMemo(() => {
+        if (!standardKey || !activeProcessId || isAnalyzeLoading) return false;
+        // Check if there is ANY evidence in the matrix for the current process
+        const hasMatrixData = Object.values(matrixData).some(rows => rows.some(r => r.status === 'supplied'));
+        // Check if global evidence exists
+        const hasGlobalEvidence = evidence && evidence.trim().length > 10;
+        
+        return hasMatrixData || hasGlobalEvidence;
+    }, [standardKey, activeProcessId, matrixData, evidence, isAnalyzeLoading]);
+
+    const handleAnalyze = async () => {
+        if (!isReadyForAnalysis) return;
+        setIsAnalyzeLoading(true);
+        // Switch view immediately to findings to show the loader and results as they arrive
+        setLayoutMode('findings');
+        showToast("AI Auditor Analysis Started...");
+
+        try {
+            const currentStd = standards[standardKey];
+            const activeKeyProfile = apiKeys.find(k => k.id === activeKeyId);
+            
+            // Determine which clauses to analyze
+            // Priority: Matrix clauses > Selected Clauses
+            const clausesToAnalyze = new Set<string>();
+            
+            // 1. Matrix Clauses (Strong intent)
+            Object.keys(matrixData).forEach(cid => {
+                if (matrixData[cid].some(r => r.status === 'supplied')) {
+                    clausesToAnalyze.add(cid);
+                }
+            });
+
+            // 2. If Global Evidence is present, add manually selected clauses
+            if (evidence && evidence.trim().length > 20) {
+                selectedClauses.forEach(cid => clausesToAnalyze.add(cid));
+            }
+
+            if (clausesToAnalyze.size === 0) {
+                throw new Error("Please add evidence to the Matrix or select clauses.");
+            }
+
+            // Helper to find clause data (flattened search)
+            const findClauseData = (id: string) => {
+                for (const g of currentStd.groups) {
+                    for (const c of g.clauses) {
+                        if (c.id === id) return c;
+                        if (c.subClauses) {
+                            const findSub = (list: any[]): any => {
+                                for (const sub of list) {
+                                    if (sub.id === id) return sub;
+                                    if (sub.subClauses) {
+                                        const found = findSub(sub.subClauses);
+                                        if (found) return found;
+                                    }
+                                }
+                                return null;
+                            };
+                            const sub = findSub(c.subClauses);
+                            if (sub) return sub;
+                        }
+                    }
+                }
+                return null;
+            };
+
+            // Analyze Clauses Loop
+            const clausesArray = Array.from(clausesToAnalyze);
+            
+            for (let i = 0; i < clausesArray.length; i++) {
+                const cid = clausesArray[i];
+                const clause = findClauseData(cid);
+                if (!clause) continue;
+
+                // Update visual tracking state
+                setCurrentAnalyzingClause(`${clause.code} ${clause.title}`);
+
+                // Prepare Context
+                const matrixRows = matrixData[cid] || [];
+                const matrixText = matrixRows
+                    .filter(r => r.status === 'supplied')
+                    .map(r => `[Requirement]: ${r.requirement}\n[Evidence]: ${r.evidenceInput}`)
+                    .join("\n\n");
+                
+                const combinedEvidence = `
+                ${matrixText ? `### MATRIX EVIDENCE:\n${matrixText}` : ''}
+                
+                ${evidence ? `### GENERAL PROCESS EVIDENCE:\n${evidence}` : ''}
+                `.trim();
+
+                if (!combinedEvidence) continue;
+
+                const tagsText = evidenceTags
+                    .filter(t => t.clauseId === cid)
+                    .map(t => `Tagged Excerpt: "${t.text}"`)
+                    .join("\n");
+
+                // Call AI
+                const jsonResult = await generateAnalysis(
+                    { code: clause.code, title: clause.title, description: clause.description },
+                    currentStd.name,
+                    combinedEvidence,
+                    tagsText,
+                    activeKeyProfile?.key,
+                    activeKeyProfile?.activeModel,
+                    privacySettings.maskCompany // Use privacy setting
+                );
+
+                try {
+                    const parsed = JSON.parse(jsonResult);
+                    // Inject process context
+                    parsed.processId = activeProcessId;
+                    const procName = processes.find(p => p.id === activeProcessId)?.name;
+                    parsed.processName = procName;
+                    
+                    // Normalize result fields if AI varies slightly
+                    const normalizedResult: AnalysisResult = {
+                        clauseId: parsed.clauseId || clause.code,
+                        status: parsed.status || "N_A",
+                        reason: parsed.reason || "Analysis completed.",
+                        suggestion: parsed.suggestion || "",
+                        evidence: parsed.evidence || "No specific evidence cited.",
+                        conclusion_report: parsed.conclusion_report || parsed.reason,
+                        crossRefs: parsed.crossRefs || [],
+                        processId: activeProcessId || undefined,
+                        processName: procName
+                    };
+                    
+                    // IMMEDIATE STATE UPDATE: Update the UI as soon as this clause is done
+                    setAnalysisResult(prev => {
+                        const existing = prev ? [...prev] : [];
+                        const idx = existing.findIndex(e => e.clauseId === normalizedResult.clauseId && e.processId === normalizedResult.processId);
+                        if (idx >= 0) existing[idx] = normalizedResult;
+                        else existing.push(normalizedResult);
+                        return existing;
+                    });
+
+                } catch (e) {
+                    console.error("JSON Parse Error for clause " + cid, e);
+                }
+                
+                // Throttle: Add small delay between requests to be nice to the API quota
+                if (i < clausesArray.length - 1) {
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+
+            showToast(`Analysis complete. Findings updated.`);
+
+        } catch (error: any) {
+            console.error("Analysis Workflow Error", error);
+            showToast("Analysis Failed: " + (error.message || "Unknown error"));
+        } finally {
+            setIsAnalyzeLoading(false);
+            setCurrentAnalyzingClause(""); // Reset tracking state
+        }
+    };
+
+    // --- EXPORT LOGIC ---
+    const handleExport = async (type: 'evidence' | 'notes' | 'report', lang: 'en' | 'vi') => {
+        let content = "";
+        
+        if (type === 'evidence') {
+            content = `EVIDENCE DUMP\nDate: ${new Date().toLocaleString()}\n\n`;
+            content += `--- GENERAL EVIDENCE ---\n${evidence}\n\n`;
+            content += `--- MATRIX EVIDENCE ---\n`;
+            // Simple serialization
+            Object.keys(matrixData).forEach(k => {
+                const rows = matrixData[k];
+                rows.forEach(r => {
+                    if (r.status === 'supplied') {
+                        content += `[Clause ${k}] ${r.requirement}\nEVIDENCE: ${r.evidenceInput}\n---\n`;
+                    }
+                });
+            });
+        } else if (type === 'notes') {
+            if (!analysisResult) return showToast("No findings to export.");
+            content = analysisResult.map(f => 
+                `[${f.clauseId}] ${f.status}\nObservation: ${f.reason}\nEvidence: ${f.evidence}\n`
+            ).join("\n----------------------------------------\n\n");
+        } else if (type === 'report') {
+            if (!finalReportText) return showToast("No report to export.");
+            content = finalReportText;
+        }
+
+        if (!content.trim()) return showToast("Nothing to export.");
+
+        // Chunking (approx 3000 chars for safe translation context)
+        const chunks = content.match(/[\s\S]{1,3000}/g) || [];
+        
+        setExportState({
+            isOpen: true,
+            isPaused: false,
+            isFinished: false,
+            totalChunks: chunks.length,
+            processedChunksCount: 0,
+            chunks,
+            results: [],
+            error: null,
+            currentType: type,
+            targetLang: lang
+        });
+    };
+
+    // Export Processor Loop
+    useEffect(() => {
+        const processExport = async () => {
+            if (exportState.isOpen && !exportState.isPaused && !exportState.isFinished) {
+                const index = exportState.processedChunksCount;
+                if (index >= exportState.totalChunks) {
+                    // FINISH
+                    const finalContent = exportState.results.join("");
+                    
+                    // --- NAMING CONVENTION GENERATOR ---
+                    const currentStdName = standards[standardKey]?.name || "ISO";
+                    let stdShort = "ISO";
+                    if (currentStdName.includes("27001")) stdShort = "27k";
+                    else if (currentStdName.includes("9001")) stdShort = "9k";
+                    else if (currentStdName.includes("14001")) stdShort = "14k";
+                    else stdShort = cleanFileName(currentStdName).split('_')[0]; // Simple fallback
+
+                    const activeProc = processes.find(p => p.id === activeProcessId);
+                    const procName = activeProc ? activeProc.name : "General";
+
+                    let typeLabel = "Document";
+                    if (exportState.currentType === 'notes') typeLabel = "Audit_Note";
+                    else if (exportState.currentType === 'evidence') typeLabel = "Evidence";
+                    else if (exportState.currentType === 'report') typeLabel = "Report";
+
+                    // Format: YYYYMMDD_HHmm
+                    const now = new Date();
+                    const timeStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+
+                    const filenameParts = [
+                        stdShort,
+                        cleanFileName(auditInfo.type || "Audit"),
+                        cleanFileName(auditInfo.smo || "SMO"),
+                        cleanFileName(auditInfo.company || "Company"),
+                        cleanFileName(procName),
+                        typeLabel,
+                        cleanFileName(auditInfo.auditor || "Auditor"),
+                        timeStr
+                    ];
+
+                    // Filter 'N_A' or empty strings to keep filename clean
+                    const filename = `${filenameParts.filter(p => p && p !== 'N_A').join('_')}_${exportState.targetLang}.txt`;
+                    
+                    const blob = new Blob([finalContent], { type: 'text/plain' });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    setExportState(prev => ({ ...prev, isFinished: true }));
+                    return;
+                }
+
+                // PROCESS CHUNK
+                const chunk = exportState.chunks[index];
+                try {
+                    const activeKeyProfile = apiKeys.find(k => k.id === activeKeyId);
+                    
+                    // Artificial delay for UX visibility
+                    await new Promise(r => setTimeout(r, 200));
+
+                    // Use rescue key if provided (temporarily)
+                    const keyToUse = rescueKey || activeKeyProfile?.key;
+                    
+                    // Call Translation
+                    const translated = await translateChunk(chunk, exportState.targetLang, keyToUse);
+
+                    setExportState(prev => ({
+                        ...prev,
+                        results: [...prev.results, translated],
+                        processedChunksCount: prev.processedChunksCount + 1
+                    }));
+                } catch (err: any) {
+                    console.error("Export Chunk Error", err);
+                    setExportState(prev => ({
+                        ...prev,
+                        isPaused: true,
+                        error: err.message || "Translation failed. Quota exceeded or Network error."
+                    }));
+                }
+            }
+        };
+
+        processExport();
+    }, [exportState, activeKeyId, rescueKey, apiKeys]);
+
+    const handleResumeExport = async () => {
+        setIsRescuing(true);
+        // Verify rescue key
+        const { validateApiKey } = await import('./services/geminiService');
+        const check = await validateApiKey(rescueKey);
+        
+        if (check.isValid) {
+            // Add to pool if valid
+            await addKey(rescueKey, "Rescue Key");
+            setExportState(prev => ({ ...prev, isPaused: false, error: null }));
+            setRescueKey("");
+        } else {
+            showToast("Rescue Key Invalid: " + check.errorMessage);
+        }
+        setIsRescuing(false);
+    };
+    
+    const handleSkipExportChunk = () => {
+         setExportState(prev => ({
+            ...prev,
+            results: [...prev.results, prev.chunks[prev.processedChunksCount]], // Use original content
+            processedChunksCount: prev.processedChunksCount + 1,
+            isPaused: false,
+            error: null
+        }));
+    };
+
+    // --- REPORT LOGIC ---
+    const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsTemplateProcessing(true);
+        setReportLoadingMessage("Processing Template...");
+        
+        try {
+            // Artifical delay for UX if file is too small, to show the loader
+            const start = Date.now();
+            const text = await processSourceFile(file);
+            const duration = Date.now() - start;
+            if(duration < 500) await new Promise(r => setTimeout(r, 500));
+
+            setReportTemplate(text);
+            setReportTemplateName(file.name);
+            showToast(`Template "${file.name}" loaded successfully.`);
+        } catch (err: any) {
+            console.error("Template Error", err);
+            showToast(`Failed to load template: ${err.message}`);
+        } finally {
+            setIsTemplateProcessing(false);
+            setReportLoadingMessage("");
+        }
+    };
+
+    const handleGenerateReport = async () => {
+        if (!analysisResult || analysisResult.length === 0) {
+            showToast("No findings to report. Please run Analysis first.");
+            return;
+        }
+
+        setIsReportLoading(true);
+        setReportLoadingMessage("Synthesizing Final Report...");
+
+        try {
+            const activeKeyProfile = apiKeys.find(k => k.id === activeKeyId);
+            const standardName = standards[standardKey]?.name || "ISO Standard";
+
+            const result = await generateTextReport(
+                {
+                    company: auditInfo.company || "N/A",
+                    type: auditInfo.type || "Internal Audit",
+                    auditor: auditInfo.auditor || "N/A",
+                    standard: standardName,
+                    findings: analysisResult,
+                    lang: exportLanguage,
+                    fullEvidenceContext: reportTemplate ? `USER PROVIDED TEMPLATE/CONTEXT:\n${reportTemplate}` : undefined
+                },
+                activeKeyProfile?.key,
+                activeKeyProfile?.activeModel
+            );
+
+            setFinalReportText(result);
+            showToast("Report Generated Successfully.");
+
+        } catch (error: any) {
+            console.error("Report Gen Error", error);
+            showToast("Failed to generate report: " + error.message);
+        } finally {
+            setIsReportLoading(false);
+            setReportLoadingMessage("");
+        }
+    };
+
+    const isReadyToSynthesize = useMemo(() => {
+        return !!analysisResult && analysisResult.length > 0;
+    }, [analysisResult]);
+
 
     return (
         <MainLayout commandActions={[]} onRestoreSnapshot={restoreSession}>
@@ -134,8 +550,12 @@ const AppContent = () => {
                         evidence={evidence} setEvidence={setEvidence}
                         uploadedFiles={uploadedFiles} setUploadedFiles={setUploadedFiles}
                         onOcrProcess={() => {}} isOcrLoading={false}
-                        onAnalyze={() => {}} isReadyForAnalysis={false} isAnalyzeLoading={false} analyzeTooltip="AI Analysis"
-                        onExport={() => {}} evidenceLanguage='en' setEvidenceLanguage={() => {}}
+                        onAnalyze={handleAnalyze} 
+                        isReadyForAnalysis={isReadyForAnalysis} 
+                        isAnalyzeLoading={isAnalyzeLoading} 
+                        analyzeTooltip="Run AI Analysis on Evidence"
+                        onExport={handleExport} 
+                        evidenceLanguage={evidenceLanguage} setEvidenceLanguage={setEvidenceLanguage}
                         textareaRef={{ current: null }} tags={evidenceTags} onAddTag={addEvidenceTag}
                         selectedClauses={selectedClauses} standards={standards} standardKey={standardKey}
                         matrixData={matrixData} setMatrixData={setMatrixData}
@@ -146,18 +566,26 @@ const AppContent = () => {
                     <FindingsView
                         analysisResult={analysisResult} setAnalysisResult={setAnalysisResult}
                         selectedFindings={selectedFindings} setSelectedFindings={setSelectedFindings}
-                        isAnalyzeLoading={false} loadingMessage="" currentAnalyzingClause=""
-                        viewMode="list" setViewMode={() => {}} focusedFindingIndex={0} setFocusedFindingIndex={() => {}}
-                        onExport={() => {}} notesLanguage="en" setNotesLanguage={() => {}}
+                        isAnalyzeLoading={isAnalyzeLoading} loadingMessage="Synthesizing findings..." 
+                        currentAnalyzingClause={currentAnalyzingClause}
+                        viewMode={findingsViewMode} setViewMode={setFindingsViewMode}
+                        focusedFindingIndex={focusedFindingIndex} setFocusedFindingIndex={setFocusedFindingIndex}
+                        onExport={handleExport} 
+                        notesLanguage={notesLanguage} setNotesLanguage={setNotesLanguage}
                     />
                 )}
 
                 {layoutMode === 'report' && (
                     <ReportView
                         finalReportText={finalReportText} setFinalReportText={setFinalReportText}
-                        isReportLoading={false} loadingMessage="" templateFileName=""
-                        handleTemplateUpload={() => {}} handleGenerateReport={() => {}}
-                        isReadyToSynthesize={false} onExport={() => {}} exportLanguage="en" setExportLanguage={() => {}}
+                        isReportLoading={isReportLoading} loadingMessage={reportLoadingMessage}
+                        templateFileName={reportTemplateName}
+                        isTemplateProcessing={isTemplateProcessing}
+                        handleTemplateUpload={handleTemplateUpload} 
+                        handleGenerateReport={handleGenerateReport}
+                        isReadyToSynthesize={isReadyToSynthesize} 
+                        onExport={handleExport} 
+                        exportLanguage={exportLanguage} setExportLanguage={setExportLanguage}
                     />
                 )}
             </div>
@@ -191,6 +619,17 @@ const AppContent = () => {
                 clause={referenceState.clause} standardName={standards[standardKey]?.name || ""}
                 fullText={referenceState.fullText} isLoading={referenceState.isLoading}
                 onInsert={(text) => setEvidence(prev => prev + "\n" + text)}
+            />
+            
+            <ExportProgressModal 
+                exportState={exportState}
+                setExportState={setExportState}
+                rescueKey={rescueKey}
+                setRescueKey={setRescueKey}
+                handleResumeExport={handleResumeExport}
+                isRescuing={isRescuing}
+                onClose={() => setExportState(prev => ({ ...prev, isOpen: false }))}
+                onSkip={handleSkipExportChunk}
             />
         </MainLayout>
     );

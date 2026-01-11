@@ -2,6 +2,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
+import { TABS_CONFIG } from '../../constants';
 
 interface FindingsViewProps {
     analysisResult: AnalysisResult[] | null;
@@ -28,6 +29,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 }) => {
     const findingsContainerRef = useRef<HTMLDivElement>(null);
     const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+    const themeConfig = TABS_CONFIG.find(t => t.id === 'findings')!;
 
     useEffect(() => {
         if (viewMode === 'list' && findingsContainerRef.current) {
@@ -172,8 +175,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     ) : (
                         <div className="flex flex-col h-full gap-4">
                             <div className="flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800 overflow-hidden max-h-[40vh]">
-                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-2 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Clause</div>
+                                <div className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-2 border-b border-gray-200 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
                                     <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
                                     <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
                                     <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>

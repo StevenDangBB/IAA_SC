@@ -9,7 +9,8 @@ import { useAudit } from '../../contexts/AuditContext';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { ProcessHeader } from './evidence/ProcessHeader';
 import { ActionToolbar } from './evidence/ActionToolbar';
-import { useReferenceLookup } from '../../hooks/useReferenceLookup'; // Import Hook
+import { useReferenceLookup } from '../../hooks/useReferenceLookup'; 
+import { TABS_CONFIG } from '../../constants';
 
 interface EvidenceViewProps {
     evidence: string;
@@ -38,7 +39,8 @@ interface EvidenceViewProps {
 export const EvidenceView: React.FC<EvidenceViewProps> = ({
     evidence, setEvidence, uploadedFiles, setUploadedFiles,
     isOcrLoading, onAnalyze, isReadyForAnalysis,
-    isAnalyzeLoading, analyzeTooltip, evidenceLanguage,
+    isAnalyzeLoading, analyzeTooltip, evidenceLanguage, setEvidenceLanguage,
+    onExport,
     selectedClauses = [], standards, standardKey, matrixData, setMatrixData
 }) => {
     const { activeProcess, activeProcessId, setActiveProcessId, processes, addInterviewee, removeInterviewee } = useAudit();
@@ -60,6 +62,9 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         const matrixKeys = matrixData ? Object.keys(matrixData) : [];
         return Array.from(new Set([...selectedClauses, ...matrixKeys]));
     }, [selectedClauses, matrixData]);
+
+    // Color Theme Sync
+    const themeConfig = TABS_CONFIG.find(t => t.id === 'evidence')!;
 
     // --- LOGIC: Voice ---
     const handleVoiceResult = useCallback((text: string) => {
@@ -122,8 +127,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                         
                         // AUTO-REMOVE SUCCESSFUL FILE
                         setUploadedFiles(prev => prev.filter(f => f.id !== fileEntry.id));
-                        // Keep the target ref just in case logic needs it, or clean it up:
-                        // delete fileTargetRef.current[fileEntry.id]; 
                     }
                 }
             } catch (error: any) {
@@ -161,17 +164,17 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
 
                 <div
-                    className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border overflow-hidden flex flex-row relative group transition-all duration-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? 'border-indigo-500 ring-4 ring-indigo-500/20 bg-indigo-50/10' : 'border-gray-100 dark:border-transparent'}`}
+                    className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border overflow-hidden flex flex-row relative group transition-all duration-500 ease-fluid dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? `${themeConfig.borderClass} ring-4 ring-blue-500/20 bg-blue-50/10` : 'border-gray-100 dark:border-transparent'}`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                 >
                     {isDragging && (
-                        <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-6 rounded-full bg-white dark:bg-slate-900 shadow-2xl border-4 border-dashed border-indigo-500">
-                                <Icon name="UploadCloud" size={48} className="text-indigo-600 animate-bounce" />
+                        <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in-95 duration-200">
+                            <div className="p-6 rounded-full bg-white dark:bg-slate-900 shadow-2xl border-4 border-dashed border-blue-500">
+                                <Icon name="UploadCloud" size={48} className="text-blue-600 animate-bounce" />
                             </div>
-                            <h3 className="mt-4 text-xl font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest text-center">Drop Files to Active Row</h3>
+                            <h3 className="mt-4 text-xl font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest">Drop Files to Active Row</h3>
                         </div>
                     )}
                     
@@ -196,19 +199,39 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                         </div>
                     )}
                 </div>
-                
-                <ActionToolbar 
-                    uploadedFiles={uploadedFiles}
-                    onOcrProcess={handleMatrixOcrProcess}
-                    isOcrLoading={isOcrLoading}
-                    isProcessing={isMatrixProcessing}
-                    toggleListening={toggleListening}
-                    isListening={isListening}
-                    triggerFileUpload={() => fileInputRef.current?.click()}
-                    onAnalyze={onAnalyze}
-                    isReadyForAnalysis={isReadyForAnalysis}
-                    isAnalyzeLoading={isAnalyzeLoading}
-                />
+            </div>
+
+            {/* ACTION & EXPORT FOOTER */}
+            <div className="flex-shrink-0 flex flex-row items-center justify-between gap-2 md:gap-3 w-full pt-1">
+                {/* Left Side: Input Tools */}
+                <div className="flex-1 min-w-0">
+                    <ActionToolbar 
+                        uploadedFiles={uploadedFiles}
+                        onOcrProcess={handleMatrixOcrProcess}
+                        isOcrLoading={isOcrLoading}
+                        isProcessing={isMatrixProcessing}
+                        toggleListening={toggleListening}
+                        isListening={isListening}
+                        triggerFileUpload={() => fileInputRef.current?.click()}
+                        onAnalyze={onAnalyze}
+                        isReadyForAnalysis={isReadyForAnalysis}
+                        isAnalyzeLoading={isAnalyzeLoading}
+                    />
+                </div>
+
+                {/* Right Side: Export with Language Toggle */}
+                <button 
+                    onClick={() => onExport('evidence', evidenceLanguage)} 
+                    className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm whitespace-nowrap dark:shadow-md"
+                    title="Export Raw Evidence"
+                >
+                    <Icon name="Download" />
+                    <span className="hidden md:inline">Export</span>
+                    <div className="lang-pill-container">
+                        <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('en'); }} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                        <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('vi'); }} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                    </div>
+                </button>
             </div>
         </div>
     );

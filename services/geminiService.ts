@@ -49,6 +49,27 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
+// --- UTILS: RETRY LOGIC ---
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const callWithRetry = async <T>(fn: () => Promise<T>, retries = 3, delayMs = 2000): Promise<T> => {
+    try {
+        return await fn();
+    } catch (error: any) {
+        const isQuota = error.status === 429 || error.code === 429 || 
+                       (error.message && error.message.includes('429')) || 
+                       (error.message && error.message.toLowerCase().includes('quota')) ||
+                       (error.message && error.message.toLowerCase().includes('resource_exhausted'));
+        
+        if (isQuota && retries > 0) {
+            console.warn(`Quota exceeded (429). Retrying in ${delayMs}ms... (${retries} attempts left)`);
+            await wait(delayMs);
+            return callWithRetry(fn, retries - 1, delayMs * 2);
+        }
+        throw error;
+    }
+};
+
 // --- ROBUST VALIDATION WITH QUOTA PROBING ---
 export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
@@ -122,15 +143,23 @@ export const fetchFullClauseText = async (clause: { code: string, title: string 
         prompt = `Provide verbatim text for ${standardName} Clause [${clause.code}] ${clause.title}. Output JSON: {"en": "...", "vi": "..."}`;
     }
     
-    // Try primary, then fallback
+    // Try primary, then fallback with retry
     try {
-        const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
+        const response = await callWithRetry(() => ai.models.generateContent({ 
+            model: targetModel, 
+            contents: prompt, 
+            config: { responseMimeType: "application/json" } 
+        }));
         const parsed = cleanAndParseJSON(response.text || "{}");
         return { en: parsed?.en || "N/A", vi: parsed?.vi || "N/A" };
     } catch (e) {
         console.warn("Primary fetch failed, trying fallback model...");
         try {
-             const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
+             const response = await callWithRetry(() => ai.models.generateContent({ 
+                 model: "gemini-3-flash-preview", 
+                 contents: prompt, 
+                 config: { responseMimeType: "application/json" } 
+             }));
              const parsed = cleanAndParseJSON(response.text || "{}");
              return { en: parsed?.en || "N/A", vi: parsed?.vi || "N/A" };
         } catch (e2) {
@@ -174,11 +203,12 @@ export const mapStandardRequirements = async (standardName: string, clauseCodes:
     for (const targetModel of modelsToTry) {
         try {
             console.log(`Mapping Standard with model: ${targetModel}`);
-            const response = await ai.models.generateContent({ 
+            const response = await callWithRetry(() => ai.models.generateContent({ 
                 model: targetModel, 
                 contents: prompt, 
                 config: { responseMimeType: "application/json" } 
-            });
+            }), 2, 1000);
+            
             const result = cleanAndParseJSON(response.text || "{}");
             if (result && Object.keys(result).length > 0) {
                 return result;
@@ -198,7 +228,11 @@ export const parseStandardStructure = async (rawText: string, standardName: stri
     if (!ai) throw new Error("API Key missing");
     const targetModel = model || DEFAULT_GEMINI_MODEL;
     const prompt = `Analyze ISO Standard text. Extract structure. Name: ${standardName}. Text: """${rawText.substring(0, 300000)}""". Output JSON Standard Schema.`;
-    const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
+    const response = await callWithRetry(() => ai.models.generateContent({ 
+        model: targetModel, 
+        contents: prompt, 
+        config: { responseMimeType: "application/json" } 
+    }));
     return cleanAndParseJSON(response.text || "{}") as Standard;
 };
 
@@ -206,10 +240,10 @@ export const generateOcrContent = async (textPrompt: string, base64Data: string,
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
     const targetModel = model || DEFAULT_VISION_MODEL;
-    const response = await ai.models.generateContent({
+    const response = await callWithRetry(() => ai.models.generateContent({
         model: targetModel,
         contents: { parts: [{ text: textPrompt }, { inlineData: { mimeType, data: base64Data } }] }
-    });
+    }));
     return response.text || "";
 };
 
@@ -268,23 +302,25 @@ export const generateAnalysis = async (
         }
     };
     
-    try {
-        const response = await ai.models.generateContent({
-            model: targetModel,
+    const performCall = async (modelToUse: string) => {
+        return await ai.models.generateContent({
+            model: modelToUse,
             contents: finalPrompt,
             config
         });
+    };
+
+    try {
+        const response = await callWithRetry(() => performCall(targetModel));
         return response.text || "{}";
     } catch (e: any) {
-        console.error("Analysis Error:", e);
+        console.warn(`Analysis failed on ${targetModel}:`, e.message);
+        
+        // Retry with a lighter model if the primary failed even after internal retries
         if (targetModel !== "gemini-3-flash-preview") {
              try {
                 console.log("Retrying with fallback model: gemini-3-flash-preview");
-                const retryResponse = await ai.models.generateContent({
-                    model: "gemini-3-flash-preview",
-                    contents: finalPrompt,
-                    config
-                });
+                const retryResponse = await callWithRetry(() => performCall("gemini-3-flash-preview"));
                 return retryResponse.text || "{}";
              } catch (retryError) {
                  console.error("Fallback Failed:", retryError);
@@ -322,21 +358,22 @@ export const generateTextReport = async (
     });
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await callWithRetry(() => ai.models.generateContent({
             model: model || DEFAULT_GEMINI_MODEL,
             contents: finalPrompt
-        });
+        }));
         return response.text || "";
     } catch (e: any) {
         console.error("Reporting Error:", e);
         try {
-             const retryResponse = await ai.models.generateContent({
+             // Fallback to flash for reporting
+             const retryResponse = await callWithRetry(() => ai.models.generateContent({
                 model: "gemini-3-flash-preview",
                 contents: finalPrompt
-            });
+            }));
             return retryResponse.text || "";
-        } catch (retryErr) {
-            throw new Error(e.message || "Report generation failed");
+        } catch (retryErr: any) {
+            throw new Error(retryErr.message || "Report generation failed");
         }
     }
 };
@@ -347,11 +384,11 @@ export const generateMissingDescriptions = async (clauses: { code: string, title
     const targetModel = model || DEFAULT_GEMINI_MODEL;
     const prompt = `Provide concise descriptions (15-20 words) for these ISO clauses. JSON Array: [{"code": "...", "description": "..."}]. Clauses: ${JSON.stringify(clauses)}`;
     try {
-        const response = await ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } });
+        const response = await callWithRetry(() => ai.models.generateContent({ model: targetModel, contents: prompt, config: { responseMimeType: "application/json" } }));
         return response.text || "[]";
     } catch (e) { 
         try {
-             const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
+             const response = await callWithRetry(() => ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } }));
              return response.text || "[]";
         } catch (err) { return "[]"; }
     }
@@ -387,11 +424,11 @@ export const generateAuditPlan = async (
 
     const targetModel = model || DEFAULT_GEMINI_MODEL;
     try {
-        const response = await ai.models.generateContent({ 
+        const response = await callWithRetry(() => ai.models.generateContent({ 
             model: targetModel, 
             contents: prompt, 
             config: { responseMimeType: "application/json" } 
-        });
+        }));
         const result = cleanAndParseJSON(response.text || "{}");
         return {
             newProcesses: result.newProcesses || [],
@@ -400,5 +437,38 @@ export const generateAuditPlan = async (
     } catch (e) {
         console.error("Auto-Plan Error", e);
         return { newProcesses: [], updates: [] };
+    }
+};
+
+// --- EXPORT TRANSLATION ---
+export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiKey?: string, model?: string) => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+    
+    // Only translate if text exists
+    if (!text || !text.trim()) return "";
+
+    const targetModel = model || "gemini-3-flash-preview";
+    const langName = targetLang === 'vi' ? 'Vietnamese' : 'English';
+    
+    const prompt = `Translate the following text to ${langName}. 
+    - Preserve all Markdown formatting (bold, tables, headers).
+    - Maintain technical ISO terminology.
+    - If the text is already in ${langName}, return it exactly as is.
+    - Do not add conversational fillers.
+    
+    TEXT:
+    """
+    ${text}
+    """`;
+
+    try {
+        const response = await callWithRetry(() => ai.models.generateContent({
+            model: targetModel,
+            contents: prompt
+        }));
+        return response.text || text; 
+    } catch (e) {
+        throw e;
     }
 };
