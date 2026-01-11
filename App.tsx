@@ -93,6 +93,22 @@ const AppContent = () => {
         return config ? `${config.colorClass} ${config.borderClass}` : 'bg-slate-500 border-slate-600';
     }, [layoutMode]);
 
+    // NEW: Dynamic Theme Styles for Block Backgrounds and Text Selection
+    const themeStyles = useMemo(() => {
+        switch (layoutMode) {
+            case 'planning':
+                return 'selection:bg-orange-200 selection:text-orange-900 dark:selection:bg-orange-900 dark:selection:text-orange-100 bg-orange-50/40 dark:bg-orange-950/10';
+            case 'evidence':
+                return 'selection:bg-blue-200 selection:text-blue-900 dark:selection:bg-blue-900 dark:selection:text-blue-100 bg-blue-50/40 dark:bg-blue-950/10';
+            case 'findings':
+                return 'selection:bg-purple-200 selection:text-purple-900 dark:selection:bg-purple-900 dark:selection:text-purple-100 bg-purple-50/40 dark:bg-purple-950/10';
+            case 'report':
+                return 'selection:bg-emerald-200 selection:text-emerald-900 dark:selection:bg-emerald-900 dark:selection:text-emerald-100 bg-emerald-50/40 dark:bg-emerald-950/10';
+            default:
+                return 'selection:bg-indigo-200 selection:text-indigo-900';
+        }
+    }, [layoutMode]);
+
     const currentTabConfig = TABS_CONFIG.find(t => t.id === layoutMode) || TABS_CONFIG[0];
     const showProcessBlocker = (!activeProcessId || processes.length === 0) && layoutMode !== 'planning';
 
@@ -529,7 +545,8 @@ const AppContent = () => {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-hidden relative p-2 md:p-4">
+            {/* MAIN CONTENT WRAPPER with Dynamic Theme Styles */}
+            <div className={`flex-1 overflow-hidden relative p-2 md:p-4 transition-colors duration-500 ease-fluid ${themeStyles}`}>
                 {showProcessBlocker && (
                     <div className="absolute inset-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in">
                         <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl border border-indigo-100 dark:border-indigo-900 max-w-md text-center">

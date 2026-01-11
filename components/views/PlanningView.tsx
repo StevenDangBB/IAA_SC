@@ -557,7 +557,7 @@ export const PlanningView = () => {
                     className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md"
                 >
                     <Icon name="FileText" />
-                    <span className="hidden md:inline">Export Scope (TXT)</span>
+                    <span className="hidden md:inline">Export</span>
                     <div className="lang-pill-container">
                         <span onClick={(e) => { e.stopPropagation(); setExportLang('en'); }} className={`lang-pill-btn ${exportLang === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
                         <span onClick={(e) => { e.stopPropagation(); setExportLang('vi'); }} className={`lang-pill-btn ${exportLang === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
