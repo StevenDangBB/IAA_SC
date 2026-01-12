@@ -21,6 +21,7 @@ import { processSourceFile } from './utils';
 import { useAuditWorkflow } from './hooks/useAuditWorkflow';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useExportManager } from './hooks/useExportManager';
+import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 
 // Lazy Components
 const EvidenceView = React.lazy(() => import('./components/views/EvidenceView').then(module => ({ default: module.EvidenceView })));
@@ -31,6 +32,9 @@ const PlanningView = React.lazy(() => import('./components/views/PlanningView').
 const AppContent = () => {
     const [layoutMode, setLayoutMode] = useState('planning'); 
     
+    // Enable Global Keyboard Navigation (Arrow Keys)
+    useKeyboardNavigation();
+
     // Contexts
     const { isSidebarOpen, sidebarWidth, showToast, modals, toggleModal, setSidebarOpen } = useUI();
     const { 
