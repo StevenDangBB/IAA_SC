@@ -210,7 +210,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                             <textarea
                                 value={res.evidence}
                                 onChange={(e) => handleUpdateFinding(idx, 'evidence', e.target.value)}
-                                className="w-full bg-transparent outline-none text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[80px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
+                                className="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[80px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
                                 placeholder="Evidence content..."
                                 spellCheck={false}
                             />
@@ -223,7 +223,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                             <textarea
                                 value={res.reason}
                                 onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
-                                className="w-full bg-transparent outline-none text-sm text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
+                                className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
                                 placeholder="Enter conclusion..."
                             />
                         </div>

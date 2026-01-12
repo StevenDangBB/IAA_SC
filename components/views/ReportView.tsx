@@ -115,7 +115,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 {viewMode === 'text' && (
                     <div className="flex-1 relative">
                         <textarea
-                            className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-mono custom-scrollbar"
+                            className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-base leading-relaxed font-mono custom-scrollbar"
                             value={finalReportText || ""}
                             onChange={(e) => setFinalReportText(e.target.value)}
                             placeholder="The final synthesized audit report will appear here..."

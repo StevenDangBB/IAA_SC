@@ -25,7 +25,7 @@ const IconTextArea = ({ icon, iconColor, placeholder, value, onChange, className
             value={value}
             onChange={onChange}
             rows={rows}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] resize-y min-h-[44px]"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] resize-y min-h-[44px]"
         />
     </div>
 );

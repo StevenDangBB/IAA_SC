@@ -293,7 +293,7 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                             <div className="flex-1 relative group">
                                 <textarea
                                     ref={textAreaRef}
-                                    className="w-full h-full p-6 text-sm text-slate-800 dark:text-slate-200 bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
+                                    className="w-full h-full p-6 text-base text-slate-800 dark:text-slate-200 bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
                                     placeholder="Type verified evidence here... (Drag & Drop files supported)"
                                     value={activeData.row.evidenceInput}
                                     onChange={(e) => handleInputChange(activeData.clause.id, activeData.row.id, e.target.value)}
