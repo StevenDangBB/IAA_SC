@@ -92,10 +92,13 @@ export const Toast = ({ message, onClose }: { message: string, onClose: () => vo
         return () => clearTimeout(timer);
     }, [onClose]);
 
-    const positionClasses = "top-20 left-1/2 -translate-x-1/2 md:top-auto md:left-auto md:bottom-10 md:right-10 md:translate-x-0";
+    // POSITION: Bottom Center
+    const positionClasses = "bottom-10 left-1/2 -translate-x-1/2";
+    
+    // ANIMATIONS: Slide up from bottom
     const activeClasses = "opacity-100 scale-100 translate-y-0";
-    const exitClasses = "opacity-0 scale-95 md:translate-x-4 -translate-y-4 md:translate-y-0";
-    const enterClasses = "opacity-0 scale-95 translate-y-4 md:translate-y-0 md:translate-x-4";
+    const exitClasses = "opacity-0 scale-95 translate-y-8"; // Slide down to exit
+    const enterClasses = "opacity-0 scale-95 translate-y-8"; // Slide up to enter
 
     return (
         <div className={`fixed z-[9999] w-[90vw] max-w-sm md:w-auto md:max-w-md ${positionClasses} transition-all duration-500 ease-spring ${!isMounted ? enterClasses : isExiting ? exitClasses : activeClasses}`}>
