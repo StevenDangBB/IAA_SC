@@ -63,12 +63,12 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
     
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // OPTIMIZATION: Probe with the most stable/high-quota model FIRST (Flash 1.5) to verify the Key itself.
-    // Checking Pro 3.0 first often triggers immediate 429 on Free Tier, masking the actual validity of the key.
+    // OPTIMIZATION: Probe with the most stable/high-quota model FIRST.
+    // Changed to 'gemini-2.0-flash-exp' as 1.5-flash is showing 404 errors.
     const validationOrder = [
-        "gemini-1.5-flash",        // High Quota (15 RPM) - Best for checking "Is Key Alive?"
+        "gemini-2.0-flash-exp",    // Current Stable & Fast
         "gemini-3-flash-preview",  // New Flash
-        "gemini-3-pro-preview"     // Strict Quota (2 RPM) - Only check if others fail or specifically requested
+        "gemini-1.5-flash"         // Legacy Flash (Fallback)
     ];
 
     let globalErrorType: any = undefined;
@@ -78,22 +78,17 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
         const start = performance.now();
         try {
             await ai.models.generateContent({ model: model, contents: { parts: [{ text: "Hi" }] } });
-            // If we succeed with ANY model, the key is valid.
-            // We return the model that worked as the 'activeModel' preference
             return { isValid: true, latency: Math.round(performance.now() - start), activeModel: model };
         } catch (error: any) {
             lastError = error;
             const msg = (error.message || "").toLowerCase();
             
-            // Critical Auth Errors - Stop immediately
             if (msg.includes("key not valid") || msg.includes("api_key_invalid") || error.status === 403) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
             }
             if (msg.includes("referer") || msg.includes("referrer") || msg.includes("forbidden")) {
                 return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Domain restricted (Check Google Console)." };
             }
-
-            // Quota Errors - Continue to try next model
             if (error.status === 429 || msg.includes("quota") || msg.includes("exhausted")) { 
                 globalErrorType = 'quota_exceeded'; 
                 continue; 
@@ -125,7 +120,6 @@ export const generateAnalysis = async (
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
     
-    // HYBRID SEARCH: Combine Vector Search + Keyword Search (simulated via Knowledge Context)
     const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
     const ragKey = apiKey || ""; 
     const vectorContext = await VectorStore.search(ragQuery, ragKey);
@@ -171,12 +165,10 @@ export const generateAnalysis = async (
         }));
         return response.text || "{}";
     } catch (e: any) {
-        // FALLBACK LOGIC: If Pro 3.0 fails (Quota/Error), degrade to 1.5 Flash immediately.
-        // 1.5 Flash has extremely high quotas and reliability for free tier keys.
-        console.warn(`Analysis failed on ${targetModel}. Fallback to stable Flash.`);
+        console.warn(`Analysis failed on ${targetModel}. Fallback to stable Flash 2.0.`);
         try {
             const retryResponse: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-                model: "gemini-1.5-flash", // Use stable Flash, not Preview, for max reliability
+                model: "gemini-2.0-flash-exp", // FIX: Fallback to 2.0 Flash instead of 1.5 which is 404ing
                 contents: finalPrompt,
                 config
             }));
@@ -217,7 +209,7 @@ export const performShadowReview = async (
 
     try {
         const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-            model: model || DEFAULT_GEMINI_MODEL,
+            model: model || "gemini-2.0-flash-exp",
             contents: prompt
         }));
         return response.text || "Review unavailable.";
@@ -226,37 +218,7 @@ export const performShadowReview = async (
     }
 };
 
-// --- MISSING FUNCTIONS IMPLEMENTATION ---
-
-export const generateOcrContent = async (prompt: string, imageBase64: string, mimeType: string, apiKey?: string) => {
-    const ai = getAiClient(apiKey);
-    if (!ai) throw new Error("API Key missing");
-    
-    const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-        model: DEFAULT_VISION_MODEL,
-        contents: {
-            parts: [
-                { inlineData: { mimeType, data: imageBase64 } },
-                { text: prompt }
-            ]
-        }
-    }));
-    return response.text || "";
-};
-
-export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiKey?: string) => {
-    if(!text.trim()) return "";
-    const ai = getAiClient(apiKey);
-    if (!ai) throw new Error("API Key missing");
-    
-    const prompt = `Translate the following text to ${targetLang === 'vi' ? 'Vietnamese' : 'English'}. Maintain tone and formatting.\n\n${text}`;
-    const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt
-    }));
-    return response.text || "";
-};
-
+// --- REPORT GENERATION (FIXED) ---
 export const generateTextReport = async (data: any, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
@@ -271,11 +233,81 @@ export const generateTextReport = async (data: any, apiKey?: string, model?: str
         FULL_EVIDENCE_CONTEXT: data.fullEvidenceContext || "N/A"
     });
 
-    const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-        model: model || DEFAULT_GEMINI_MODEL,
-        contents: prompt
-    }));
-    return response.text || "";
+    const targetModel = model || DEFAULT_GEMINI_MODEL;
+
+    try {
+        const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+            model: targetModel,
+            contents: prompt
+        }));
+        return response.text || "";
+    } catch (e: any) {
+        console.warn(`Report Gen failed on ${targetModel}. Retrying with Flash 2.0...`);
+        // SPECIFIC FIX: Retry with a known stable model if the preferred one fails (e.g. 404)
+        try {
+            const retryResponse: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+                model: "gemini-2.0-flash-exp",
+                contents: prompt
+            }));
+            return retryResponse.text || "";
+        } catch (retryErr: any) {
+            throw new Error(`Report Generation Failed: ${retryErr.message || 'Unknown Error'}`);
+        }
+    }
+};
+
+// --- MISSING FUNCTIONS IMPLEMENTATION ---
+
+export const generateOcrContent = async (prompt: string, imageBase64: string, mimeType: string, apiKey?: string) => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+    
+    try {
+        const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+            model: "gemini-2.0-flash-exp", // Safe Vision Model
+            contents: {
+                parts: [
+                    { inlineData: { mimeType, data: imageBase64 } },
+                    { text: prompt }
+                ]
+            }
+        }));
+        return response.text || "";
+    } catch (e) {
+        // Fallback to older vision model if experimental fails
+        const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: {
+                parts: [
+                    { inlineData: { mimeType, data: imageBase64 } },
+                    { text: prompt }
+                ]
+            }
+        }));
+        return response.text || "";
+    }
+};
+
+export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiKey?: string) => {
+    if(!text.trim()) return "";
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+    
+    const prompt = `Translate the following text to ${targetLang === 'vi' ? 'Vietnamese' : 'English'}. Maintain tone and formatting.\n\n${text}`;
+    
+    try {
+        const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+            model: "gemini-2.0-flash-exp",
+            contents: prompt
+        }));
+        return response.text || "";
+    } catch (e) {
+        const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: prompt
+        }));
+        return response.text || "";
+    }
 };
 
 export const generateMissingDescriptions = async (targets: {code: string, title: string}[]) => {
@@ -291,7 +323,7 @@ export const generateMissingDescriptions = async (targets: {code: string, title:
     `;
     
     const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash-exp",
         contents: prompt,
         config: { responseMimeType: "application/json" }
     }));
@@ -326,7 +358,7 @@ export const fetchFullClauseText = async (clause: any, standardName: string, kno
     `;
 
     const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash-exp",
         contents: prompt,
         config: { responseMimeType: "application/json" }
     }));
@@ -355,7 +387,7 @@ export const mapStandardRequirements = async (standardName: string, codes: strin
     
     try {
         const response: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.0-flash-exp",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         }));
@@ -363,6 +395,5 @@ export const mapStandardRequirements = async (standardName: string, codes: strin
     } catch { return {}; }
 };
 
-// Stubs for currently unused or simple functions to satisfy export contract
 export const generateAuditPlan = async () => "Plan Generation Not Implemented";
 export const parseStandardStructure = async () => ({});

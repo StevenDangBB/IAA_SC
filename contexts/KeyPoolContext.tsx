@@ -50,6 +50,14 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 }
             });
 
+            // MIGRATION FIX: Update old keys stuck on broken 1.5-flash
+            loadedKeys.forEach(k => {
+                if (k.activeModel === 'gemini-1.5-flash') {
+                    k.activeModel = 'gemini-2.0-flash-exp';
+                    hasChanges = true;
+                }
+            });
+
             setApiKeys(loadedKeys);
             if(hasChanges) localStorage.setItem("iso_api_keys", JSON.stringify(loadedKeys));
 
@@ -72,7 +80,7 @@ export const KeyPoolProvider = ({ children }: React.PropsWithChildren<{}>) => {
             label: label || `Key ${apiKeys.length + 1}`,
             key: key.trim(),
             status: 'valid', // Always assume valid
-            activeModel: 'gemini-1.5-flash', // Default assumption
+            activeModel: 'gemini-2.0-flash-exp', // CHANGED: Default to safer model
             latency: 0,
             lastChecked: new Date().toISOString()
         };
