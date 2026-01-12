@@ -14,6 +14,9 @@ export const DEFAULT_VISION_MODEL = "gemini-2.5-flash-image";
 
 export const DEFAULT_AUDIT_INFO: AuditInfo = { 
     company: "", 
+    address: "",
+    scope: "",
+    soa: "",
     smo: "", 
     auditor: "", 
     type: "" 

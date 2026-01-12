@@ -130,5 +130,7 @@ export const Icons: Record<string, React.ReactNode> = {
             <path d="M12 8c-2.5 0-4.5 1.5-6 4 1.5 2.5 3.5 4 6 4s4.5-1.5 6-4c-1.5-2.5-3.5-4-6-4z" />
             <circle cx="12" cy="12" r="1.5" />
         </svg>
-    )
+    ),
+    MapPin: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+    Fence: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6v14"/><path d="M12 6v14"/><path d="M20 6v14"/><path d="M2 10h20"/><path d="M2 16h20"/></svg>
 };

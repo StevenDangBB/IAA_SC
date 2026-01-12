@@ -67,7 +67,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({ isOpen, width, setWidth })
                 >
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-hover:text-indigo-500 transition-colors">
                         <Icon name="Session8_Flag" size={14} className="text-indigo-500"/>
-                        Audit Mission Charter
+                        Audit Details
                     </h3>
                     <div className="flex gap-4 items-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-1 items-center">

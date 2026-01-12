@@ -78,6 +78,9 @@ export const useReportGenerator = (exportLanguage: string) => {
             
             const summary = await generateExecutiveSummary({
                 company: auditInfo.company || "N/A",
+                address: auditInfo.address || "N/A", // NEW
+                scope: auditInfo.scope || "N/A",     // NEW
+                soa: auditInfo.soa || "N/A",         // NEW
                 type: auditInfo.type || "Internal Audit",
                 auditor: auditInfo.auditor || "N/A",
                 standard: standardName,

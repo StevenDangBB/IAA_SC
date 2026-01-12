@@ -41,6 +41,9 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
     
     // Grouping State
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    
+    // Matrix Visibility State
+    const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
 
     const themeConfig = TABS_CONFIG.find(t => t.id === 'findings')!;
 
@@ -284,61 +287,76 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         </div>
                     ) : (
                         <div className="flex flex-col h-full gap-4">
-                            {/* Matrix Header - THEMED BORDER */}
-                            <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-depth`}>
-                                {/* UPDATED GRID: [Clause] | [Major] | [Minor] | [OFI] | [Comp] */}
-                                <div className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
-                                    <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
-                                    <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
-                                    <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
-                                    <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
+                            {/* Matrix Header Container - Collapsible */}
+                            <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-depth transition-all duration-300 ease-in-out ${isMatrixCollapsed ? 'h-11 min-h-[44px]' : 'h-auto max-h-[45vh]'}`}>
+                                
+                                {/* Control Bar */}
+                                <div className="flex items-center justify-between px-3 py-2 bg-white/50 dark:bg-slate-900/50 border-b border-gray-50 dark:border-slate-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800" onClick={() => setIsMatrixCollapsed(!isMatrixCollapsed)}>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="Grid" size={12}/> Findings Matrix ({Object.keys(groupedFindings).length} Processes)
+                                    </span>
+                                    <div className="text-slate-400 hover:text-indigo-500 transition-colors">
+                                        <Icon name={isMatrixCollapsed ? "ChevronDown" : "ChevronUp"} size={16} />
+                                    </div>
                                 </div>
-                                <div className="overflow-y-auto custom-scrollbar max-h-[40vh] p-2">
-                                    {Object.entries(groupedFindings).map(([processName, items]) => {
-                                        const isCollapsed = collapsedGroups.has(processName);
-                                        const typedItems = items as { finding: AnalysisResult, originalIndex: number }[];
-                                        const countNC = typedItems.filter(i => i.finding.status === 'NC_MAJOR' || i.finding.status === 'NC_MINOR').length;
-                                        
-                                        return (
-                                            <div key={processName} className="flex flex-col mb-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50 overflow-hidden">
-                                                {/* Group Header */}
-                                                <div 
-                                                    className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
-                                                    onClick={() => toggleGroup(processName)}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Icon name="ChevronDown" size={14} className={`text-slate-400 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : ''}`}/>
-                                                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 uppercase tracking-wide truncate max-w-[200px]" title={processName}>
-                                                            {processName} 
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400 font-normal">({typedItems.length})</span>
-                                                    </div>
-                                                    {countNC > 0 && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded shadow-sm">{countNC} NCs</span>}
-                                                </div>
 
-                                                {/* Group Items with SCROLLABLE CONTAINER */}
-                                                {!isCollapsed && (
-                                                    <div className="max-h-[240px] overflow-y-auto custom-scrollbar divide-y divide-gray-100 dark:divide-slate-800/50 border-t border-gray-100 dark:border-slate-800">
-                                                        {typedItems.map(({ finding: item, originalIndex: idx }) => {
-                                                            const isSelected = focusedFindingIndex === idx;
-                                                            return (
-                                                                <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-800/80'}`}>
-                                                                    <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
-                                                                    <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Major NC"></div>}</div>
-                                                                    <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Minor NC"></div>}</div>
-                                                                    <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Opportunity for Improvement"></div>}</div>
-                                                                    <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Compliant"></div>}</div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                {/* Matrix Content - Only rendered fully when not collapsed to save DOM/Layout calc, or hidden via CSS for animation */}
+                                <div className={`flex flex-col transition-opacity duration-200 ${isMatrixCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                    {/* UPDATED GRID: [Clause] | [Major] | [Minor] | [OFI] | [Comp] */}
+                                    <div className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
+                                        <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
+                                        <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
+                                        <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
+                                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
+                                    </div>
+                                    <div className="overflow-y-auto custom-scrollbar max-h-[40vh] p-2">
+                                        {Object.entries(groupedFindings).map(([processName, items]) => {
+                                            const isCollapsed = collapsedGroups.has(processName);
+                                            const typedItems = items as { finding: AnalysisResult, originalIndex: number }[];
+                                            const countNC = typedItems.filter(i => i.finding.status === 'NC_MAJOR' || i.finding.status === 'NC_MINOR').length;
+                                            
+                                            return (
+                                                <div key={processName} className="flex flex-col mb-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50 overflow-hidden">
+                                                    {/* Group Header */}
+                                                    <div 
+                                                        className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                                                        onClick={() => toggleGroup(processName)}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Icon name="ChevronDown" size={14} className={`text-slate-400 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : ''}`}/>
+                                                            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 uppercase tracking-wide truncate max-w-[200px]" title={processName}>
+                                                                {processName} 
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 font-normal">({typedItems.length})</span>
+                                                        </div>
+                                                        {countNC > 0 && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded shadow-sm">{countNC} NCs</span>}
                                                     </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+
+                                                    {/* Group Items with SCROLLABLE CONTAINER */}
+                                                    {!isCollapsed && (
+                                                        <div className="max-h-[240px] overflow-y-auto custom-scrollbar divide-y divide-gray-100 dark:divide-slate-800/50 border-t border-gray-100 dark:border-slate-800">
+                                                            {typedItems.map(({ finding: item, originalIndex: idx }) => {
+                                                                const isSelected = focusedFindingIndex === idx;
+                                                                return (
+                                                                    <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-800/80'}`}>
+                                                                        <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
+                                                                        <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Major NC"></div>}</div>
+                                                                        <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Minor NC"></div>}</div>
+                                                                        <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Opportunity for Improvement"></div>}</div>
+                                                                        <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Compliant"></div>}</div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
+                            
                             {/* Detail Panel */}
                             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border border-gray-100 dark:border-slate-800 p-2 shadow-inner">
                                 {analysisResult[focusedFindingIndex] ? renderFindingCard(analysisResult[focusedFindingIndex], focusedFindingIndex, true) : <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">Select a row above to view details</div>}

@@ -26,6 +26,9 @@ export interface StandardsData {
 
 export interface AuditInfo {
     company: string;
+    address: string; // New field
+    scope: string;   // New field
+    soa: string;     // New field (ISO 27001 specific)
     smo: string;
     auditor: string;
     type: string;

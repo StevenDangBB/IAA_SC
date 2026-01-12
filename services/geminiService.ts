@@ -264,6 +264,9 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     
     CONTEXT:
     Company: ${data.company}
+    Address: ${data.address || "N/A"}
+    Audit Scope: ${data.scope || "N/A"}
+    Statement of Applicability (SoA): ${data.soa || "N/A"}
     Standard: ${data.standard}
     Audit Type: ${data.type}
     Auditor: ${data.auditor}
@@ -278,9 +281,10 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     
     OUTPUT FORMAT: Plain Text. Concise paragraphs covering:
     1. Overall Compliance Status.
-    2. Key Strengths.
-    3. Major Areas for Improvement.
-    4. Recommendation for Certification (Yes/No/Conditional).
+    2. Confirmation of Audit Scope and Site Address (Confirm if scope was covered adequately).
+    3. Key Strengths.
+    4. Major Areas for Improvement.
+    5. Recommendation for Certification (Yes/No/Conditional).
     `;
 
     try {

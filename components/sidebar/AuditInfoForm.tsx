@@ -14,13 +14,29 @@ interface AuditInfoFormProps {
     standardOptions: { value: string; label: string }[];
 }
 
+// Internal Helper for TextAreas to match IconInput style
+const IconTextArea = ({ icon, iconColor, placeholder, value, onChange, className = "", rows = 2 }: any) => (
+    <div className={`relative group ${className}`}>
+        <div className="absolute left-3 top-3 pointer-events-none transition-colors duration-300">
+            <div className={iconColor}><Icon name={icon} size={16} /></div>
+        </div>
+        <textarea 
+            placeholder={placeholder}
+            value={value}
+            onChange={onChange}
+            rows={rows}
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] resize-y min-h-[44px]"
+        />
+    </div>
+);
+
 export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
     onAddNewStandard, onOpenIntegrity, onKnowledgeUpload, 
     health, auditFieldIconColor, standardOptions
 }) => {
     // Consume Context Directly
     const { 
-        standardKey, setStandardKey, auditInfo, setAuditInfo,
+        standardKey, setStandardKey, auditInfo, setAuditInfo, standards,
         knowledgeFileName, clearKnowledge,
         processes, activeProcessId, setActiveProcessId,
         addProcess, renameProcess, deleteProcess
@@ -42,6 +58,8 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
     const hasSource = !!knowledgeFileName;
     const isStandardSelected = !!standardKey && standardKey !== "ADD_NEW";
     const sourceIcon = hasSource ? "BookOpen" : "Book";
+    
+    const is27001 = useMemo(() => standardKey && standards[standardKey]?.name.includes("27001"), [standardKey, standards]);
     
     let sourceColor = "text-gray-300 dark:text-slate-600"; 
     let sourceTooltip = "Please select an ISO Standard first to enable document upload.";
@@ -202,6 +220,39 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="SMO/ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
                 </div>
                 
+                {/* NEW: Address Field with MapPin */}
+                <IconTextArea 
+                    icon="MapPin" 
+                    iconColor={auditFieldIconColor} 
+                    placeholder="Site Address / Locations..." 
+                    value={auditInfo.address || ""} 
+                    onChange={(e: any) => setAuditInfo({...auditInfo, address: e.target.value})}
+                    rows={2}
+                />
+
+                {/* NEW: Scope Field with Fence */}
+                <IconTextArea 
+                    icon="Fence" 
+                    iconColor={auditFieldIconColor} 
+                    placeholder="Audit Scope Description..." 
+                    value={auditInfo.scope || ""} 
+                    onChange={(e: any) => setAuditInfo({...auditInfo, scope: e.target.value})}
+                    rows={3}
+                />
+
+                {/* NEW: SoA Field (Conditional for 27001) */}
+                {is27001 && (
+                    <div className="animate-in fade-in slide-in-from-top-2">
+                        <IconInput 
+                            icon="FileShield" 
+                            iconColor="text-purple-600 dark:text-purple-400" 
+                            placeholder="SoA Version / Reference (e.g. v2.0 2024)" 
+                            value={auditInfo.soa || ""} 
+                            onChange={(e: any) => setAuditInfo({...auditInfo, soa: e.target.value})} 
+                        />
+                    </div>
+                )}
+                
                 {/* PROCESS MANAGEMENT DROPDOWN */}
                 <div className="space-y-2 pt-1">
                     <div className="flex justify-between items-center px-1">
@@ -291,7 +342,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                                             <Icon name="X" size={14} />
                                         </div>
                                     )}
-                                    <Icon name="ChevronDown" size={14} className={`transition-transform duration-300 text-slate-400 ${isProcessMenuOpen ? 'rotate-180' : ''} ${isCreating ? 'hidden' : ''}`} />
+                                    <Icon name="ChevronDown" size={14} className={`transition-transform duration-300 text-slate-400 ${isProcessMenuOpen ? 'rotate-180' : ''}`} />
                                 </div>
                             </div>
 
