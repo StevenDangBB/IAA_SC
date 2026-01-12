@@ -175,6 +175,7 @@ const AppContent = () => {
                     
                     {layoutMode === 'evidence' && (
                         <EvidenceView
+                            key={activeProcessId} // Forces a fresh mount when switching processes to prevent state bleeding
                             evidence={evidence} setEvidence={setEvidence}
                             uploadedFiles={uploadedFiles} setUploadedFiles={setUploadedFiles}
                             onOcrProcess={() => {}} isOcrLoading={false}

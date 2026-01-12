@@ -161,6 +161,17 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     useEffect(() => {
         if (!loadedProcessId) return;
         
+        // Double Guard: If for some reason activeProcessId has switched but loadedProcessId hasn't updated
+        // (e.g. during a rapid switch race), we must PAUSE saving to avoid writing old data to the wrong slot.
+        // We only save when the loaded ID matches the user's intent or if we are purely saving the loaded context.
+        // Actually, we should just save to loadedProcessId regardless of activeProcessId to ensure data persistence 
+        // before the switch completes. But to be safe against "bleeding", checking mismatch is useful.
+        
+        // HOWEVER, a strict check (activeProcessId !== loadedProcessId) might prevent the FINAL save of the old process
+        // right as we switch. 
+        // Better Strategy: The `setProcesses` update below strictly targets `loadedProcessId`.
+        // This is safe. The issue in the past was using `activeProcessId` here.
+        
         setProcesses(prev => prev.map(p => {
             if (p.id === loadedProcessId) {
                 // Optimization: Only update reference if data actually changed
