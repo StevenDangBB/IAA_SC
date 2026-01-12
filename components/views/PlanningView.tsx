@@ -15,7 +15,7 @@ interface PlanningRowProps {
     isExpanded: boolean;
     onToggleDescription: (id: string) => void;
     onCopyCitation: (text: string) => void;
-    onSmartToggle: (procId: string, clause: Clause) => void; // Changed from onTogglePlan
+    onSmartToggle: (procId: string, clause: Clause) => void; 
 }
 
 // --- HELPER: Get all descendant IDs ---
@@ -34,7 +34,6 @@ const PlanningRow = memo(({
     clause, level, processes, isExpanded, onToggleDescription, onCopyCitation, onSmartToggle 
 }: PlanningRowProps) => {
     
-    // Memoize the flat list of IDs for this row (to calculate status quickly)
     const selfAndDescendants = useMemo(() => getFlatClauseIds(clause), [clause]);
     const isParent = clause.subClauses && clause.subClauses.length > 0;
 
@@ -72,7 +71,6 @@ const PlanningRow = memo(({
                 </div>
             </td>
             {processes.map(p => {
-                // Determine Status
                 let status: 'all' | 'some' | 'none' = 'none';
                 
                 if (isParent) {
@@ -110,8 +108,6 @@ const PlanningRow = memo(({
     if (prev.isExpanded !== next.isExpanded) return false;
     if (prev.processes.length !== next.processes.length) return false;
     
-    // Deep check if matrixData changed for relevant IDs
-    // We check purely based on the clause ID existence in matrixData
     const hasChange = prev.processes.some((pp, idx) => {
         const np = next.processes[idx];
         return pp.matrixData !== np.matrixData;
@@ -133,17 +129,14 @@ export const PlanningView = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Collapsible States
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
     
     const currentStandard = standards[standardKey];
     
     // --- COLOR THEME SYNC ---
-    // Retrieve the color configuration specifically for 'planning' to sync with Liquid Tab
     const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
 
-    // Helper: Unified Group Style based on Active Tab Theme
     const getPDCAStyle = (groupId: string) => {
         const key = groupId.toUpperCase();
         if (key.includes('PLAN')) return 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-l-4 border-orange-500';
@@ -151,11 +144,9 @@ export const PlanningView = () => {
         if (key.includes('DO')) return 'bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 border-l-4 border-cyan-500';
         if (key.includes('CHECK') || key.includes('ACT')) return 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-l-4 border-emerald-500';
         if (key.includes('ANNEX')) return 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-l-4 border-purple-500';
-        // Fallback
         return `${themeConfig.bgSoft} border-l-4 ${themeConfig.borderClass} ${themeConfig.textClass}`;
     };
 
-    // Flatten logic that preserves hierarchy level
     const getGroupClauses = useMemo(() => (clauses: Clause[]) => {
         const flat: { clause: Clause, level: number }[] = [];
         const traverse = (list: Clause[], level: number) => {
@@ -166,9 +157,8 @@ export const PlanningView = () => {
         };
         traverse(clauses, 0);
         return flat;
-    }, []); // Stable reference
+    }, []); 
 
-    // --- SMART TOGGLE HANDLER ---
     const handleSmartToggle = useCallback((processId: string, clause: Clause) => {
         const proc = processes.find(p => p.id === processId);
         if (!proc) return;
@@ -242,7 +232,6 @@ export const PlanningView = () => {
         showToast("Citation copied!");
     }, [showToast]);
 
-    // --- Toggle All Logic ---
     const areAllCollapsed = useMemo(() => {
         if (!currentStandard) return false;
         return currentStandard.groups.every(g => collapsedGroups.has(g.id));
@@ -259,7 +248,6 @@ export const PlanningView = () => {
         }
     };
 
-    // Coverage Stats Logic
     const coverageStats = useMemo(() => {
         if (!currentStandard) return { percent: 0, covered: 0, total: 0 };
         let total = 0;
@@ -284,7 +272,6 @@ export const PlanningView = () => {
     const circumference = 2 * Math.PI * radius;
     const strokeDashoffset = circumference - (coverageStats.percent / 100) * circumference;
 
-    // Filter Logic
     const filteredGroups = useMemo(() => {
         if (!currentStandard) return [];
         if (!search) return currentStandard.groups;
@@ -301,7 +288,6 @@ export const PlanningView = () => {
     }, [currentStandard, search]);
 
 
-    // --- Export/Import Handlers ---
     const handleExportTemplate = () => {
         if (processes.length === 0) { showToast("No processes to export."); return; }
         const templateData = processes.map(p => ({ name: p.name, clauses: Object.keys(p.matrixData) }));
@@ -377,16 +363,12 @@ export const PlanningView = () => {
             if (el) {
                 el.focus();
                 try {
-                    // Try to open the dropdown if supported by browser API (newer Chromes)
                     if ('showPicker' in el) {
                         (el as any).showPicker();
                     } else {
-                        // Fallback: click it (works in some contexts)
                         el.click(); 
                     }
-                } catch (e) {
-                    // Ignore focus-only fallback
-                }
+                } catch (e) {}
             }
         }, 300);
     };
@@ -449,7 +431,6 @@ export const PlanningView = () => {
                         <Icon name="UploadCloud" size={18}/>
                     </button>
                     
-                    {/* JSON Export Button */}
                     <button 
                         onClick={handleExportTemplate}
                         className="p-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600 flex items-center gap-2"
@@ -461,8 +442,8 @@ export const PlanningView = () => {
                 </div>
             </div>
 
-            {/* MATRIX CONTAINER */}
-            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col transition-colors duration-500 ease-fluid`}>
+            {/* MATRIX CONTAINER - THEMED BORDER TOP */}
+            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col transition-colors duration-500 ease-fluid`}>
                 {processes.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                         <p className="mb-4">No processes defined.</p>
@@ -475,7 +456,6 @@ export const PlanningView = () => {
                         <table className="w-full text-left border-collapse">
                             <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
                                 <tr>
-                                    {/* HEADER CELL - CLICKABLE TOGGLE */}
                                     <th 
                                         className={`p-3 border-b border-r border-gray-200 dark:border-slate-800 sticky left-0 z-40 min-w-[300px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group select-none ${themeConfig.bgSoft}`}
                                         onClick={handleToggleAll}
@@ -503,13 +483,11 @@ export const PlanningView = () => {
                             <tbody className="divide-y divide-gray-100 dark:divide-slate-800/50">
                                 {filteredGroups.map(group => {
                                     const isCollapsed = collapsedGroups.has(group.id);
-                                    // Use new PDCA Color Logic
                                     const groupStyle = getPDCAStyle(group.id); 
                                     const groupFlatList = getGroupClauses(group.clauses);
 
                                     return (
                                         <React.Fragment key={group.id}>
-                                            {/* GROUP HEADER ROW */}
                                             <tr className={`sticky z-20 hover:brightness-95 transition-all duration-500 ease-fluid ${groupStyle}`}>
                                                 <td 
                                                     className="p-2 border-r border-black/5 dark:border-white/5 font-black text-xs uppercase tracking-widest sticky left-0 z-20 bg-inherit shadow-sm cursor-pointer"
@@ -524,7 +502,6 @@ export const PlanningView = () => {
                                                     </div>
                                                 </td>
                                                 {processes.map(p => {
-                                                    // Determine check state for this process in this group
                                                     const flatIds: string[] = [];
                                                     const traverse = (list: Clause[]) => list.forEach(c => { flatIds.push(c.id); if(c.subClauses) traverse(c.subClauses); });
                                                     traverse(group.clauses);
@@ -547,7 +524,6 @@ export const PlanningView = () => {
                                                 })}
                                             </tr>
 
-                                            {/* CLAUSE ROWS */}
                                             {!isCollapsed && groupFlatList.map(({ clause, level }) => (
                                                 <PlanningRow 
                                                     key={clause.id}
@@ -569,9 +545,8 @@ export const PlanningView = () => {
                 )}
             </div>
             
-            {/* BOTTOM TOOLBAR FOR EXPORT TXT */}
             <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                <div className="flex-1"></div> {/* Spacer */}
+                <div className="flex-1"></div>
                 <button 
                     onClick={handleExportTxt} 
                     disabled={processes.length === 0} 

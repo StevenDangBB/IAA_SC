@@ -17,7 +17,7 @@ interface EvidenceViewProps {
     setEvidence: React.Dispatch<React.SetStateAction<string>>;
     uploadedFiles: UploadedFile[];
     setUploadedFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
-    onOcrProcess: () => void; // Kept for API compatibility, though we use local handler
+    onOcrProcess: () => void;
     isOcrLoading: boolean;
     onAnalyze: () => void;
     isReadyForAnalysis: boolean;
@@ -164,7 +164,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
 
                 <div
-                    className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border overflow-hidden flex flex-row relative group transition-all duration-500 ease-fluid dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? `${themeConfig.borderClass} ring-4 ring-blue-500/20 bg-blue-50/10` : 'border-gray-100 dark:border-transparent'}`}
+                    className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} overflow-hidden flex flex-row relative group transition-all duration-500 ease-fluid dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] ${isDragging ? `${themeConfig.borderClass} ring-4 ring-blue-500/20 bg-blue-50/10` : 'border-gray-100 dark:border-transparent'}`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}

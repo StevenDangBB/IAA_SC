@@ -217,8 +217,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         </div>
                     ) : (
                         <div className="flex flex-col h-full gap-4">
-                            {/* Matrix Header */}
-                            <div className="flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden shadow-depth">
+                            {/* Matrix Header - THEMED BORDER */}
+                            <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-depth`}>
                                 <div className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
                                     <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
                                     <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>

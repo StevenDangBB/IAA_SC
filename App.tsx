@@ -87,10 +87,11 @@ const AppContent = () => {
 
     const themeStyles = useMemo(() => {
         switch (layoutMode) {
-            case 'planning': return 'selection:bg-orange-200 selection:text-orange-900 dark:selection:bg-orange-900 dark:selection:text-orange-100 bg-orange-50/40 dark:bg-orange-950/10';
-            case 'evidence': return 'selection:bg-blue-200 selection:text-blue-900 dark:selection:bg-blue-900 dark:selection:text-blue-100 bg-blue-50/40 dark:bg-blue-950/10';
-            case 'findings': return 'selection:bg-purple-200 selection:text-purple-900 dark:selection:bg-purple-900 dark:selection:text-purple-100 bg-purple-50/40 dark:bg-purple-950/10';
-            case 'report': return 'selection:bg-emerald-200 selection:text-emerald-900 dark:selection:bg-emerald-900 dark:selection:text-emerald-100 bg-emerald-50/40 dark:bg-emerald-950/10';
+            // Increased opacity for stronger color sync
+            case 'planning': return 'selection:bg-orange-200 selection:text-orange-900 dark:selection:bg-orange-900 dark:selection:text-orange-100 bg-orange-50/80 dark:bg-orange-950/20';
+            case 'evidence': return 'selection:bg-blue-200 selection:text-blue-900 dark:selection:bg-blue-900 dark:selection:text-blue-100 bg-blue-50/80 dark:bg-blue-950/20';
+            case 'findings': return 'selection:bg-purple-200 selection:text-purple-900 dark:selection:bg-purple-900 dark:selection:text-purple-100 bg-purple-50/80 dark:bg-purple-950/20';
+            case 'report': return 'selection:bg-emerald-200 selection:text-emerald-900 dark:selection:bg-emerald-900 dark:selection:text-emerald-100 bg-emerald-50/80 dark:bg-emerald-950/20';
             default: return 'selection:bg-indigo-200 selection:text-indigo-900';
         }
     }, [layoutMode]);
@@ -122,8 +123,8 @@ const AppContent = () => {
 
     return (
         <MainLayout commandActions={[]} onRestoreSnapshot={restoreSession}>
-            {/* Top Bar */}
-            <div className={`flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 transition-colors duration-500 ease-fluid flex justify-between items-center gap-3 border-t-4 ${currentTabConfig.borderClass} ${liquidColorClass.split(' ')[0].replace('bg-', 'bg-opacity-5')}`}>
+            {/* Top Bar - Color Synced Border Top */}
+            <div className={`flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 transition-colors duration-500 ease-fluid flex justify-between items-center gap-3 border-t-4 ${currentTabConfig.borderClass} ${liquidColorClass.split(' ')[0].replace('bg-', 'bg-opacity-10 ')}`}>
                 <div className="flex-1 min-w-0">
                     <TabNavigation 
                         layoutMode={layoutMode} 

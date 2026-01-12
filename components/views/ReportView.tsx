@@ -58,7 +58,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 </div>
             </div>
 
-            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] transition-colors duration-500 ease-fluid`}>
+            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] transition-colors duration-500 ease-fluid`}>
                 
                 {isReportLoading && <AINeuralLoader message={loadingMessage} />}
 
