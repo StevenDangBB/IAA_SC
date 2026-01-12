@@ -13,9 +13,50 @@ export const Header: React.FC = () => {
     } = useUI();
     
     const { standards, standardKey, privacySettings } = useAudit();
-    const { apiKeys } = useKeyPool();
+    const { getActiveKey, apiKeys } = useKeyPool(); // Added apiKeys to dependency check if needed
+
+    const activeKeyProfile = getActiveKey();
 
     const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
+
+    // --- AI BADGE LOGIC ---
+    const aiStatusConfig = useMemo(() => {
+        if (!activeKeyProfile) return { 
+            text: "AI OFFLINE", 
+            color: "bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700",
+            dot: "bg-slate-400",
+            icon: "WifiOff"
+        };
+
+        const modelRaw = activeKeyProfile.activeModel || "Unknown";
+        let modelDisplay = "GEMINI";
+        
+        if (modelRaw.includes("2.0-flash")) modelDisplay = "FLASH 2.0";
+        else if (modelRaw.includes("1.5-flash")) modelDisplay = "FLASH 1.5";
+        else if (modelRaw.includes("3-pro")) modelDisplay = "PRO 3.0";
+        else if (modelRaw.includes("1.5-pro")) modelDisplay = "PRO 1.5";
+
+        if (activeKeyProfile.status === 'valid') return {
+            text: modelDisplay,
+            color: "bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800 ring-1 ring-cyan-500/20",
+            dot: "bg-emerald-500 animate-pulse",
+            icon: "Sparkle"
+        };
+        
+        if (activeKeyProfile.status === 'quota_exceeded') return {
+            text: "QUOTA LIMIT",
+            color: "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800",
+            dot: "bg-orange-500",
+            icon: "AlertCircle"
+        };
+
+        return {
+            text: "KEY ERROR",
+            color: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800",
+            dot: "bg-red-500",
+            icon: "X"
+        };
+    }, [activeKeyProfile]);
 
     const displayBadge = useMemo(() => {
         const currentStandardName = standards[standardKey]?.name || "";
@@ -58,6 +99,19 @@ export const Header: React.FC = () => {
                     <h1 className="hidden md:block text-lg font-extrabold tracking-tight text-slate-800 dark:text-white leading-none">
                         ISO Audit <span className="font-light text-slate-400">Pro</span>
                     </h1>
+
+                    {/* --- NEW AI STATUS BADGE --- */}
+                    <div 
+                        onClick={() => toggleModal('settings', true)}
+                        className={`hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-lg border cursor-pointer hover:shadow-md transition-all duration-300 ${aiStatusConfig.color}`}
+                        title={`AI Engine Status: ${activeKeyProfile?.status || 'Offline'} (Click to Config)`}
+                    >
+                        <div className={`w-1.5 h-1.5 rounded-full shadow-sm ${aiStatusConfig.dot}`}></div>
+                        <span className="text-[9px] font-black uppercase tracking-widest">{aiStatusConfig.text}</span>
+                        {aiStatusConfig.icon === 'Sparkle' && <Icon name="Sparkle" size={10} className="animate-pulse-slow"/>}
+                    </div>
+                    
+                    {/* Standard Badge */}
                     <div className={`text-[10px] font-bold px-3 py-1 rounded-full border shadow-sm uppercase tracking-wider transition-colors duration-300 ${badgeColorClass}`}>
                         {displayBadge}
                     </div>
