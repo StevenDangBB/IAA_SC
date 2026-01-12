@@ -309,6 +309,7 @@ export const formatFindingReportSection = async (finding: AnalysisResult, lang: 
     }
 
     // Lightweight formatting prompt
+    // STRICT PRESERVATION INSTRUCTION ADDED
     const prompt = `
     ROLE: Audit Reporter.
     TASK: Format this single audit finding into a final report section.
@@ -318,18 +319,25 @@ export const formatFindingReportSection = async (finding: AnalysisResult, lang: 
     Clause: ${finding.clauseId}
     Status: ${finding.status}
     Observation: "${finding.reason}"
-    Evidence (RAW): """${finding.evidence}"""
+    Evidence Block:
+    """
+    ${finding.evidence}
+    """
     
     RULES:
     1. Polish the 'Observation' to be professional.
-    2. CRITICAL: Copy the 'Evidence' EXACTLY as provided. Do not summarize or remove line breaks/bullets.
-    3. Output plain text format.
+    2. CRITICAL: For 'Verified Evidence', print the content of 'Evidence Block' VERBATIM. 
+       - DO NOT summarize.
+       - DO NOT remove bullets, dashes, or line breaks. 
+       - DO NOT reformat list items into paragraphs.
+       - Keep it exactly as provided in the block.
+    3. Output in Markdown.
     
     OUTPUT TEMPLATE:
     ### Clause ${finding.clauseId} - ${finding.status}
     **Observation:** [Polished Observation]
     **Verified Evidence:**
-    [Exact Evidence]
+    [Insert Exact Evidence Block Here]
     `;
 
     try {

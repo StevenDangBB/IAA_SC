@@ -84,19 +84,27 @@ export const useAuditWorkflow = () => {
 
                 setCurrentAnalyzingClause(`${clause.code} ${clause.title}`);
 
-                // OPTIMIZATION 1: DATA SLICING
-                // Only send matrix rows RELEVANT to this clause
+                // OPTIMIZATION 1: DATA SLICING & PRESERVATION
                 const matrixRows = matrixData[cid] || [];
-                const specificEvidence = matrixRows
+                
+                // Construct specific evidence for AI Context
+                const specificEvidenceForAI = matrixRows
                     .filter(r => r.status === 'supplied')
                     .map(r => `[Requirement]: ${r.requirement}\n[Evidence]: ${r.evidenceInput}`)
                     .join("\n\n");
                 
-                // General evidence is sent as context, but we could summarize it if too long
+                // CRITICAL: Capture RAW input to inject back into result (Bypass AI Summarization)
+                // This ensures bullets, newlines, and formatting are preserved 100%
+                const rawUserEvidence = matrixRows
+                    .filter(r => r.status === 'supplied')
+                    .map(r => r.evidenceInput)
+                    .join("\n\n");
+
+                // General evidence is sent as context
                 const safeGeneralEvidence = evidence.length > 8000 ? evidence.substring(0, 8000) + "...(truncated)" : evidence;
 
                 const combinedEvidence = `
-                ${specificEvidence ? `### MATRIX EVIDENCE (Specific to ${clause.code}):\n${specificEvidence}` : ''}
+                ${specificEvidenceForAI ? `### MATRIX EVIDENCE (Specific to ${clause.code}):\n${specificEvidenceForAI}` : ''}
                 ${safeGeneralEvidence ? `### GENERAL PROCESS EVIDENCE:\n${safeGeneralEvidence}` : ''}
                 `.trim();
 
@@ -108,7 +116,6 @@ export const useAuditWorkflow = () => {
                 const fullInput = combinedEvidence + tagsText;
 
                 // OPTIMIZATION 2: CACHING
-                // Generate hash based on: ClauseID + ProcessID + EvidenceContent + Model
                 const cacheKey = generateContentHash(`${cid}_${activeProcessId}_${fullInput}_${activeKeyProfile?.activeModel}`);
                 
                 if (ANALYSIS_CACHE.has(cacheKey)) {
@@ -134,12 +141,19 @@ export const useAuditWorkflow = () => {
                     const procName = processes.find(p => p.id === activeProcessId)?.name;
                     parsed.processName = procName;
                     
+                    // FORCE OVERRIDE EVIDENCE WITH RAW INPUT
+                    // If user provided specific matrix input, use that EXACTLY.
+                    // If not, fall back to what AI extracted from general context.
+                    const finalEvidence = rawUserEvidence.trim().length > 0 
+                        ? rawUserEvidence 
+                        : (parsed.evidence || "No specific evidence cited.");
+
                     const result: AnalysisResult = {
                         clauseId: parsed.clauseId || clause.code,
                         status: parsed.status || "N_A",
                         reason: parsed.reason || "Analysis completed.",
                         suggestion: parsed.suggestion || "",
-                        evidence: parsed.evidence || "No specific evidence cited.",
+                        evidence: finalEvidence, // <--- PRESERVED FORMATTING
                         conclusion_report: parsed.conclusion_report || parsed.reason,
                         crossRefs: parsed.crossRefs || [],
                         processId: activeProcessId || undefined,
@@ -164,7 +178,6 @@ export const useAuditWorkflow = () => {
             };
 
             // OPTIMIZATION 3: CONCURRENCY
-            // Run 3 requests in parallel to saturate network without hitting typical 429 limits
             showToast(`Batch processing ${total} clauses...`);
             const results = await runWithConcurrency(queue, processClause, 3);
 
