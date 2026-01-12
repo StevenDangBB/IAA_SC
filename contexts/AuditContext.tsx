@@ -93,6 +93,10 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [activeProcessId, setActiveProcessId] = useState<string | null>(null);
 
     // Active View Data (Synced with Active Process)
+    // We use `loadedProcessId` to track which process owns the current `evidence` and `matrixData` in state.
+    // This prevents race conditions where we might save data from Process A into Process B during a switch.
+    const [loadedProcessId, setLoadedProcessId] = useState<string | null>(null);
+    
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
     const [matrixData, setMatrixData] = useState<Record<string, MatrixRow[]>>({});
     const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]);
@@ -108,63 +112,65 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [selectedFindings, setSelectedFindings] = useState<Record<string, boolean>>({});
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
 
-    // --- REFS FOR SYNC SAFETY ---
-    // Critical: We use a ref to track activeProcessId inside the Save Effect.
-    // This prevents the Save Effect from running immediately when activeProcessId changes (which would save OLD data to NEW process).
-    const activeProcessIdRef = useRef(activeProcessId);
-    
     const standards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
     
     // Safe fallback
     const activeProcess = useMemo(() => processes.find(p => p.id === activeProcessId), [processes, activeProcessId]);
 
+    // Use a ref for processes to access them in effects without causing dependency loops
+    const processesRef = useRef(processes);
+    useEffect(() => { processesRef.current = processes; }, [processes]);
+
     // --- SYNC EFFECTS ---
 
-    // 1. Update Ref when ID changes (Sync Layer)
+    // 1. Load Process Data (Read Layer)
+    // This runs when the user selects a different process.
     useEffect(() => {
-        activeProcessIdRef.current = activeProcessId;
-    }, [activeProcessId]);
-
-    // 2. Load Process Data (Read Layer)
-    // When activeProcessId changes, we MUST load the data from the process into the local view state.
-    useEffect(() => {
+        // If we deselected, clear everything
         if (!activeProcessId) {
             setEvidence("");
             setMatrixData({});
             setEvidenceTags([]);
+            setLoadedProcessId(null);
             return;
         }
-        
-        setProcesses(currentProcesses => {
-            const target = currentProcesses.find(p => p.id === activeProcessId);
-            if (target) {
-                // Populate local state from store
-                setEvidence(target.evidence || "");
-                setMatrixData(target.matrixData || {});
-                setEvidenceTags(target.evidenceTags || []);
-            }
-            return currentProcesses;
-        });
-    }, [activeProcessId]);
 
-    // 3. Save View Data (Write Layer)
-    // CRITICAL FIX: This effect MUST NOT depend on `activeProcessId`.
-    // It should only run when the actual content (`evidence`, `matrixData`) changes.
-    // It uses the Ref to know where to save.
+        // Do not reload if we are already loaded (avoids spurious resets)
+        if (activeProcessId === loadedProcessId) return;
+
+        const target = processesRef.current.find(p => p.id === activeProcessId);
+        if (target) {
+            // CRITICAL: We set the loaded ID *simultaneously* with the data.
+            // This ensures that any subsequent "Save" effect sees consistent state.
+            setEvidence(target.evidence || "");
+            setMatrixData(target.matrixData || {});
+            setEvidenceTags(target.evidenceTags || []);
+            setLoadedProcessId(activeProcessId);
+        } else {
+            // Fallback if ID invalid
+            setLoadedProcessId(null);
+        }
+    }, [activeProcessId, loadedProcessId]); 
+
+    // 2. Save View Data (Write Layer)
+    // This runs whenever the local view data changes (user typing).
+    // CRITICAL FIX: We ONLY save to `loadedProcessId`. We do NOT use `activeProcessId` here.
+    // If `activeProcessId` changed but `loadedProcessId` hasn't updated yet (race condition),
+    // this effect will effectively pause or save to the OLD process (which is safe),
+    // rather than overwriting the NEW process with OLD data.
     useEffect(() => {
-        const currentId = activeProcessIdRef.current;
-        if (!currentId) return;
+        if (!loadedProcessId) return;
         
         setProcesses(prev => prev.map(p => {
-            if (p.id === currentId) {
-                // Only update if something actually changed to avoid cycles
+            if (p.id === loadedProcessId) {
+                // Optimization: Only update reference if data actually changed
                 if (p.evidence !== evidence || p.matrixData !== matrixData || p.evidenceTags !== evidenceTags) {
                     return { ...p, evidence, matrixData, evidenceTags };
                 }
             }
             return p;
         }));
-    }, [evidence, matrixData, evidenceTags]); // NO activeProcessId dependency here!
+    }, [evidence, matrixData, evidenceTags, loadedProcessId]);
 
     // --- ACTIONS ---
 
@@ -257,7 +263,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return p;
         }));
         
-        const activeUpdate = updates.find(u => u.processId === activeProcessId);
+        // If we updated the currently loaded process, we must also update local state to reflect changes
+        // This is a special case: External modification of the ACTIVE process's structure.
+        const activeUpdate = updates.find(u => u.processId === loadedProcessId);
         if (activeUpdate) {
              setMatrixData(prev => {
                  const next = { ...prev };
@@ -296,7 +304,8 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return { ...p, matrixData: newMatrixData };
         }));
 
-        if (activeProcessId === processId) {
+        // Sync local state if we modified the currently loaded process
+        if (loadedProcessId === processId) {
             setMatrixData(prev => {
                 const next = { ...prev };
                 if (next[clauseId]) {
@@ -372,6 +381,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setAuditInfo(DEFAULT_AUDIT_INFO);
         setProcesses([]);
         setActiveProcessId(null);
+        setLoadedProcessId(null); // Clear loaded tracker
         setEvidence("");
         setMatrixData({});
         setEvidenceTags([]);
@@ -409,7 +419,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         if(data.standardKey) loadKnowledgeForStandard(data.standardKey);
     };
 
-    // Memoize the value to prevent re-renders in consumers
     const contextValue = useMemo(() => ({
         standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
         auditInfo, setAuditInfo,
