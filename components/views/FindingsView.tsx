@@ -38,6 +38,9 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
     // Local state for Shadow Review
     const [reviewLoading, setReviewLoading] = useState<string | null>(null); // Clause ID
     const [reviews, setReviews] = useState<Record<string, string>>({});
+    
+    // Grouping State
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
     const themeConfig = TABS_CONFIG.find(t => t.id === 'findings')!;
 
@@ -52,6 +55,35 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         if (!analysisResult || analysisResult.length === 0) return false;
         return analysisResult.every(res => selectedFindings[res.clauseId]);
     }, [analysisResult, selectedFindings]);
+
+    // Computed: Group Findings by Process
+    const groupedFindings = useMemo((): Record<string, { finding: AnalysisResult, originalIndex: number }[]> => {
+        if (!analysisResult) return {};
+        const groups: Record<string, { finding: AnalysisResult, originalIndex: number }[]> = {};
+        
+        analysisResult.forEach((finding, index) => {
+            const processName = finding.processName || "General Audit";
+            if (!groups[processName]) {
+                groups[processName] = [];
+            }
+            groups[processName].push({ finding, originalIndex: index });
+        });
+        
+        // Sort keys to ensure consistent order
+        return Object.keys(groups).sort().reduce((acc, key) => {
+            acc[key] = groups[key];
+            return acc;
+        }, {} as typeof groups);
+    }, [analysisResult]);
+
+    const toggleGroup = (groupName: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupName)) next.delete(groupName);
+            else next.add(groupName);
+            return next;
+        });
+    };
 
     const handleToggleSelectAll = () => {
         if (!analysisResult) return;
@@ -233,7 +265,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                 
                 {isAnalyzeLoading && (
                     <div className="h-full flex flex-col items-center justify-center">
-                        {/* Loading State UI kept same as before */}
                         <div className="relative w-28 h-28 mb-8">
                             <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900/50 rounded-full opacity-50"></div>
                             <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin"></div>
@@ -255,31 +286,50 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         <div className="flex flex-col h-full gap-4">
                             {/* Matrix Header - THEMED BORDER */}
                             <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-depth`}>
-                                {/* UPDATED GRID: Added PROCESS Column */}
-                                <div className={`grid grid-cols-[60px_120px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
+                                {/* UPDATED GRID: [Clause] | [Major] | [Minor] | [OFI] | [Comp] */}
+                                <div className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
                                     <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
-                                    <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest text-left pl-2">Process</div>
                                     <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
                                     <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
                                     <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
                                     <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest text-center">Comp</div>
                                 </div>
                                 <div className="overflow-y-auto custom-scrollbar max-h-[40vh]">
-                                    {analysisResult.map((item, idx) => {
-                                        const isSelected = focusedFindingIndex === idx;
+                                    {Object.entries(groupedFindings).map(([processName, items]) => {
+                                        const isCollapsed = collapsedGroups.has(processName);
+                                        const typedItems = items as { finding: AnalysisResult, originalIndex: number }[];
+                                        const countNC = typedItems.filter(i => i.finding.status === 'NC_MAJOR' || i.finding.status === 'NC_MINOR').length;
+                                        
                                         return (
-                                            <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[60px_120px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
-                                                <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
-                                                {/* PROCESS CELL */}
-                                                <div className="flex items-center justify-start h-full w-full pl-2">
-                                                    <span className={`text-[10px] font-bold truncate max-w-[110px] px-2 py-0.5 rounded ${isSelected ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-gray-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
-                                                        {item.processName || "General"}
-                                                    </span>
+                                            <div key={processName} className="flex flex-col">
+                                                {/* Group Header */}
+                                                <div 
+                                                    className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                                                    onClick={() => toggleGroup(processName)}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Icon name="ChevronDown" size={14} className={`text-slate-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}/>
+                                                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 uppercase tracking-wide">
+                                                            {processName} 
+                                                            <span className="ml-2 text-[10px] text-slate-400 font-normal normal-case">({typedItems.length} items)</span>
+                                                        </span>
+                                                    </div>
+                                                    {countNC > 0 && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">{countNC} NCs</span>}
                                                 </div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Major NC"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Minor NC"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Opportunity for Improvement"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Compliant"></div>}</div>
+
+                                                {/* Group Items */}
+                                                {!isCollapsed && typedItems.map(({ finding: item, originalIndex: idx }) => {
+                                                    const isSelected = focusedFindingIndex === idx;
+                                                    return (
+                                                        <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                                                            <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
+                                                            <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Major NC"></div>}</div>
+                                                            <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Minor NC"></div>}</div>
+                                                            <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Opportunity for Improvement"></div>}</div>
+                                                            <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Compliant"></div>}</div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     })}
