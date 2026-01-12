@@ -230,9 +230,9 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     rows={2}
                 />
 
-                {/* NEW: Scope Field with Fence */}
+                {/* NEW: Scope Field with Target */}
                 <IconTextArea 
-                    icon="Fence" 
+                    icon="Target" 
                     iconColor={auditFieldIconColor} 
                     placeholder="Audit Scope Description..." 
                     value={auditInfo.scope || ""} 
