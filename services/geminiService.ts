@@ -60,24 +60,51 @@ const callWithRetry = async <T>(fn: () => Promise<T>, retries = 3, delayMs = 200
 export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean, latency: number, errorType?: 'invalid' | 'quota_exceeded' | 'network_error' | 'referrer_error' | 'unknown', errorMessage?: string, activeModel?: string }> => {
     const key = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : "";
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
+    
     const ai = new GoogleGenAI({ apiKey: key });
-    const probeModels = [...MODEL_HIERARCHY];
+    
+    // OPTIMIZATION: Probe with the most stable/high-quota model FIRST (Flash 1.5) to verify the Key itself.
+    // Checking Pro 3.0 first often triggers immediate 429 on Free Tier, masking the actual validity of the key.
+    const validationOrder = [
+        "gemini-1.5-flash",        // High Quota (15 RPM) - Best for checking "Is Key Alive?"
+        "gemini-3-flash-preview",  // New Flash
+        "gemini-3-pro-preview"     // Strict Quota (2 RPM) - Only check if others fail or specifically requested
+    ];
+
     let globalErrorType: any = undefined;
     let lastError: any = null;
 
-    for (const model of probeModels) {
+    for (const model of validationOrder) {
         const start = performance.now();
         try {
             await ai.models.generateContent({ model: model, contents: { parts: [{ text: "Hi" }] } });
+            // If we succeed with ANY model, the key is valid.
+            // We return the model that worked as the 'activeModel' preference
             return { isValid: true, latency: Math.round(performance.now() - start), activeModel: model };
         } catch (error: any) {
             lastError = error;
             const msg = (error.message || "").toLowerCase();
-            if (msg.includes("key not valid") || msg.includes("api_key_invalid")) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
-            if (error.status === 429 || msg.includes("quota")) { globalErrorType = 'quota_exceeded'; continue; }
+            
+            // Critical Auth Errors - Stop immediately
+            if (msg.includes("key not valid") || msg.includes("api_key_invalid") || error.status === 403) {
+                return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
+            }
+            if (msg.includes("referer") || msg.includes("referrer") || msg.includes("forbidden")) {
+                return { isValid: false, latency: 0, errorType: 'referrer_error', errorMessage: "Domain restricted (Check Google Console)." };
+            }
+
+            // Quota Errors - Continue to try next model
+            if (error.status === 429 || msg.includes("quota") || msg.includes("exhausted")) { 
+                globalErrorType = 'quota_exceeded'; 
+                continue; 
+            }
         }
     }
-    if (globalErrorType === 'quota_exceeded') return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "All models exhausted quota." };
+
+    if (globalErrorType === 'quota_exceeded') {
+        return { isValid: false, latency: 0, errorType: 'quota_exceeded', errorMessage: "All models exhausted quota." };
+    }
+    
     return { isValid: false, latency: 0, errorType: 'unknown', errorMessage: lastError?.message || "Validation failed." };
 };
 
