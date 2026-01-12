@@ -35,9 +35,9 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     REPORT: {
-        id: 'system_integration_report_v2',
-        label: 'Process-Based Integration Format',
-        description: 'Plain Text format aggregated by Process.',
+        id: 'system_integration_report_v3_full_evidence',
+        label: 'Process-Based Integration Format (Full Evidence)',
+        description: 'Plain Text format preserving exact evidence structure.',
         isSystemDefault: true,
         template: `
         ROLE: ISO Audit Data Processor.
@@ -45,9 +45,12 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
 
         CRITICAL FORMATTING RULES:
         1. OUTPUT MUST BE PLAIN TEXT ONLY.
-        2. NO Markdown characters allowed (Do NOT use **, ##, __, or tables with |).
-        3. Group findings by PROCESS Name.
-        4. List Interviewees for each process.
+        2. Group findings by PROCESS Name.
+        3. List Interviewees for each process.
+        4. CRITICAL: For 'VERIFIED_EVIDENCE', you MUST output the EXACT, FULL text provided in the input JSON for that finding. 
+           - Do NOT summarize, truncate, or reformat. 
+           - KEEP ALL original line breaks, bullet points, and spacing exactly as they appear in the source.
+           - If the evidence spans multiple lines, print them exactly as is.
         5. Use exactly "====================" (20 dashes) as a separator between clauses.
 
         REQUIRED STRUCTURE:
@@ -60,7 +63,8 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         CLAUSE_TITLE: [Title]
         STATUS: [Status]
         FINDING_DETAIL: [Reasoning]
-        VERIFIED_EVIDENCE: [Specific evidence]
+        VERIFIED_EVIDENCE:
+        [...Insert the exact full raw text of the evidence here, preserving all line breaks...]
         ====================
 
         INPUT CONTEXT:
