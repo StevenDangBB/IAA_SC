@@ -15,7 +15,6 @@ export const Header: React.FC = () => {
     const { standards, standardKey, privacySettings } = useAudit();
     const { apiKeys } = useKeyPool();
 
-    const isSystemHealthy = useMemo(() => apiKeys.some(k => k.status === 'valid'), [apiKeys]);
     const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
 
     const displayBadge = useMemo(() => {
@@ -90,11 +89,10 @@ export const Header: React.FC = () => {
                 
                 <button 
                     onClick={() => toggleModal('settings', true)} 
-                    className="group relative w-9 h-9 flex items-center justify-center transition-all hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl" 
-                    title="Connection Status"
+                    className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all active:scale-95" 
+                    title="Settings"
                 >
-                    <div className={`absolute inset-0 m-auto w-3 h-3 rounded-full opacity-20 animate-ping ${isSystemHealthy ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                    <div className={`relative w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white dark:ring-slate-900 ${isSystemHealthy ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                    <Icon name="Settings" size={18}/>
                 </button>
                 
                 <button 
