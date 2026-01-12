@@ -27,14 +27,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
     const { privacySettings, setPrivacySettings } = useAudit();
 
     return (
-        <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-slate-900 transition-colors duration-500 ease-soft relative">
+        <div className="flex flex-col h-[100dvh] w-full bg-slate-100 dark:bg-slate-950 transition-colors duration-500 ease-soft relative overflow-hidden">
             {toastMsg && <Toast message={toastMsg} onClose={() => showToast('')} />}
 
             <Header />
 
-            <main className="flex-1 flex overflow-hidden relative">
+            <main className="flex-1 flex overflow-hidden relative shadow-inner">
                 {/* Sidebar Container */}
-                <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 bottom-0 left-0 z-[60] md:absolute md:inset-y-0 md:relative md:top-0 md:translate-x-0 md:transform-none transition-transform duration-300 ease-soft h-[calc(100%-4rem)] md:h-full`}>
+                <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 bottom-0 left-0 z-[60] md:absolute md:inset-y-0 md:relative md:top-0 md:translate-x-0 md:transform-none transition-transform duration-300 ease-soft h-[calc(100%-4rem)] md:h-full shadow-2xl`}>
                     <Sidebar 
                         isOpen={isSidebarOpen} 
                         width={sidebarWidth} 
@@ -51,7 +51,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
                 )}
                 
                 {/* Content Area */}
-                <div className="flex-1 flex flex-col min-w-0 relative w-full transition-all duration-300 ease-soft bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+                <div className="flex-1 flex flex-col min-w-0 relative w-full transition-all duration-300 ease-soft bg-white/50 dark:bg-slate-900/50 backdrop-blur-md shadow-inner-depth">
                     {children}
                 </div>
             </main>

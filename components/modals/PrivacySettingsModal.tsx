@@ -74,10 +74,10 @@ export const PrivacySettingsModal: React.FC<PrivacySettingsModalProps> = ({
                     {renderToggle("Company Name", "maskCompany", "Building", "Matches exact name from Audit Charter")}
                     {renderToggle("SMO / ID", "maskSmo", "Tag", "Matches SMO code from Audit Charter")}
                     {renderToggle("Person Names", "maskPeople", "Users", "Matches Auditor & Interviewee names")}
-                    {renderToggle("Emails", "maskEmail", "Demo12_Attach", "Standard email patterns")}
-                    {renderToggle("Phone Numbers", "maskPhone", "Demo6_BoxUp", "Vietnamese & Intl phone patterns")}
-                    {renderToggle("Addresses", "maskAddress", "Demo13_Meteor", "Street/District patterns")}
-                    {renderToggle("IP Addresses", "maskIP", "Demo11_Scan", "IPv4 server addresses")}
+                    {renderToggle("Emails", "maskEmail", "Mail", "Standard email patterns")}
+                    {renderToggle("Phone Numbers", "maskPhone", "Phone", "Vietnamese & Intl phone patterns")}
+                    {renderToggle("Addresses", "maskAddress", "MapPin", "Street/District patterns")}
+                    {renderToggle("IP Addresses", "maskIP", "Globe", "IPv4 server addresses")}
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 dark:border-slate-800">

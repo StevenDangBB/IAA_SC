@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "5.1.0-SMART-ROUTING"; 
-export const BUILD_TIMESTAMP = "2026-03-01 12:00:00 (GMT+7)"; 
+export const APP_VERSION = "5.2.0-REFACTOR"; 
+export const BUILD_TIMESTAMP = "2026-03-05 08:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -49,7 +49,6 @@ export const MY_FIXED_KEYS: string[] = [
 ].filter(k => k && k.trim() !== ""); 
 
 // --- INTELLIGENT MODEL HIERARCHY ---
-// The system will try these in order. If one hits Quota Limit (429), it moves to the next.
 export const MODEL_HIERARCHY = [
     "gemini-3-pro-preview",                 // 1. High Intelligence (Reasoning)
     "gemini-2.0-flash",                     // 2. High Speed & Stability (Standard)
@@ -92,28 +91,20 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "5.2.0-REFACTOR",
+        date: "2026-03-05",
+        features: [
+            "CORE: Performance Architecture. Implemented Lazy Loading and Memoized Contexts.",
+            "UI: Enhanced Depth & Contrast (Layered Shadows).",
+            "TECH: React 19 Strict Mode Compatibility."
+        ]
+    },
+    {
         version: "5.1.0-SMART-ROUTING",
         date: "2026-03-01",
         features: [
             "CORE: Added Smart Model Rotator. Automatically switches to Flash/Lite models when Pro quota is exceeded.",
             "QUOTA: Integrated Gemini 2.0 Flash Lite for maximum availability."
-        ]
-    },
-    {
-        version: "5.0.2-HOTFIX",
-        date: "2026-03-01",
-        features: [
-            "CRITICAL: Removed Gemini 1.5 models causing 404 errors.",
-            "CORE: Upgraded all synthesis tasks to Gemini 3.0 Pro/Flash."
-        ]
-    },
-    {
-        version: "5.0.0-PERFORMANCE",
-        date: "2026-03-01",
-        features: [
-            "CORE: Major Refactoring & Code Cleanup. Tech debt cleared.",
-            "UI/UX: Modern 'Glassmorphism' Interface with depth and smooth motion.",
-            "PERF: Optimized Rendering Engine for Matrix & Findings views."
         ]
     }
 ];

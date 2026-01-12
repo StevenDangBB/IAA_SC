@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings } from '../types';
 import { DEFAULT_AUDIT_INFO, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
@@ -108,10 +108,10 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [selectedFindings, setSelectedFindings] = useState<Record<string, boolean>>({});
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
 
-    const standards = { ...STANDARDS_DATA, ...customStandards };
+    const standards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
     
     // Safe fallback
-    const activeProcess = processes.find(p => p.id === activeProcessId);
+    const activeProcess = useMemo(() => processes.find(p => p.id === activeProcessId), [processes, activeProcessId]);
 
     // --- SYNC EFFECTS ---
     // Save active view data back to process object
@@ -130,8 +130,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }, [evidence, matrixData, evidenceTags, activeProcessId]);
 
     // Load process data into view when ID changes
-    // CRITICAL: We only trigger this when activeProcessId changes, NOT when 'processes' changes
-    // This prevents the 'processes' update loop from reverting user input in 'matrixData'
     useEffect(() => {
         if (!activeProcessId) {
             setEvidence("");
@@ -140,12 +138,20 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return;
         }
         
-        const target = processes.find(p => p.id === activeProcessId);
-        if (target) {
-            setEvidence(target.evidence || "");
-            setMatrixData(target.matrixData || {});
-            setEvidenceTags(target.evidenceTags || []);
-        }
+        // Find from latest processes state - need to be careful about state staleness in effect
+        // Using functional state update to access latest state if needed, but here we just need to trigger load
+        setProcesses(currentProcesses => {
+            const target = currentProcesses.find(p => p.id === activeProcessId);
+            if (target) {
+                // We must defer these updates to next tick to avoid conflicts or use standard setState
+                // But React batching usually handles this.
+                // IMPORTANT: We set the LOCAL view state from the STORED process state.
+                setEvidence(target.evidence || "");
+                setMatrixData(target.matrixData || {});
+                setEvidenceTags(target.evidenceTags || []);
+            }
+            return currentProcesses;
+        });
     }, [activeProcessId]);
 
     // --- ACTIONS ---
@@ -159,17 +165,14 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     };
 
     const resetStandard = (key: string) => {
-        // Just delete custom definition
         setCustomStandards(prev => {
             const next = { ...prev };
             delete next[key];
             return next;
         });
-        // If it was selected, unselect it
         if (standardKey === key) setStandardKey("");
     };
 
-    // Process Actions
     const addProcess = (name: string) => {
         const newId = `proc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const newProcess = { 
@@ -191,14 +194,17 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
 
     const deleteProcess = (idToDelete: string) => {
         if (activeProcessId === idToDelete) {
-            const remaining = processes.filter(p => p.id !== idToDelete);
-            const nextId = remaining.length > 0 ? remaining[0].id : null;
-            setActiveProcessId(nextId);
+            setProcesses(prev => {
+                const remaining = prev.filter(p => p.id !== idToDelete);
+                const nextId = remaining.length > 0 ? remaining[0].id : null;
+                setActiveProcessId(nextId);
+                return remaining;
+            });
+        } else {
+            setProcesses(prev => prev.filter(p => p.id !== idToDelete));
         }
-        setProcesses(prev => prev.filter(p => p.id !== idToDelete));
     };
 
-    // HELPER to find clause details
     const findClauseInStandard = (cid: string, standard: Standard | undefined): any => {
         if (!standard) return null;
         const allClauses = standard.groups.flatMap(g => g.clauses);
@@ -216,7 +222,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     };
 
     const batchUpdateProcessClauses = (updates: { processId: string, clauses: string[] }[]) => {
-        // 1. Prepare updates for the processes array (Storage)
         setProcesses(prev => prev.map(p => {
             const update = updates.find(u => u.processId === p.id);
             if (update) {
@@ -240,8 +245,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return p;
         }));
         
-        // 2. IMMEDIATE SYNC: If the active process is affected, update the View state instantly
-        // This ensures real-time feedback without waiting for effect cycles
         const activeUpdate = updates.find(u => u.processId === activeProcessId);
         if (activeUpdate) {
              setMatrixData(prev => {
@@ -259,25 +262,21 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         }
     };
 
-    // Toggle specific clause for specific process (Add/Remove)
     const toggleProcessClause = (processId: string, clauseId: string) => {
-        // 1. Update Storage (Processes Array)
         setProcesses(prev => prev.map(p => {
             if (p.id !== processId) return p;
 
             const newMatrixData = { ...p.matrixData };
             if (newMatrixData[clauseId]) {
-                // DELETE
                 delete newMatrixData[clauseId];
             } else {
-                // ADD - PRE-LOAD DESCRIPTION HERE
                 const standard = standards[standardKey];
                 const clause = findClauseInStandard(clauseId, standard);
                 const desc = clause?.description || "Requirement";
                 
                 newMatrixData[clauseId] = [{
                     id: `${clauseId}_req_0`,
-                    requirement: desc, // Load real text immediately
+                    requirement: desc,
                     evidenceInput: "",
                     status: 'pending'
                 }];
@@ -285,8 +284,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return { ...p, matrixData: newMatrixData };
         }));
 
-        // 2. IMMEDIATE SYNC: If the process is currently active on screen, update the View State directly.
-        // This makes the toggle feel instant in the UI.
         if (activeProcessId === processId) {
             setMatrixData(prev => {
                 const next = { ...prev };
@@ -400,19 +397,28 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         if(data.standardKey) loadKnowledgeForStandard(data.standardKey);
     };
 
+    // Memoize the value to prevent re-renders in consumers
+    const contextValue = useMemo(() => ({
+        standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
+        auditInfo, setAuditInfo,
+        privacySettings, setPrivacySettings,
+        processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
+        addInterviewee, removeInterviewee,
+        evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,
+        selectedClauses, setSelectedClauses,
+        knowledgeBase, knowledgeFileName, loadKnowledgeForStandard, clearKnowledge, setKnowledgeData,
+        analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings, finalReportText, setFinalReportText,
+        resetSession, restoreSession
+    }), [
+        standards, standardKey, customStandards, auditInfo, privacySettings,
+        processes, activeProcessId, activeProcess,
+        evidence, matrixData, evidenceTags,
+        selectedClauses, knowledgeBase, knowledgeFileName,
+        analysisResult, selectedFindings, finalReportText
+    ]);
+
     return (
-        <AuditContext.Provider value={{
-            standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
-            auditInfo, setAuditInfo,
-            privacySettings, setPrivacySettings,
-            processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
-            addInterviewee, removeInterviewee,
-            evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,
-            selectedClauses, setSelectedClauses,
-            knowledgeBase, knowledgeFileName, loadKnowledgeForStandard, clearKnowledge, setKnowledgeData,
-            analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings, finalReportText, setFinalReportText,
-            resetSession, restoreSession
-        }}>
+        <AuditContext.Provider value={contextValue}>
             {children}
         </AuditContext.Provider>
     );
