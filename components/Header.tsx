@@ -13,51 +13,55 @@ export const Header: React.FC = () => {
     } = useUI();
     
     const { standards, standardKey, privacySettings } = useAudit();
-    const { getActiveKey, apiKeys } = useKeyPool(); // Added apiKeys to dependency check if needed
+    const { getActiveKey } = useKeyPool(); 
 
     const activeKeyProfile = getActiveKey();
 
     const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
 
-    // --- AI BADGE LOGIC ---
+    // --- SHARED STYLES ---
+    const badgeBaseClass = "flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-all duration-300";
+    const textBaseClass = "text-[10px] font-black uppercase tracking-widest leading-none";
+
+    // --- AI BADGE CONFIG ---
     const aiStatusConfig = useMemo(() => {
         if (!activeKeyProfile) return { 
-            text: "AI OFFLINE", 
-            color: "bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700",
-            dot: "bg-slate-400",
-            icon: "WifiOff"
+            status: "offline",
+            dotColor: "bg-slate-300 dark:bg-slate-600",
+            borderColor: "border-slate-200 dark:border-slate-700 text-slate-500",
+            tooltip: "AI Offline: No API Key Configured"
         };
 
         const modelRaw = activeKeyProfile.activeModel || "Unknown";
         let modelDisplay = "GEMINI";
         
-        if (modelRaw.includes("2.0-flash")) modelDisplay = "FLASH 2.0";
-        else if (modelRaw.includes("1.5-flash")) modelDisplay = "FLASH 1.5";
-        else if (modelRaw.includes("3-pro")) modelDisplay = "PRO 3.0";
-        else if (modelRaw.includes("1.5-pro")) modelDisplay = "PRO 1.5";
+        if (modelRaw.includes("2.0-flash")) modelDisplay = "Flash 2.0";
+        else if (modelRaw.includes("3-pro")) modelDisplay = "Pro 3.0";
+        else if (modelRaw.includes("lite")) modelDisplay = "Flash Lite";
 
         if (activeKeyProfile.status === 'valid') return {
-            text: modelDisplay,
-            color: "bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800 ring-1 ring-cyan-500/20",
-            dot: "bg-emerald-500 animate-pulse",
-            icon: "Sparkle"
+            status: "online",
+            dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse",
+            borderColor: "border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400",
+            tooltip: `AI Ready: ${modelDisplay}`
         };
         
         if (activeKeyProfile.status === 'quota_exceeded') return {
-            text: "QUOTA LIMIT",
-            color: "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800",
-            dot: "bg-orange-500",
-            icon: "AlertCircle"
+            status: "warning",
+            dotColor: "bg-orange-500",
+            borderColor: "border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400",
+            tooltip: "Quota Exceeded: Switching to backup model..."
         };
 
         return {
-            text: "KEY ERROR",
-            color: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800",
-            dot: "bg-red-500",
-            icon: "X"
+            status: "error",
+            dotColor: "bg-red-500",
+            borderColor: "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
+            tooltip: "Connection Error: Check API Key"
         };
     }, [activeKeyProfile]);
 
+    // --- STANDARD BADGE CONFIG ---
     const displayBadge = useMemo(() => {
         const currentStandardName = standards[standardKey]?.name || "";
         const match = currentStandardName.match(/\((.*?)\)/);
@@ -66,10 +70,11 @@ export const Header: React.FC = () => {
 
     const badgeColorClass = useMemo(() => {
         const text = displayBadge.toUpperCase();
-        if (text.includes('EMS') || text.includes('14001')) return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
-        if (text.includes('QMS') || text.includes('9001')) return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800";
-        if (text.includes('ISMS') || text.includes('27001')) return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800";
-        return "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-100 dark:border-indigo-800";
+        // Use soft backgrounds (opacity) to match AI Badge style
+        if (text.includes('EMS') || text.includes('14001')) return "bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50";
+        if (text.includes('QMS') || text.includes('9001')) return "bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50";
+        if (text.includes('ISMS') || text.includes('27001')) return "bg-purple-50/50 dark:bg-purple-900/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/50";
+        return "bg-slate-50/50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700";
     }, [displayBadge]);
 
     return (
@@ -100,20 +105,23 @@ export const Header: React.FC = () => {
                         ISO Audit <span className="font-light text-slate-400">Pro</span>
                     </h1>
 
-                    {/* --- NEW AI STATUS BADGE --- */}
-                    <div 
-                        onClick={() => toggleModal('settings', true)}
-                        className={`hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-lg border cursor-pointer hover:shadow-md transition-all duration-300 ${aiStatusConfig.color}`}
-                        title={`AI Engine Status: ${activeKeyProfile?.status || 'Offline'} (Click to Config)`}
-                    >
-                        <div className={`w-1.5 h-1.5 rounded-full shadow-sm ${aiStatusConfig.dot}`}></div>
-                        <span className="text-[9px] font-black uppercase tracking-widest">{aiStatusConfig.text}</span>
-                        {aiStatusConfig.icon === 'Sparkle' && <Icon name="Sparkle" size={10} className="animate-pulse-slow"/>}
-                    </div>
-                    
-                    {/* Standard Badge */}
-                    <div className={`text-[10px] font-bold px-3 py-1 rounded-full border shadow-sm uppercase tracking-wider transition-colors duration-300 ${badgeColorClass}`}>
-                        {displayBadge}
+                    {/* --- UNIFIED BADGES --- */}
+                    <div className="hidden lg:flex items-center gap-2">
+                        {/* 1. AI Badge */}
+                        <div 
+                            onClick={() => toggleModal('settings', true)}
+                            className={`${badgeBaseClass} ${aiStatusConfig.borderColor} cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-95`}
+                            title={aiStatusConfig.tooltip}
+                        >
+                            <div className={`w-2 h-2 rounded-full ${aiStatusConfig.dotColor}`}></div>
+                            <span className={textBaseClass}>AI</span>
+                        </div>
+                        
+                        {/* 2. Standard Badge */}
+                        <div className={`${badgeBaseClass} ${badgeColorClass}`}>
+                            <Icon name="Book" size={10} className="opacity-70"/>
+                            <span className={textBaseClass}>{displayBadge}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -140,8 +148,6 @@ export const Header: React.FC = () => {
                 >
                     <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                 </button>
-                
-                {/* Settings button removed - functionality is duplicated in AI Badge */}
                 
                 <button 
                     onClick={() => toggleModal('about', true)} 

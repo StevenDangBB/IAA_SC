@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL, MY_FIXED_KEYS } from "../constants";
+import { DEFAULT_GEMINI_MODEL, DEFAULT_VISION_MODEL, MY_FIXED_KEYS, MODEL_HIERARCHY } from "../constants";
 import { PromptRegistry } from "./promptRegistry";
 import { VectorStore } from "./vectorStore";
 import { PrivacyService } from "./privacyService"; 
@@ -12,7 +12,6 @@ const getAiClient = (overrideKey?: string) => {
     let keyToUse = overrideKey;
     if (!keyToUse && MY_FIXED_KEYS.length > 0) keyToUse = MY_FIXED_KEYS[0];
     
-    // Attempt to grab from Env
     if (!keyToUse) {
         try {
             // @ts-ignore
@@ -24,7 +23,6 @@ const getAiClient = (overrideKey?: string) => {
     }
     if (!keyToUse && typeof process !== 'undefined' && process.env) keyToUse = process.env.API_KEY;
     
-    // Attempt to grab from LocalStorage Pool
     if (!keyToUse) {
         try {
             const poolRaw = localStorage.getItem("iso_api_keys");
@@ -44,33 +42,55 @@ const getAiClient = (overrideKey?: string) => {
     return new GoogleGenAI({ apiKey });
 };
 
+// --- MODEL HEALTH REGISTRY (In-Memory) ---
+// Tracks which models are currently "hot" (rate limited)
+const modelCooldownRegistry = new Map<string, number>();
+
+const isModelAvailable = (model: string): boolean => {
+    const cooldownUntil = modelCooldownRegistry.get(model);
+    if (!cooldownUntil) return true;
+    return Date.now() > cooldownUntil;
+};
+
+const markModelRateLimited = (model: string) => {
+    console.warn(`[Smart Rotator] ⚠️ Model ${model} hit rate limit. Cooling down for 60s.`);
+    // Set 60 seconds cooldown for this model
+    modelCooldownRegistry.set(model, Date.now() + 60000);
+};
+
 // --- CORE UTILS ---
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * WATERFALL EXECUTION STRATEGY
- * Tries a list of models in sequence.
+ * SMART WATERFALL EXECUTION STRATEGY
+ * Dynamic model switching based on health status and hierarchy.
  */
 const executeWithModelCascade = async (
     preferredModel: string,
     operationName: string,
     executeFn: (model: string) => Promise<GenerateContentResponse>
 ): Promise<string> => {
-    // FALLBACK CHAIN - STRICTLY GEMINI 3.0 / 2.5 / 2.0
-    // REMOVED 1.5 MODELS TO PREVENT 404 ERRORS
-    const modelChain = [
-        preferredModel,
-        "gemini-3-flash-preview", // Best fallback: fast & cheap
-        "gemini-2.0-flash-exp"    // Last resort
-    ];
+    
+    // 1. Construct Priority List
+    // Always try preferred first (if healthy), then fallback to hierarchy
+    const priorityList = [preferredModel, ...MODEL_HIERARCHY];
+    const uniqueModels = [...new Set(priorityList)].filter(m => m && !m.includes('1.5')); // 1.5 deprecated
 
-    // Remove duplicates and ensure validity
-    const uniqueModels = [...new Set(modelChain)].filter(m => m && !m.includes('1.5'));
+    // 2. Filter Healthy Models
+    let candidates = uniqueModels.filter(m => isModelAvailable(m));
+    
+    // If ALL models are in cooldown, ignore cooldowns and force try the lowest tier (Flash Lite)
+    // This assumes Flash Lite recovers faster or user is desperate.
+    if (candidates.length === 0) {
+        console.warn(`[Smart Rotator] All models in cooldown. Forcing retry on fallback.`);
+        candidates = ["gemini-2.0-flash-lite-preview-02-05", ...uniqueModels];
+    }
+
     let lastError: any = null;
 
-    for (const model of uniqueModels) {
+    for (const model of candidates) {
         try {
-            console.log(`[${operationName}] Attempting with model: ${model}...`);
+            console.log(`[${operationName}] 🚀 Attempting with: ${model}...`);
             const result = await executeFn(model);
             if (result && result.text) {
                 return result.text;
@@ -80,14 +100,24 @@ const executeWithModelCascade = async (
             const msg = (error.message || "").toLowerCase();
             const status = error.status || error.code || 0;
 
-            console.warn(`[${operationName}] Failed on ${model}: ${msg}`);
+            console.warn(`[${operationName}] ❌ Failed on ${model}: ${msg}`);
 
-            // If it's "Invalid Key" (403), we stop immediately.
-            if (status === 403 || msg.includes("key not valid") || msg.includes("api_key_invalid")) {
+            // CASE 1: QUOTA EXCEEDED (429 or 503 sometimes)
+            if (status === 429 || msg.includes("exhausted") || msg.includes("too many requests")) {
+                markModelRateLimited(model);
+                // Loop continues to next model immediately
+            }
+            // CASE 2: INVALID KEY (403)
+            else if (status === 403 || msg.includes("key not valid") || msg.includes("api_key_invalid")) {
                 throw new Error("Invalid API Key. Please check your settings.");
             }
-
-            // Short pause before switching
+            // CASE 3: MODEL NOT FOUND (404)
+            else if (status === 404 || msg.includes("not found")) {
+                // Just skip this model forever in this session? 
+                // For now just continue loop
+            }
+            
+            // Short pause to prevent hammering
             await wait(500); 
         }
     }
@@ -101,8 +131,8 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
     
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Validation: Try the most robust model first (3.0 Flash)
-    const modelsToProbe = ["gemini-3-flash-preview", "gemini-2.0-flash-exp"];
+    // Probe with the most robust model first
+    const modelsToProbe = ["gemini-2.0-flash", "gemini-3-flash-preview"];
 
     for (const model of modelsToProbe) {
         const start = performance.now();
@@ -114,11 +144,11 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
             if (msg.includes("key") || error.status === 403) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
             }
-            // Loop if quota or not found
         }
     }
     
-    return { isValid: true, latency: 999, activeModel: "gemini-3-flash-preview" }; 
+    // Assume valid if not explicitly 403 (could be quota)
+    return { isValid: true, latency: 999, activeModel: "gemini-2.0-flash" }; 
 };
 
 // --- ANALYSIS + HYBRID RAG ---
@@ -186,7 +216,6 @@ export const generateAnalysis = async (
         );
         return text || "{}";
     } catch (e) {
-        // Ultimate fallback if API fails completely
         console.error("All Analysis Models Failed", e);
         return LocalIntelligence.analyze(clause.code, clause.title, evidenceContext);
     }
@@ -213,7 +242,7 @@ export const performShadowReview = async (
 
     try {
         return await executeWithModelCascade(
-            model || "gemini-3-flash-preview", 
+            model || "gemini-2.0-flash", 
             "Shadow Review",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
@@ -281,19 +310,18 @@ export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiK
     
     try {
         return await executeWithModelCascade(
-            "gemini-3-flash-preview",
+            "gemini-2.0-flash", // Use 2.0 Flash for translation (fast/cheap)
             "Translation",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return text; // Return original if fail
+        return text; 
     }
 };
 
 // Stub helpers
 export const generateMissingDescriptions = async (targets: any[]) => "[]";
 
-// Updated signatures to match usage in hooks with AI Implementation
 export const fetchFullClauseText = async (clause: any, standardName: string, context: string | null, apiKey: string) => {
     const ai = getAiClient(apiKey);
     if (!ai) return { en: "API Key missing", vi: "" };
@@ -335,7 +363,6 @@ export const mapStandardRequirements = async (standardName: string, codes: strin
     const ai = getAiClient();
     if (!ai) return {};
 
-    // Limit text to avoid token limits (approx 30k chars is safe for flash models usually)
     const safeText = text.length > 50000 ? text.substring(0, 50000) + "..." : text;
 
     const prompt = `
@@ -356,7 +383,7 @@ export const mapStandardRequirements = async (standardName: string, codes: strin
 
     try {
         const result = await executeWithModelCascade(
-            "gemini-3-flash-preview", // Use flash for large context processing
+            "gemini-2.0-flash", 
             "Map Requirements",
             (m) => ai.models.generateContent({
                 model: m,
