@@ -56,7 +56,7 @@ const AppContent = () => {
     const { handleAnalyze, isAnalyzeLoading, currentAnalyzingClause } = useAuditWorkflow();
     const { 
         isReportLoading, reportLoadingMessage, reportTemplateName, isTemplateProcessing,
-        handleTemplateUpload, handleGenerateReport 
+        handleTemplateUpload, handleGenerateReport, generationLogs, progressPercent
     } = useReportGenerator(exportLanguage);
     const { 
         handleExport, exportState, setExportState, 
@@ -207,6 +207,9 @@ const AppContent = () => {
                         onExport={handleExport} 
                         exportLanguage={exportLanguage} setExportLanguage={setExportLanguage}
                         analysisResult={analysisResult} // Pass results for Stage Builder
+                        generationLogs={generationLogs}
+                        progressPercent={progressPercent}
+                        selectedFindings={selectedFindings} // PASS SELECTION STATE
                     />
                 )}
             </div>

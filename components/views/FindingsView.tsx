@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
 import { TABS_CONFIG } from '../../constants';
@@ -46,6 +46,25 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight;
         }
     }, [analysisResult?.length, viewMode]);
+
+    // Computed: Are all visible items selected?
+    const isAllSelected = useMemo(() => {
+        if (!analysisResult || analysisResult.length === 0) return false;
+        return analysisResult.every(res => selectedFindings[res.clauseId]);
+    }, [analysisResult, selectedFindings]);
+
+    const handleToggleSelectAll = () => {
+        if (!analysisResult) return;
+        const newSelection: Record<string, boolean> = {};
+        const targetState = !isAllSelected;
+        
+        analysisResult.forEach(res => {
+            newSelection[res.clauseId] = targetState;
+        });
+        
+        setSelectedFindings(prev => ({ ...prev, ...newSelection }));
+        showToast(targetState ? "All Findings Selected" : "All Findings Deselected");
+    };
 
     const handleUpdateFinding = (index: number, field: keyof AnalysisResult, value: string) => {
         setAnalysisResult(prev => {
@@ -98,7 +117,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             <div
                 key={idx}
                 ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
-                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 md:p-5 border-l-[6px] transition-all duration-300 hover:shadow-depth-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'ring-2 ring-indigo-500/20 translate-x-2' : 'hover:translate-x-1'} animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards`}
+                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 md:p-5 border-l-[6px] transition-all duration-300 hover:shadow-depth-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'ring-2 ring-indigo-500/20 translate-x-2' : 'hover:translate-x-1 opacity-60 hover:opacity-100'} animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards`}
                 style={{ animationDelay: `${idx * 50}ms` }}
                 onClick={() => setSelectedFindings(prev => ({ ...prev, [res.clauseId]: !prev[res.clauseId] }))}
             >
@@ -267,6 +286,17 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     <button onClick={() => setViewMode('list')} className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'list' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`} title="List View"><Icon name="LayoutList" size={18} /><span className="hidden md:inline text-xs font-bold">List</span></button>
                     <button onClick={() => setViewMode('matrix')} className={`flex-1 md:flex-none md:w-auto h-full px-4 rounded-lg flex items-center justify-center gap-2 transition-all whitespace-nowrap ${viewMode === 'matrix' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-gray-50 dark:hover:bg-slate-800'}`} title="Matrix View"><Icon name="Grid" size={18} /><span className="hidden md:inline text-xs font-bold">Matrix</span></button>
                 </div>
+                
+                {analysisResult && (
+                    <button 
+                        onClick={handleToggleSelectAll}
+                        className={`flex-none md:w-auto px-4 h-[52px] border rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm whitespace-nowrap dark:shadow-md ${isAllSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400' : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-50'}`}
+                    >
+                        <Icon name={isAllSelected ? "CheckSquare" : "Square"} size={18}/>
+                        <span className="hidden lg:inline">{isAllSelected ? "Deselect All" : "Select All"}</span>
+                    </button>
+                )}
+
                 <button onClick={() => onExport('notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-6 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md hover:shadow-lg">
                     <Icon name="Download" />
                     <span className="hidden md:inline">Export Findings</span>

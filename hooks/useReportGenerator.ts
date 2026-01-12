@@ -7,7 +7,7 @@ import { generateExecutiveSummary, formatFindingReportSection } from '../service
 import { processSourceFile } from '../utils';
 
 export const useReportGenerator = (exportLanguage: string) => {
-    const { analysisResult, auditInfo, standards, standardKey, setFinalReportText } = useAudit();
+    const { analysisResult, auditInfo, standards, standardKey, setFinalReportText, selectedFindings } = useAudit();
     const { apiKeys, activeKeyId } = useKeyPool();
     const { showToast } = useUI();
 
@@ -51,6 +51,14 @@ export const useReportGenerator = (exportLanguage: string) => {
             return;
         }
 
+        // FILTER: Only include selected findings
+        const activeFindings = analysisResult.filter(f => selectedFindings[f.clauseId]);
+
+        if (activeFindings.length === 0) {
+            showToast("No findings selected. Please select at least one finding.");
+            return;
+        }
+
         setIsReportLoading(true);
         setGenerationLogs([]);
         setProgressPercent(0);
@@ -66,14 +74,14 @@ export const useReportGenerator = (exportLanguage: string) => {
 
             // 1. EXECUTIVE SUMMARY
             setReportLoadingMessage("Drafting Executive Summary...");
-            setGenerationLogs(prev => [...prev, "Analysing global compliance posture..."]);
+            setGenerationLogs(prev => [...prev, `Analysing ${activeFindings.length} selected findings...`]);
             
             const summary = await generateExecutiveSummary({
                 company: auditInfo.company || "N/A",
                 type: auditInfo.type || "Internal Audit",
                 auditor: auditInfo.auditor || "N/A",
                 standard: standardName,
-                findings: analysisResult,
+                findings: activeFindings, // Use filtered list
                 lang: exportLanguage
             }, apiKey, model);
             
@@ -82,11 +90,11 @@ export const useReportGenerator = (exportLanguage: string) => {
             setProgressPercent(10);
 
             // 2. DETAILED FINDINGS LOOP (Clause by Clause)
-            const total = analysisResult.length;
+            const total = activeFindings.length;
             finalSections.push(`## DETAILED FINDINGS`);
 
             for (let i = 0; i < total; i++) {
-                const finding = analysisResult[i];
+                const finding = activeFindings[i];
                 const currentClause = `Clause ${finding.clauseId}`;
                 
                 setReportLoadingMessage(`Processing ${currentClause}...`);

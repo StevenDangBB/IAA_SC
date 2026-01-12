@@ -20,15 +20,16 @@ interface ReportViewProps {
     exportLanguage: 'en' | 'vi';
     setExportLanguage: (lang: 'en' | 'vi') => void;
     analysisResult?: AnalysisResult[] | null; 
-    generationLogs?: string[]; // New
-    progressPercent?: number; // New
+    generationLogs?: string[]; 
+    progressPercent?: number; 
+    selectedFindings?: Record<string, boolean>; // New Prop
 }
 
 export const ReportView: React.FC<ReportViewProps> = ({
     finalReportText, setFinalReportText, isReportLoading, loadingMessage,
     templateFileName, isTemplateProcessing = false, handleTemplateUpload, handleGenerateReport,
     isReadyToSynthesize, onExport, exportLanguage, setExportLanguage,
-    analysisResult, generationLogs = [], progressPercent = 0
+    analysisResult, generationLogs = [], progressPercent = 0, selectedFindings
 }) => {
     const themeConfig = TABS_CONFIG.find(t => t.id === 'report')!;
     const { showToast } = useUI();
@@ -46,6 +47,11 @@ export const ReportView: React.FC<ReportViewProps> = ({
         copyToClipboard(text);
         showToast(`${label} copied!`);
     };
+
+    // Filter relevant results for Smart Copy View
+    const visibleResults = analysisResult && selectedFindings 
+        ? analysisResult.filter(res => selectedFindings[res.clauseId])
+        : [];
 
     return (
         <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up">
@@ -125,14 +131,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
                 {viewMode === 'smart_copy' && (
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-gray-50/50 dark:bg-slate-950/50">
-                        {!analysisResult || analysisResult.length === 0 ? (
+                        {visibleResults.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center opacity-50">
                                 <Icon name="LayoutList" size={48} className="text-slate-300 mb-2"/>
-                                <p className="text-slate-400 text-sm">No findings available for staging.</p>
+                                <p className="text-slate-400 text-sm">No selected findings available for staging.</p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {analysisResult.map((res, idx) => (
+                                {visibleResults.map((res, idx) => (
                                     <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-4 hover:shadow-md transition-shadow">
                                         <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-100 dark:border-slate-800">
                                             <span className="font-mono font-black text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-600 dark:text-slate-300">{res.clauseId}</span>
