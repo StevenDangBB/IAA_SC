@@ -29,7 +29,7 @@ interface EvidenceViewProps {
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     tags?: EvidenceTag[];
     onAddTag?: (tag: EvidenceTag) => void;
-    selectedClauses?: string[];
+    selectedClauses?: string[]; // Deprecated for View logic, kept for interface compat
     standards?: StandardsData;
     standardKey?: string;
     matrixData?: Record<string, MatrixRow[]>;
@@ -57,11 +57,16 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     // Lookup Hook
     const handleLookup = useReferenceLookup();
 
-    // Computed
+    // Computed: STRICT ISOLATION MODE
+    // CRITICAL FIX: Do NOT merge with global `selectedClauses`. 
+    // The Audit View must ONLY reflect what is inside the active process's `matrixData`.
+    // Merging global state caused "data bleeding" where clauses from Process A would appear in Process B.
     const effectiveSelectedClauses = useMemo(() => {
-        const matrixKeys = matrixData ? Object.keys(matrixData) : [];
-        return Array.from(new Set([...selectedClauses, ...matrixKeys]));
-    }, [selectedClauses, matrixData]);
+        if (!matrixData) return [];
+        const activeKeys = Object.keys(matrixData);
+        // Sort keys naturally (e.g. 4.1, 4.2, 4.10) to maintain document structure
+        return activeKeys.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    }, [matrixData]);
 
     // Color Theme Sync
     const themeConfig = TABS_CONFIG.find(t => t.id === 'evidence')!;
@@ -179,19 +184,31 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                     )}
                     
                     {standards && standardKey && standards[standardKey] && matrixData && setMatrixData ? (
-                        <div className="flex-1 w-full h-full p-1">
-                            <EvidenceMatrix 
-                                ref={matrixRef}
-                                standard={standards[standardKey]}
-                                selectedClauses={effectiveSelectedClauses}
-                                matrixData={matrixData}
-                                setMatrixData={setMatrixData}
-                                onPasteFiles={processNewFiles}
-                                uploadedFiles={uploadedFiles}
-                                onRemoveFile={handleRemoveFile}
-                                onLookup={handleLookup} // Connect Lookup
-                            />
-                        </div>
+                        effectiveSelectedClauses.length > 0 ? (
+                            <div className="flex-1 w-full h-full p-1">
+                                <EvidenceMatrix 
+                                    ref={matrixRef}
+                                    standard={standards[standardKey]}
+                                    selectedClauses={effectiveSelectedClauses}
+                                    matrixData={matrixData}
+                                    setMatrixData={setMatrixData}
+                                    onPasteFiles={processNewFiles}
+                                    uploadedFiles={uploadedFiles}
+                                    onRemoveFile={handleRemoveFile}
+                                    onLookup={handleLookup} // Connect Lookup
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-gray-50/20 dark:bg-slate-900/50">
+                                <div className="p-6 bg-white dark:bg-slate-800 rounded-full shadow-lg mb-4">
+                                    <Icon name="LayoutList" size={48} className="text-indigo-200 dark:text-slate-600" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-600 dark:text-slate-300">No Clauses Planned</h3>
+                                <p className="text-xs text-slate-400 mt-2 max-w-xs text-center">
+                                    Go to the <strong>Planning</strong> tab to select which clauses apply to the <strong>{activeProcess?.name || "Active"}</strong> process.
+                                </p>
+                            </div>
+                        )
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                             <Icon name="LayoutList" size={48} className="mb-4 opacity-30" />
