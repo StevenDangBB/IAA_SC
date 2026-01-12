@@ -49,28 +49,23 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * WATERFALL EXECUTION STRATEGY
- * Tries a list of models in sequence. If one fails with a recoverable error (429, 404, 503),
- * it moves to the next.
+ * Tries a list of models in sequence.
  */
 const executeWithModelCascade = async (
     preferredModel: string,
     operationName: string,
     executeFn: (model: string) => Promise<GenerateContentResponse>
 ): Promise<string> => {
-    // FALLBACK CHAIN:
-    // 1. User Preferred (usually Pro 3.0)
-    // 2. Flash 2.0 Exp (Fast, New)
-    // 3. Flash 1.5 (Stable, High Quota) -> The Safety Net
-    // 4. Pro 1.5 (Legacy High Quality)
+    // FALLBACK CHAIN - STRICTLY GEMINI 3.0 / 2.5 / 2.0
+    // REMOVED 1.5 MODELS TO PREVENT 404 ERRORS
     const modelChain = [
         preferredModel,
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        "gemini-3-flash-preview", // Best fallback: fast & cheap
+        "gemini-2.0-flash-exp"    // Last resort
     ];
 
-    // Remove duplicates
-    const uniqueModels = [...new Set(modelChain)].filter(m => m);
+    // Remove duplicates and ensure validity
+    const uniqueModels = [...new Set(modelChain)].filter(m => m && !m.includes('1.5'));
     let lastError: any = null;
 
     for (const model of uniqueModels) {
@@ -87,13 +82,12 @@ const executeWithModelCascade = async (
 
             console.warn(`[${operationName}] Failed on ${model}: ${msg}`);
 
-            // If it's a "Quota" (429) or "Not Found" (404) or "Overloaded" (503), we try the next one.
-            // If it's "Invalid Key" (403), we stop immediately (no point switching models).
+            // If it's "Invalid Key" (403), we stop immediately.
             if (status === 403 || msg.includes("key not valid") || msg.includes("api_key_invalid")) {
                 throw new Error("Invalid API Key. Please check your settings.");
             }
 
-            // Short pause before switching to be polite to the network
+            // Short pause before switching
             await wait(500); 
         }
     }
@@ -107,9 +101,8 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
     
     const ai = new GoogleGenAI({ apiKey: key });
     
-    // Validation: Try the most robust model first (1.5 Flash)
-    // If 1.5 Flash works, the key is good.
-    const modelsToProbe = ["gemini-1.5-flash", "gemini-2.0-flash-exp"];
+    // Validation: Try the most robust model first (3.0 Flash)
+    const modelsToProbe = ["gemini-3-flash-preview", "gemini-2.0-flash-exp"];
 
     for (const model of modelsToProbe) {
         const start = performance.now();
@@ -121,12 +114,11 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
             if (msg.includes("key") || error.status === 403) {
                 return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Invalid API Key." };
             }
-            // If quota/404, loop to next model
+            // Loop if quota or not found
         }
     }
     
-    // If we get here, assuming valid but maybe quota issues, return valid to let app try
-    return { isValid: true, latency: 999, activeModel: "gemini-1.5-flash" }; 
+    return { isValid: true, latency: 999, activeModel: "gemini-3-flash-preview" }; 
 };
 
 // --- ANALYSIS + HYBRID RAG ---
@@ -221,7 +213,7 @@ export const performShadowReview = async (
 
     try {
         return await executeWithModelCascade(
-            model || "gemini-1.5-flash", 
+            model || "gemini-3-flash-preview", 
             "Shadow Review",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
@@ -289,7 +281,7 @@ export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiK
     
     try {
         return await executeWithModelCascade(
-            "gemini-1.5-flash",
+            "gemini-3-flash-preview",
             "Translation",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
@@ -364,7 +356,7 @@ export const mapStandardRequirements = async (standardName: string, codes: strin
 
     try {
         const result = await executeWithModelCascade(
-            "gemini-1.5-flash", // Use flash for large context processing
+            "gemini-3-flash-preview", // Use flash for large context processing
             "Map Requirements",
             (m) => ai.models.generateContent({
                 model: m,

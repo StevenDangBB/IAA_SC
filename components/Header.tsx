@@ -141,13 +141,7 @@ export const Header: React.FC = () => {
                     <Icon name={isDarkMode ? "Sun" : "Moon"} size={18}/>
                 </button>
                 
-                <button 
-                    onClick={() => toggleModal('settings', true)} 
-                    className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all active:scale-95" 
-                    title="Settings"
-                >
-                    <Icon name="Settings" size={18}/>
-                </button>
+                {/* Settings button removed - functionality is duplicated in AI Badge */}
                 
                 <button 
                     onClick={() => toggleModal('about', true)} 
