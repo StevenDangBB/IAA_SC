@@ -143,6 +143,11 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                 <div className="pr-12">
                     <div className="flex items-center gap-3 mb-4 flex-wrap">
                         <span className="text-xs font-black text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700">{res.clauseId}</span>
+                        {res.processName && (
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-800 flex items-center gap-1">
+                                <Icon name="Session11_GridAdd" size={10} /> {res.processName}
+                            </span>
+                        )}
                         <div className="relative group/badge" onClick={e => e.stopPropagation()}>
                             <select
                                 value={res.status}
@@ -250,8 +255,10 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         <div className="flex flex-col h-full gap-4">
                             {/* Matrix Header - THEMED BORDER */}
                             <div className={`flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-depth`}>
-                                <div className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
+                                {/* UPDATED GRID: Added PROCESS Column */}
+                                <div className={`grid grid-cols-[60px_120px_1fr_1fr_1fr_1fr] gap-1 p-3 border-b border-gray-100 dark:border-slate-800 ${themeConfig.bgSoft} sticky top-0 z-10 transition-colors duration-500 ease-fluid`}>
                                     <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Clause</div>
+                                    <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest text-left pl-2">Process</div>
                                     <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center">Major</div>
                                     <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest text-center">Minor</div>
                                     <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest text-center">OFI</div>
@@ -261,12 +268,18 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                     {analysisResult.map((item, idx) => {
                                         const isSelected = focusedFindingIndex === idx;
                                         return (
-                                            <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[60px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                                            <div key={idx} onClick={() => setFocusedFindingIndex(idx)} className={`grid grid-cols-[60px_120px_1fr_1fr_1fr_1fr] gap-1 py-2 border-b border-gray-50 dark:border-slate-800/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
                                                 <div className={`flex items-center justify-center h-full w-full text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{item.clauseId}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
-                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900"></div>}</div>
+                                                {/* PROCESS CELL */}
+                                                <div className="flex items-center justify-start h-full w-full pl-2">
+                                                    <span className={`text-[10px] font-bold truncate max-w-[110px] px-2 py-0.5 rounded ${isSelected ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-gray-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                                        {item.processName || "General"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MAJOR' && <div className="w-4 h-4 rounded bg-red-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Major NC"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'NC_MINOR' && <div className="w-4 h-4 rounded bg-orange-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Minor NC"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'OFI' && <div className="w-4 h-4 rounded bg-blue-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Opportunity for Improvement"></div>}</div>
+                                                <div className="flex items-center justify-center h-full w-full">{item.status === 'COMPLIANT' && <div className="w-4 h-4 rounded bg-emerald-500 shadow-md ring-2 ring-white dark:ring-slate-900" title="Compliant"></div>}</div>
                                             </div>
                                         );
                                     })}
