@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "5.0.0-PERFORMANCE"; 
-export const BUILD_TIMESTAMP = "2026-03-01 09:00:00 (GMT+7)"; 
+export const APP_VERSION = "5.0.1-HOTFIX"; 
+export const BUILD_TIMESTAMP = "2026-03-01 10:30:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model. The actual model used is determined by MODEL_HIERARCHY probing.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -41,8 +41,11 @@ const getEnvApiKey = () => {
 
 const envKey = getEnvApiKey();
 
+// CRITICAL FIX: Adding the Public Key explicitly as fallback for Git Deployments
+// where .env variables are often missing.
 export const MY_FIXED_KEYS: string[] = [
-    envKey 
+    envKey,
+    "AIzaSyC_yJCcSrU5eiKm_0MmMq1vwK-xyB72i4U" // Public Key from Screenshot
 ].filter(k => k && k.trim() !== ""); 
 
 // CHANGE: Critical reordering. 
@@ -89,6 +92,14 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "5.0.1-HOTFIX",
+        date: "2026-03-01",
+        features: [
+            "FIX: Added fallback API Key for cloud deployments.",
+            "CORE: Improved Quota handling to auto-switch to Flash models when Pro is exhausted."
+        ]
+    },
     {
         version: "5.0.0-PERFORMANCE",
         date: "2026-03-01",

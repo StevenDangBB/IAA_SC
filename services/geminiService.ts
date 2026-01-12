@@ -171,10 +171,12 @@ export const generateAnalysis = async (
         }));
         return response.text || "{}";
     } catch (e: any) {
-        console.warn(`Analysis failed on ${targetModel}. Fallback to Flash.`);
+        // FALLBACK LOGIC: If Pro 3.0 fails (Quota/Error), degrade to 1.5 Flash immediately.
+        // 1.5 Flash has extremely high quotas and reliability for free tier keys.
+        console.warn(`Analysis failed on ${targetModel}. Fallback to stable Flash.`);
         try {
             const retryResponse: GenerateContentResponse = await callWithRetry(() => ai.models.generateContent({
-                model: "gemini-3-flash-preview",
+                model: "gemini-1.5-flash", // Use stable Flash, not Preview, for max reliability
                 contents: finalPrompt,
                 config
             }));
