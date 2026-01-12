@@ -54,6 +54,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             newArr[index] = { ...newArr[index], [field]: value };
             return newArr;
         });
+        // Auto-scroll only on status change, not text editing
         if (field === 'status' && analysisResult) {
             const nextIndex = index + 1;
             if (nextIndex < analysisResult.length && findingRefs.current[nextIndex]) {
@@ -137,12 +138,23 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         </div>
                     </div>
 
-                    <div className="mb-4">
-                        <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 relative">
-                            <strong className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1 block">Verified Evidence</strong>
-                            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                                {res.evidence}
-                            </p>
+                    {/* EDITABLE EVIDENCE SECTION */}
+                    <div className="mb-4 group/evidence">
+                        <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 relative transition-colors focus-within:border-indigo-300 dark:focus-within:border-indigo-700 focus-within:ring-1 focus-within:ring-indigo-500/20" onClick={e => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-2">
+                                <strong className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Verified Evidence</strong>
+                                <span className="text-[9px] text-slate-400 opacity-0 group-hover/evidence:opacity-100 transition-opacity flex items-center gap-1">
+                                    <Icon name="FileEdit" size={10}/> Editable (Raw Data)
+                                </span>
+                            </div>
+                            
+                            <textarea
+                                value={res.evidence}
+                                onChange={(e) => handleUpdateFinding(idx, 'evidence', e.target.value)}
+                                className="w-full bg-transparent outline-none text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[80px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
+                                placeholder="Evidence content..."
+                                spellCheck={false}
+                            />
                         </div>
                     </div>
 

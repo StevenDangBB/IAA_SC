@@ -251,7 +251,99 @@ export const performShadowReview = async (
     }
 };
 
-// --- REPORT GENERATION (ROBUST) ---
+// --- REAL-TIME REPORT GENERATION STEPS ---
+
+// Step 1: Generate Executive Summary
+export const generateExecutiveSummary = async (data: any, apiKey?: string, model?: string) => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+
+    const prompt = `
+    ROLE: ISO Lead Auditor.
+    TASK: Write a professional Executive Summary for an ISO Audit Report.
+    
+    CONTEXT:
+    Company: ${data.company}
+    Standard: ${data.standard}
+    Audit Type: ${data.type}
+    Auditor: ${data.auditor}
+    
+    FINDINGS SUMMARY:
+    Total Findings: ${data.findings.length}
+    Major NCs: ${data.findings.filter((f:any) => f.status === 'NC_MAJOR').length}
+    Minor NCs: ${data.findings.filter((f:any) => f.status === 'NC_MINOR').length}
+    OFIs: ${data.findings.filter((f:any) => f.status === 'OFI').length}
+    
+    LANGUAGE: ${data.lang === 'vi' ? 'Vietnamese' : 'English'}
+    
+    OUTPUT FORMAT: Plain Text. Concise paragraphs covering:
+    1. Overall Compliance Status.
+    2. Key Strengths.
+    3. Major Areas for Improvement.
+    4. Recommendation for Certification (Yes/No/Conditional).
+    `;
+
+    try {
+        return await executeWithModelCascade(
+            model || "gemini-3-pro-preview", // Use Pro for high quality summary
+            "Exec Summary",
+            (m) => ai.models.generateContent({ model: m, contents: prompt })
+        );
+    } catch (e) {
+        return "Executive Summary could not be generated.";
+    }
+};
+
+// Step 2: Format Single Finding (Fast, Preserving Evidence)
+export const formatFindingReportSection = async (finding: AnalysisResult, lang: 'en' | 'vi', apiKey?: string, model?: string) => {
+    const ai = getAiClient(apiKey);
+    // If offline or no key, return simple text format
+    if (!ai || !navigator.onLine) {
+        return `
+        CLAUSE: ${finding.clauseId}
+        STATUS: ${finding.status}
+        FINDING: ${finding.reason}
+        EVIDENCE:
+        ${finding.evidence}
+        `;
+    }
+
+    // Lightweight formatting prompt
+    const prompt = `
+    ROLE: Audit Reporter.
+    TASK: Format this single audit finding into a final report section.
+    LANGUAGE: ${lang === 'vi' ? 'Vietnamese' : 'English'}
+    
+    INPUT:
+    Clause: ${finding.clauseId}
+    Status: ${finding.status}
+    Observation: "${finding.reason}"
+    Evidence (RAW): """${finding.evidence}"""
+    
+    RULES:
+    1. Polish the 'Observation' to be professional.
+    2. CRITICAL: Copy the 'Evidence' EXACTLY as provided. Do not summarize or remove line breaks/bullets.
+    3. Output plain text format.
+    
+    OUTPUT TEMPLATE:
+    ### Clause ${finding.clauseId} - ${finding.status}
+    **Observation:** [Polished Observation]
+    **Verified Evidence:**
+    [Exact Evidence]
+    `;
+
+    try {
+        return await executeWithModelCascade(
+            "gemini-2.0-flash", // Use Flash for speed on individual items
+            `Report Section ${finding.clauseId}`,
+            (m) => ai.models.generateContent({ model: m, contents: prompt })
+        );
+    } catch (e) {
+        return `### Clause ${finding.clauseId}\nError formatting section. Raw data:\n${finding.reason}\n${finding.evidence}`;
+    }
+};
+
+// Deprecated Legacy Monolithic Generator (Kept for compatibility if needed)
 export const generateTextReport = async (data: any, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");

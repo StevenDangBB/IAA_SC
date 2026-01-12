@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Icon, AINeuralLoader } from '../UI';
+import React, { useState, useEffect, useRef } from 'react';
+import { Icon } from '../UI';
 import { TABS_CONFIG } from '../../constants';
 import { copyToClipboard } from '../../utils';
 import { AnalysisResult } from '../../types';
@@ -19,18 +19,28 @@ interface ReportViewProps {
     onExport: (type: 'report', lang: 'en' | 'vi') => void;
     exportLanguage: 'en' | 'vi';
     setExportLanguage: (lang: 'en' | 'vi') => void;
-    analysisResult?: AnalysisResult[] | null; // Passed for Smart Copy Dashboard
+    analysisResult?: AnalysisResult[] | null; 
+    generationLogs?: string[]; // New
+    progressPercent?: number; // New
 }
 
 export const ReportView: React.FC<ReportViewProps> = ({
     finalReportText, setFinalReportText, isReportLoading, loadingMessage,
     templateFileName, isTemplateProcessing = false, handleTemplateUpload, handleGenerateReport,
     isReadyToSynthesize, onExport, exportLanguage, setExportLanguage,
-    analysisResult
+    analysisResult, generationLogs = [], progressPercent = 0
 }) => {
     const themeConfig = TABS_CONFIG.find(t => t.id === 'report')!;
     const { showToast } = useUI();
-    const [viewMode, setViewMode] = useState<'text' | 'smart_copy'>('smart_copy');
+    const [viewMode, setViewMode] = useState<'text' | 'smart_copy'>('text');
+    const logsEndRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll logs
+    useEffect(() => {
+        if (isReportLoading && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [generationLogs, isReportLoading]);
 
     const handleCopy = (text: string, label: string) => {
         copyToClipboard(text);
@@ -58,14 +68,48 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 </div>
             </div>
 
-            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] transition-colors duration-500 ease-fluid`}>
+            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-transparent overflow-hidden flex flex-col dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_6px_-1px_rgba(0,0,0,0.5)] transition-colors duration-500 ease-fluid relative`}>
                 
-                {isReportLoading && <AINeuralLoader message={loadingMessage} />}
+                {isReportLoading && (
+                    <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300">
+                        <div className="w-full max-w-lg space-y-6">
+                            {/* Header */}
+                            <div className="flex flex-col items-center">
+                                <div className="relative w-16 h-16 mb-4">
+                                    <div className="absolute inset-0 border-4 border-indigo-100 dark:border-slate-700 rounded-full"></div>
+                                    <div className="absolute inset-0 border-t-4 border-indigo-600 rounded-full animate-spin"></div>
+                                    <Icon name="Wand2" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-500" size={24}/>
+                                </div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-white animate-pulse">{loadingMessage}</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-1">{progressPercent}% Complete</p>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="w-full h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 ease-out" 
+                                    style={{ width: `${progressPercent}%` }}
+                                ></div>
+                            </div>
+
+                            {/* Console Log */}
+                            <div className="w-full h-40 bg-black/5 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-slate-800 p-4 font-mono text-xs overflow-y-auto custom-scrollbar shadow-inner">
+                                {generationLogs.map((log, idx) => (
+                                    <div key={idx} className="mb-1 text-slate-600 dark:text-slate-400 flex gap-2">
+                                        <span className="text-indigo-400 select-none">&gt;</span>
+                                        <span>{log}</span>
+                                    </div>
+                                ))}
+                                <div ref={logsEndRef} />
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {viewMode === 'text' && (
                     <div className="flex-1 relative">
                         <textarea
-                            className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-mono"
+                            className="w-full h-full p-4 resize-none bg-transparent focus:outline-none text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-mono custom-scrollbar"
                             value={finalReportText || ""}
                             onChange={(e) => setFinalReportText(e.target.value)}
                             placeholder="The final synthesized audit report will appear here..."
@@ -101,7 +145,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                                                     <span className="text-[10px] font-bold text-slate-400 uppercase">Evidence</span>
                                                     <button onClick={() => handleCopy(res.evidence, "Evidence")} className="p-1 rounded hover:bg-indigo-50 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="Copy" size={12}/></button>
                                                 </div>
-                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent group-hover:border-indigo-200 transition-colors">
+                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent group-hover:border-indigo-200 transition-colors whitespace-pre-wrap font-mono">
                                                     {res.evidence}
                                                 </div>
                                             </div>
@@ -141,7 +185,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
                 <button onClick={handleGenerateReport} disabled={!isReadyToSynthesize || isReportLoading} className={`flex-1 md:flex-none md:w-auto md:px-6 h-[52px] rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${isReadyToSynthesize && !isReportLoading ? "btn-shrimp text-white active:scale-95 border-indigo-700 hover:shadow-indigo-500/40" : "bg-gray-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-70 cursor-not-allowed border-transparent"}`} title="Synthesize Report">
                     {isReportLoading ? <Icon name="Loader" className="animate-spin text-white" size={20} /> : <Icon name="Wand2" size={20} className="hidden md:block" />}
-                    <span className="inline text-xs uppercase tracking-wider">{isReportLoading ? "Synthesizing..." : "Synthesize"}</span>
+                    <span className="inline text-xs uppercase tracking-wider">{isReportLoading ? "Processing..." : "Synthesize"}</span>
                 </button>
 
                 <button onClick={() => onExport('report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-950 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
