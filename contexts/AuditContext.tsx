@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings } from '../types';
 import { DEFAULT_AUDIT_INFO, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
@@ -108,28 +108,25 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [selectedFindings, setSelectedFindings] = useState<Record<string, boolean>>({});
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
 
+    // --- REFS FOR SYNC SAFETY ---
+    // Critical: We use a ref to track activeProcessId inside the Save Effect.
+    // This prevents the Save Effect from running immediately when activeProcessId changes (which would save OLD data to NEW process).
+    const activeProcessIdRef = useRef(activeProcessId);
+    
     const standards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
     
     // Safe fallback
     const activeProcess = useMemo(() => processes.find(p => p.id === activeProcessId), [processes, activeProcessId]);
 
     // --- SYNC EFFECTS ---
-    // Save active view data back to process object
-    useEffect(() => {
-        if (!activeProcessId) return;
-        
-        setProcesses(prev => prev.map(p => {
-            if (p.id === activeProcessId) {
-                // Only update if something actually changed to avoid cycles
-                if (p.evidence !== evidence || p.matrixData !== matrixData || p.evidenceTags !== evidenceTags) {
-                    return { ...p, evidence, matrixData, evidenceTags };
-                }
-            }
-            return p;
-        }));
-    }, [evidence, matrixData, evidenceTags, activeProcessId]);
 
-    // Load process data into view when ID changes
+    // 1. Update Ref when ID changes (Sync Layer)
+    useEffect(() => {
+        activeProcessIdRef.current = activeProcessId;
+    }, [activeProcessId]);
+
+    // 2. Load Process Data (Read Layer)
+    // When activeProcessId changes, we MUST load the data from the process into the local view state.
     useEffect(() => {
         if (!activeProcessId) {
             setEvidence("");
@@ -138,14 +135,10 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return;
         }
         
-        // Find from latest processes state - need to be careful about state staleness in effect
-        // Using functional state update to access latest state if needed, but here we just need to trigger load
         setProcesses(currentProcesses => {
             const target = currentProcesses.find(p => p.id === activeProcessId);
             if (target) {
-                // We must defer these updates to next tick to avoid conflicts or use standard setState
-                // But React batching usually handles this.
-                // IMPORTANT: We set the LOCAL view state from the STORED process state.
+                // Populate local state from store
                 setEvidence(target.evidence || "");
                 setMatrixData(target.matrixData || {});
                 setEvidenceTags(target.evidenceTags || []);
@@ -153,6 +146,25 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return currentProcesses;
         });
     }, [activeProcessId]);
+
+    // 3. Save View Data (Write Layer)
+    // CRITICAL FIX: This effect MUST NOT depend on `activeProcessId`.
+    // It should only run when the actual content (`evidence`, `matrixData`) changes.
+    // It uses the Ref to know where to save.
+    useEffect(() => {
+        const currentId = activeProcessIdRef.current;
+        if (!currentId) return;
+        
+        setProcesses(prev => prev.map(p => {
+            if (p.id === currentId) {
+                // Only update if something actually changed to avoid cycles
+                if (p.evidence !== evidence || p.matrixData !== matrixData || p.evidenceTags !== evidenceTags) {
+                    return { ...p, evidence, matrixData, evidenceTags };
+                }
+            }
+            return p;
+        }));
+    }, [evidence, matrixData, evidenceTags]); // NO activeProcessId dependency here!
 
     // --- ACTIONS ---
 

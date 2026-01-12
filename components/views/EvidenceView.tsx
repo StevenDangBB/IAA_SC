@@ -41,7 +41,8 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     isOcrLoading, onAnalyze, isReadyForAnalysis,
     isAnalyzeLoading, analyzeTooltip, evidenceLanguage, setEvidenceLanguage,
     onExport,
-    selectedClauses = [], standards, standardKey, matrixData, setMatrixData
+    // Note: We deliberately ignore the passed `selectedClauses` prop here to prevent global state from bleeding into process context.
+    standards, standardKey, matrixData, setMatrixData
 }) => {
     const { activeProcess, activeProcessId, setActiveProcessId, processes, addInterviewee, removeInterviewee } = useAudit();
     
@@ -58,7 +59,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     const handleLookup = useReferenceLookup();
 
     // Computed: STRICT ISOLATION MODE
-    // CRITICAL FIX: Do NOT merge with global `selectedClauses`. 
+    // CRITICAL FIX: Do NOT use global `selectedClauses`. 
     // The Audit View must ONLY reflect what is inside the active process's `matrixData`.
     // Merging global state caused "data bleeding" where clauses from Process A would appear in Process B.
     const effectiveSelectedClauses = useMemo(() => {
