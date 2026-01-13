@@ -255,7 +255,6 @@ const AppContent = () => {
                 isOpen={referenceState.isOpen} onClose={() => setReferenceState(prev => ({...prev, isOpen: false}))}
                 clause={referenceState.clause} standardName={standards[standardKey]?.name || ""}
                 fullText={referenceState.fullText} isLoading={referenceState.isLoading}
-                onInsert={(text) => setEvidence(prev => prev + "\n" + text)}
             />
             
             <ExportProgressModal 

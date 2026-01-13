@@ -11,10 +11,9 @@ interface ReferenceClauseModalProps {
     standardName: string;
     fullText: { en: string; vi: string };
     isLoading: boolean;
-    onInsert: (text: string) => void;
 }
 
-const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText, isLoading, onInsert }: ReferenceClauseModalProps) => {
+const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText, isLoading }: ReferenceClauseModalProps) => {
     const [lang, setLang] = useState<'en' | 'vi'>('en');
     const [isCopied, setIsCopied] = useState(false);
     const [streamedText, setStreamedText] = useState("");
@@ -71,11 +70,6 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
         return () => clearTimeout(startTimeout);
     }, [isOpen, textToDisplay, isLoading]);
 
-
-    const handleInsert = () => {
-        onInsert(textToDisplay);
-    };
-
     const handleCopy = () => {
         copyToClipboard(textToDisplay);
         setIsCopied(true);
@@ -126,13 +120,6 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
                                     title={isCopied ? "Copied!" : "Copy to Clipboard"}
                                 >
                                     <Icon name={isCopied ? "CheckThick" : "Copy"} size={16}/>
-                                </button>
-                                <button 
-                                    onClick={handleInsert} 
-                                    className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-110 active:scale-95"
-                                    title="Insert Reference into Evidence"
-                                >
-                                    <Icon name="Quote" size={16}/>
                                 </button>
                             </div>
                         </div>

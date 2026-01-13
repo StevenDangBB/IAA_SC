@@ -56,18 +56,18 @@ export const StandardExplorer: React.FC<StandardExplorerProps> = ({
                 >
                     <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-1.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-[10px] font-black uppercase shrink-0 px-1.5 py-0.5 rounded border ${level === 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700' : 'bg-transparent border-transparent text-slate-400'}`}>
+                            <div className="flex items-start gap-2">
+                                <span className={`text-[10px] font-black uppercase shrink-0 px-1.5 py-0.5 rounded border mt-0.5 ${level === 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700' : 'bg-transparent border-transparent text-slate-400'}`}>
                                     {c.code}
                                 </span>
-                                <span className={`text-xs font-medium tracking-tight leading-tight ${level === 0 ? 'text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}`}>
+                                <span className={`text-xs font-medium tracking-tight leading-snug break-words pt-0.5 ${level === 0 ? 'text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}`}>
                                     {c.title}
                                 </span>
-                                {isRepaired && <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 py-0.5 rounded animate-pulse">FIX</span>}
+                                {isRepaired && <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 py-0.5 rounded animate-pulse shrink-0">FIX</span>}
                             </div>
                             
                             {/* Hover Actions */}
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                 <button onClick={(e) => { e.stopPropagation(); onReferenceClause(c); }} className="p-1 text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded" title="Read Content">
                                     <Icon name="BookOpen" size={12} />
                                 </button>
@@ -82,7 +82,7 @@ export const StandardExplorer: React.FC<StandardExplorerProps> = ({
                             </div>
                         </div>
                         {level === 0 && (
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mt-0.5 line-clamp-2">
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mt-0.5 line-clamp-2 pl-1">
                                 {c.description}
                             </div>
                         )}

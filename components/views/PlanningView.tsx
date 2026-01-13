@@ -4,7 +4,7 @@ import { Icon } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
 import { Clause } from '../../types';
 import { useUI } from '../../contexts/UIContext';
-import { cleanFileName, copyToClipboard } from '../../utils';
+import { cleanFileName } from '../../utils';
 import { TABS_CONFIG } from '../../constants';
 
 // --- INTERNAL TYPES ---
@@ -12,9 +12,6 @@ interface PlanningRowProps {
     clause: Clause;
     level: number;
     processes: any[];
-    isExpanded: boolean;
-    onToggleDescription: (id: string) => void;
-    onCopyCitation: (text: string) => void;
     onSmartToggle: (procId: string, clause: Clause) => void; 
 }
 
@@ -31,7 +28,7 @@ const getFlatClauseIds = (clause: Clause): string[] => {
 
 // --- MEMOIZED ROW COMPONENT ---
 const PlanningRow = memo(({ 
-    clause, level, processes, isExpanded, onToggleDescription, onCopyCitation, onSmartToggle 
+    clause, level, processes, onSmartToggle 
 }: PlanningRowProps) => {
     
     const selfAndDescendants = useMemo(() => getFlatClauseIds(clause), [clause]);
@@ -49,25 +46,6 @@ const PlanningRow = memo(({
                             {clause.title}
                         </span>
                     </div>
-                    
-                    {level === 0 && (
-                        <div className="relative group/desc pr-4">
-                            <div 
-                                onClick={() => onToggleDescription(clause.id)}
-                                className={`text-[10px] text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-800 dark:hover:text-slate-200 transition-colors font-serif italic text-left whitespace-pre-wrap leading-relaxed ${isExpanded ? '' : 'line-clamp-3'}`}
-                                title="Click to toggle full text"
-                            >
-                                {clause.description}
-                            </div>
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onCopyCitation(clause.description); }}
-                                className="absolute top-0 right-0 opacity-0 group-hover/desc:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-600 bg-white/80 dark:bg-slate-900/80 rounded"
-                                title="Copy Citation"
-                            >
-                                <Icon name="Copy" size={12}/>
-                            </button>
-                        </div>
-                    )}
                 </div>
             </td>
             {processes.map(p => {
@@ -105,7 +83,6 @@ const PlanningRow = memo(({
         </tr>
     );
 }, (prev, next) => {
-    if (prev.isExpanded !== next.isExpanded) return false;
     if (prev.processes.length !== next.processes.length) return false;
     
     const hasChange = prev.processes.some((pp, idx) => {
@@ -130,7 +107,6 @@ export const PlanningView = () => {
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-    const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
     
     const currentStandard = standards[standardKey];
     
@@ -217,20 +193,6 @@ export const PlanningView = () => {
             return next;
         });
     };
-
-    const toggleDescriptionExpand = useCallback((clauseId: string) => {
-        setExpandedDescriptions(prev => {
-            const next = new Set(prev);
-            if (next.has(clauseId)) next.delete(clauseId);
-            else next.add(clauseId);
-            return next;
-        });
-    }, []);
-
-    const handleCopyDescription = useCallback((text: string) => {
-        copyToClipboard(text);
-        showToast("Citation copied!");
-    }, [showToast]);
 
     const areAllCollapsed = useMemo(() => {
         if (!currentStandard) return false;
@@ -530,9 +492,6 @@ export const PlanningView = () => {
                                                     clause={clause}
                                                     level={level}
                                                     processes={processes}
-                                                    isExpanded={expandedDescriptions.has(clause.id)}
-                                                    onToggleDescription={toggleDescriptionExpand}
-                                                    onCopyCitation={handleCopyDescription}
                                                     onSmartToggle={handleSmartToggle}
                                                 />
                                             ))}

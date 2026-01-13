@@ -557,9 +557,9 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                                         {countNC > 0 && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded shadow-sm">{countNC} NCs</span>}
                                                     </div>
 
-                                                    {/* Group Items with SCROLLABLE CONTAINER */}
+                                                    {/* Group Items with AUTO HEIGHT (No inner scroll) */}
                                                     {!isCollapsed && (
-                                                        <div className="max-h-[240px] overflow-y-auto custom-scrollbar divide-y divide-gray-100 dark:divide-slate-800/50 border-t border-gray-100 dark:border-slate-800">
+                                                        <div className="divide-y divide-gray-100 dark:divide-slate-800/50 border-t border-gray-100 dark:border-slate-800">
                                                             {typedItems.map(({ finding: item, originalIndex: idx }) => {
                                                                 const isSelected = focusedFindingIndex === idx;
                                                                 return (
