@@ -66,9 +66,6 @@ export const useAuditWorkflow = () => {
                 const procMatrix = proc.matrixData || {};
                 
                 Object.keys(procMatrix).forEach(cid => {
-                    // CHANGE: Analyze ALL clauses present in the matrix keys (Mapped Clauses).
-                    // We no longer filter by `r.status === 'supplied'`.
-                    // If empty, the AI will judge based on General Evidence or flag it.
                     const clauseData = findClauseData(cid);
                     if (clauseData) {
                         queue.push({
@@ -111,21 +108,61 @@ export const useAuditWorkflow = () => {
                         .filter(r => r.status === 'supplied')
                         .map(r => r.evidenceInput)
                         .join("\n\n");
-                } else {
-                    specificEvidenceForAI = "No specific evidence provided for this clause in the matrix.";
-                    rawUserEvidence = ""; // Empty string for raw output
                 }
+
+                // --- NEW INTELLIGENCE: GROUP / PDCA CONTEXT AGGREGATION ---
+                // Find which Group (e.g., Plan, Do, Check) this clause belongs to
+                let relatedGroupEvidence = "";
+                let parentGroupName = "";
+                
+                const parentGroup = currentStd.groups.find(g => {
+                    const flatten = (list: any[]): string[] => list.flatMap(x => [x.id, ...(x.subClauses ? flatten(x.subClauses) : [])]);
+                    const groupIds = flatten(g.clauses);
+                    return groupIds.includes(cid);
+                });
+
+                if (parentGroup) {
+                    parentGroupName = parentGroup.title;
+                    const relevantRows: string[] = [];
+                    
+                    // Flatten all IDs in this group to find siblings/children
+                    const getAllIds = (list: any[]): string[] => list.flatMap(x => [x.id, ...(x.subClauses ? getAllIds(x.subClauses) : [])]);
+                    const groupIds = getAllIds(parentGroup.clauses);
+
+                    groupIds.forEach(otherCid => {
+                        if (otherCid === cid) return; // Skip self
+                        const rows = process.matrixData[otherCid];
+                        if (rows && rows.some(r => r.status === 'supplied')) {
+                            const text = rows.filter(r => r.status === 'supplied').map(r => r.evidenceInput).join(" ");
+                            if (text.trim().length > 5) {
+                                // We include the code so AI knows 6.1 supports 6
+                                relevantRows.push(`[Related Clause ${otherCid} Evidence]: ${text.substring(0, 600)}...`); 
+                            }
+                        }
+                    });
+
+                    if (relevantRows.length > 0) {
+                        relatedGroupEvidence = relevantRows.join("\n");
+                    }
+                }
+                // ---------------------------------------------------------
 
                 // General evidence from THIS SPECIFIC PROCESS
                 const procEvidence = process.evidence || "";
                 const safeGeneralEvidence = procEvidence.length > 8000 ? procEvidence.substring(0, 8000) + "...(truncated)" : procEvidence;
 
+                // Smart Evidence Composition
                 const combinedEvidence = `
-                ${specificEvidenceForAI ? `### MATRIX EVIDENCE (Specific to ${clause.code}):\n${specificEvidenceForAI}` : ''}
+                ${specificEvidenceForAI ? `### DIRECT EVIDENCE (Clause ${clause.code}):\n${specificEvidenceForAI}` : '### DIRECT EVIDENCE: None specifically recorded for this exact clause number.'}
                 
+                ${relatedGroupEvidence ? `### BROADER CONTEXT (PDCA Group - ${parentGroupName}):\n(The following evidence comes from related sub-clauses or sibling clauses within the same PDCA phase. Use this to verify high-level compliance, e.g., evidence in 6.1 proves compliance for 6).\n${relatedGroupEvidence}` : ''}
+
                 ${safeGeneralEvidence ? `### GENERAL PROCESS EVIDENCE (${procName}):\n${safeGeneralEvidence}` : ''}
                 
-                NOTE: If Matrix Evidence is missing, evaluate compliance based on General Process Evidence. If neither is sufficient, mark as NC or OFI (Missing Evidence).
+                CRITICAL INSTRUCTION: 
+                1. If Direct Evidence is missing, YOU MUST look at 'BROADER CONTEXT' and 'GENERAL PROCESS EVIDENCE'.
+                2. Evidence found in sub-clauses (e.g., 6.1, 6.2) IS VALID evidence for the parent clause (e.g., 6). Do not mark as NC if the requirement is met in the sub-clauses.
+                3. If the intent of the clause is met anywhere in this context, mark as COMPLIANT.
                 `.trim();
 
                 const tagsText = (process.evidenceTags || [])
@@ -158,11 +195,9 @@ export const useAuditWorkflow = () => {
 
                     const parsed = JSON.parse(jsonResult);
                     
-                    // Logic: If user provided raw input, we prefer preserving it in the "evidence" field for the UI
-                    // If not, we use what the AI summarized or deduced from General Evidence
                     const finalEvidence = rawUserEvidence.trim().length > 0 
                         ? rawUserEvidence 
-                        : (parsed.evidence || "Analyzed based on general process context.");
+                        : (parsed.evidence || "Analyzed based on broader context/sub-clauses.");
 
                     const result: AnalysisResult = {
                         clauseId: parsed.clauseId || clause.code,

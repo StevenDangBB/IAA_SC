@@ -16,7 +16,7 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         {{RAG_CONTEXT}}
         """
 
-        EVIDENCE (User Input & Tags):
+        EVIDENCE SECTIONS:
         """
         {{EVIDENCE}}
         """
@@ -24,10 +24,15 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         CROSS-REFERENCE CHECK:
         Check if this evidence also relates to other common ISO standards (like ISO 9001 if auditing 27001, or vice versa).
 
+        HIERARCHY & GROUPING RULE (SMART AUDIT):
+        1. **Parent-Child Inheritance:** If evaluating a parent clause (e.g., Clause 6), evidence found in its sub-clauses (e.g., 6.1, 6.2, 6.3) in the 'BROADER CONTEXT' section MUST be considered valid evidence for the parent.
+        2. **PDCA Context:** If evidence exists in other clauses within the same PDCA phase (Plan/Do/Check/Act) that satisfies the intent of this clause, mark as COMPLIANT.
+        3. **Missing Evidence:** Only mark as NC (Non-Conformity) if evidence is missing from DIRECT EVIDENCE **AND** BROADER CONTEXT **AND** GENERAL PROCESS EVIDENCE.
+
         DETERMINE:
         1. Status (COMPLIANT, NC_MINOR, NC_MAJOR, OFI, or N_A).
-        2. Reason (Why? Be specific based on evidence).
-        3. Evidence Quote (Verbatim support).
+        2. Reason (Why? Be specific based on evidence. If Compliant via sub-clause, state "Compliance demonstrated via evidence in Clause X").
+        3. Evidence Quote (Verbatim support, or summary of related clause evidence).
         4. Suggestion (If NC or OFI).
         5. CrossRefs (Array of strings, e.g. ["ISO 9001: 7.5.3"]).
         
