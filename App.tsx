@@ -61,10 +61,14 @@ const AppContent = () => {
     const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
 
     // --- INTEGRATE HOOKS ---
-    const { handleAnalyze, isAnalyzeLoading, currentAnalyzingClause } = useAuditWorkflow();
+    const { 
+        handleAnalyze, isAnalyzeLoading, currentAnalyzingClause, 
+        progressPercent, analysisLogs 
+    } = useAuditWorkflow();
+    
     const { 
         isReportLoading, reportLoadingMessage, reportTemplateName, isTemplateProcessing,
-        handleTemplateUpload, handleGenerateReport, generationLogs, progressPercent
+        handleTemplateUpload, handleGenerateReport, generationLogs, progressPercent: reportProgress
     } = useReportGenerator(exportLanguage);
     const { 
         handleExport, exportState, setExportState, 
@@ -195,12 +199,14 @@ const AppContent = () => {
                         <FindingsView
                             analysisResult={analysisResult} setAnalysisResult={setAnalysisResult}
                             selectedFindings={selectedFindings} setSelectedFindings={setSelectedFindings}
-                            isAnalyzeLoading={isAnalyzeLoading} loadingMessage="Synthesizing findings..." 
+                            isAnalyzeLoading={isAnalyzeLoading} loadingMessage="Scanning Matrix Evidence..." 
                             currentAnalyzingClause={currentAnalyzingClause}
                             viewMode={findingsViewMode} setViewMode={setFindingsViewMode}
                             focusedFindingIndex={focusedFindingIndex} setFocusedFindingIndex={setFocusedFindingIndex}
                             onExport={handleExport} 
                             notesLanguage={notesLanguage} setNotesLanguage={setNotesLanguage}
+                            progressPercent={progressPercent}
+                            analysisLogs={analysisLogs}
                         />
                     )}
 
@@ -217,7 +223,7 @@ const AppContent = () => {
                             exportLanguage={exportLanguage} setExportLanguage={setExportLanguage}
                             analysisResult={analysisResult} // Pass results for Stage Builder
                             generationLogs={generationLogs}
-                            progressPercent={progressPercent}
+                            progressPercent={reportProgress}
                             selectedFindings={selectedFindings} // PASS SELECTION STATE
                         />
                     )}

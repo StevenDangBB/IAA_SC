@@ -23,16 +23,19 @@ interface FindingsViewProps {
     onExport: (type: 'notes', lang: 'en' | 'vi') => void;
     notesLanguage: 'en' | 'vi';
     setNotesLanguage: (lang: 'en' | 'vi') => void;
+    progressPercent?: number; // Added
+    analysisLogs?: string[]; // Added
 }
 
 export const FindingsView: React.FC<FindingsViewProps> = ({
     analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings,
     isAnalyzeLoading, loadingMessage, currentAnalyzingClause,
     viewMode, setViewMode, focusedFindingIndex, setFocusedFindingIndex,
-    onExport, notesLanguage, setNotesLanguage
+    onExport, notesLanguage, setNotesLanguage, progressPercent = 0, analysisLogs = []
 }) => {
     const findingsContainerRef = useRef<HTMLDivElement>(null);
     const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const logsEndRef = useRef<HTMLDivElement>(null);
     
     // Contexts
     const { getActiveKey } = useKeyPool();
@@ -63,6 +66,13 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             findingsContainerRef.current.scrollTop = findingsContainerRef.current.scrollHeight;
         }
     }, [analysisResult?.length, viewMode]);
+
+    // Auto-scroll logs
+    useEffect(() => {
+        if (isAnalyzeLoading && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [analysisLogs, isAnalyzeLoading]);
 
     // Computed: Are all visible items selected?
     const isAllSelected = useMemo(() => {
@@ -400,12 +410,9 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                     value={displayReason}
                                     onChange={(e) => {
                                         // When editing, update the field corresponding to CURRENT view language
-                                        // If it was fallback 'reason', we should ideally start populating the specific lang field
                                         const field = notesLanguage === 'vi' ? 'reason_vi' : 'reason_en';
                                         handleUpdateFinding(idx, field, e.target.value);
                                         // Also update main 'reason' if it's the first edit to keep sync or just keep them separate?
-                                        // Let's keep separate to avoid overwriting original source truth.
-                                        // But if reason_en is empty, fill generic reason too?
                                         if (notesLanguage === 'en') handleUpdateFinding(idx, 'reason', e.target.value);
                                     }}
                                     className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
@@ -440,7 +447,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
     };
 
     return (
-        <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up">
+        <div className="h-full flex flex-col gap-2 md:gap-4 animate-fade-in-up relative">
             <div className="flex-1 overflow-y-auto custom-scrollbar p-1" ref={findingsContainerRef}>
                 {!analysisResult && !isAnalyzeLoading && (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
@@ -452,17 +459,48 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     </div>
                 )}
                 
+                {/* --- NEURAL DASHBOARD OVERLAY (Matches ReportView Style) --- */}
                 {isAnalyzeLoading && (
-                    <div className="h-full flex flex-col items-center justify-center">
-                        <div className="relative w-28 h-28 mb-8">
-                            <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900/50 rounded-full opacity-50"></div>
-                            <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin"></div>
-                            <div className="absolute inset-4 border-r-4 border-purple-500 rounded-full animate-spin-reverse opacity-70"></div>
-                            <div className="absolute inset-0 flex items-center justify-center"><Icon name="BrainCircuit" size={32} className="text-indigo-500 animate-pulse"/></div>
+                    <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300 rounded-3xl border border-white/20 dark:border-slate-800">
+                        <div className="w-full max-w-lg space-y-6">
+                            {/* Header */}
+                            <div className="flex flex-col items-center">
+                                <div className="relative w-16 h-16 mb-4">
+                                    <div className="absolute inset-0 border-4 border-indigo-100 dark:border-slate-700 rounded-full"></div>
+                                    <div className="absolute inset-0 border-t-4 border-indigo-600 rounded-full animate-spin"></div>
+                                    <Icon name="Wand2" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-500" size={24}/>
+                                </div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-white animate-pulse">{loadingMessage || "AI Auditor Analysis"}</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-1">{progressPercent}% Complete</p>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="w-full h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 ease-out" 
+                                    style={{ width: `${progressPercent}%` }}
+                                ></div>
+                            </div>
+
+                            {/* Console Log */}
+                            <div className="w-full h-40 bg-black/5 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-slate-800 p-4 font-mono text-xs overflow-y-auto custom-scrollbar shadow-inner">
+                                {analysisLogs.map((log, idx) => (
+                                    <div key={idx} className="mb-1 text-slate-600 dark:text-slate-400 flex gap-2">
+                                        <span className="text-indigo-400 select-none">&gt;</span>
+                                        <span>{log}</span>
+                                    </div>
+                                ))}
+                                {/* Anchor specifically for logs */}
+                                <div ref={logsEndRef} />
+                            </div>
+                            
+                            {/* Context Indicator */}
+                            {currentAnalyzingClause && (
+                                <p className="text-xs text-center text-slate-400 font-mono mt-2 opacity-80 border-t border-slate-200 dark:border-slate-800 pt-2 w-full">
+                                    Analyzing: {currentAnalyzingClause}
+                                </p>
+                            )}
                         </div>
-                        <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse mb-3">AI Auditor Working</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1 bg-white/50 dark:bg-slate-800/50 px-4 py-1 rounded-full shadow-sm">{loadingMessage}</p>
-                        <p className="text-xs text-slate-400 font-mono mt-2 opacity-80">{currentAnalyzingClause && `Analyzing Clause: [${currentAnalyzingClause}]`}</p>
                     </div>
                 )}
 

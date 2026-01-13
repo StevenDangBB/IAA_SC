@@ -23,6 +23,10 @@ export const useAuditWorkflow = () => {
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
     const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState("");
     
+    // New Visualization State
+    const [progressPercent, setProgressPercent] = useState(0);
+    const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
+    
     const processedCount = useRef(0);
 
     const handleAnalyze = useCallback(async () => {
@@ -33,7 +37,11 @@ export const useAuditWorkflow = () => {
         
         setIsAnalyzeLoading(true);
         processedCount.current = 0;
-        showToast("AI Auditor: Scanning all processes...");
+        setProgressPercent(0);
+        setAnalysisLogs(["Initializing AI Audit Engine...", "Scanning process matrices..."]);
+        
+        // Short delay for UI to mount
+        await new Promise(r => setTimeout(r, 500));
 
         try {
             const currentStd = standards[standardKey];
@@ -82,6 +90,8 @@ export const useAuditWorkflow = () => {
             if (total === 0) {
                 throw new Error("No clauses mapped in any process. Please go to Planning tab to select clauses.");
             }
+            
+            setAnalysisLogs(prev => [...prev, `Found ${total} compliance checkpoints across ${processes.length} processes.`]);
 
             // 2. DEFINE WORKER FUNCTION (runs in parallel)
             const processItem = async ({ process, cid, clause }: { process: AuditProcess, cid: string, clause: any }) => {
@@ -89,6 +99,15 @@ export const useAuditWorkflow = () => {
 
                 const procName = process.name || "Unnamed Process";
                 setCurrentAnalyzingClause(`[${procName}] ${clause.code}`);
+                
+                // Update Logs (Throttle slightly to avoid React render trashing if very fast)
+                if (processedCount.current % 2 === 0 || total < 10) {
+                     setAnalysisLogs(prev => {
+                         const next = [...prev, `> Processing ${procName} / Clause ${clause.code}...`];
+                         if (next.length > 8) return next.slice(next.length - 8); // Keep log short
+                         return next;
+                     });
+                }
 
                 // Data Prep
                 const matrixRows = process.matrixData[cid] || [];
@@ -178,6 +197,7 @@ export const useAuditWorkflow = () => {
                 if (ANALYSIS_CACHE.has(cacheKey)) {
                     console.log(`[Cache Hit] ${procName} - Clause ${cid}`);
                     processedCount.current++;
+                    setProgressPercent(Math.round((processedCount.current / total) * 100));
                     return ANALYSIS_CACHE.get(cacheKey)!;
                 }
 
@@ -217,20 +237,20 @@ export const useAuditWorkflow = () => {
                     ANALYSIS_CACHE.set(cacheKey, result);
                     processedCount.current++;
                     
-                    if (processedCount.current % 3 === 0) {
-                        showToast(`Analyzed ${processedCount.current}/${total} items...`);
-                    }
+                    setProgressPercent(Math.round((processedCount.current / total) * 100));
 
                     return result;
 
                 } catch (e) {
                     console.error(`Error analyzing ${cid} in ${procName}`, e);
+                    setAnalysisLogs(prev => [...prev, `x Error on ${cid}: ${e.message}`]);
+                    processedCount.current++; // Still count it to finish
+                    setProgressPercent(Math.round((processedCount.current / total) * 100));
                     return null;
                 }
             };
 
             // Execution
-            showToast(`Batch processing ${total} findings across ${processes.length} processes...`);
             const results = await runWithConcurrency(queue, processItem, 3);
 
             // Update State
@@ -255,6 +275,9 @@ export const useAuditWorkflow = () => {
                         return (a.processName || "").localeCompare(b.processName || "");
                     });
                 });
+                
+                setAnalysisLogs(prev => [...prev, "Synthesis Complete. Rendering Results..."]);
+                await new Promise(r => setTimeout(r, 600)); // Let user see 100%
                 showToast(`Success! Updated ${validResults.length} findings.`);
             } else {
                 showToast("Analysis finished but returned no valid results.");
@@ -262,7 +285,9 @@ export const useAuditWorkflow = () => {
 
         } catch (error: any) {
             console.error("Analysis Workflow Error", error);
+            setAnalysisLogs(prev => [...prev, `CRITICAL ERROR: ${error.message}`]);
             showToast("Failed: " + error.message);
+            await new Promise(r => setTimeout(r, 2000)); // Wait so user sees error
         } finally {
             setIsAnalyzeLoading(false);
             setCurrentAnalyzingClause("");
@@ -272,6 +297,8 @@ export const useAuditWorkflow = () => {
     return { 
         handleAnalyze, 
         isAnalyzeLoading, 
-        currentAnalyzingClause 
+        currentAnalyzingClause,
+        progressPercent,
+        analysisLogs
     };
 };
