@@ -4,7 +4,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { generateAnalysis } from '../services/geminiService';
-import { AnalysisResult } from '../types';
+import { AnalysisResult, AuditProcess } from '../types';
 import { generateContentHash, runWithConcurrency } from '../utils';
 
 // Cache structure: { [clauseId_processId_evidenceHash]: AnalysisResult }
@@ -12,9 +12,9 @@ const ANALYSIS_CACHE = new Map<string, AnalysisResult>();
 
 export const useAuditWorkflow = () => {
     const { 
-        standards, standardKey, matrixData, evidence, 
-        selectedClauses, evidenceTags, setAnalysisResult, 
-        activeProcessId, processes, privacySettings 
+        standards, standardKey, 
+        setAnalysisResult, 
+        processes, privacySettings // Changed: Removed dependency on active context (matrixData, evidence)
     } = useAudit();
     
     const { apiKeys, activeKeyId } = useKeyPool();
@@ -27,30 +27,22 @@ export const useAuditWorkflow = () => {
     const processedCount = useRef(0);
 
     const handleAnalyze = useCallback(async () => {
-        if (!standardKey || !activeProcessId) return;
+        if (!standardKey || processes.length === 0) {
+            showToast("No processes or standard found to analyze.");
+            return;
+        }
         
         setIsAnalyzeLoading(true);
         processedCount.current = 0;
-        showToast("AI Auditor: Optimizing workload...");
+        showToast("AI Auditor: Scanning all processes...");
 
         try {
             const currentStd = standards[standardKey];
             const activeKeyProfile = apiKeys.find(k => k.id === activeKeyId);
             
-            // 1. IDENTIFY WORKLOAD
-            const clausesToAnalyze = new Set<string>();
-            
-            // Logic: Only analyze clauses that have data entered in the matrix OR explicit selection
-            Object.keys(matrixData).forEach(cid => {
-                if (matrixData[cid].some(r => r.status === 'supplied')) clausesToAnalyze.add(cid);
-            });
-            // If general evidence exists, we might want to analyze all selected, but for optimization,
-            // let's prioritize explicit matrix entries or current selection if matrix is empty
-            if (evidence && evidence.trim().length > 20 && clausesToAnalyze.size === 0) {
-                selectedClauses.forEach(cid => clausesToAnalyze.add(cid));
-            }
-
-            if (clausesToAnalyze.size === 0) throw new Error("No evidence found to analyze.");
+            // 1. IDENTIFY WORKLOAD ACROSS ALL PROCESSES
+            // Structure: { process: AuditProcess, clauseId: string, clauseData: any }
+            const queue: { process: AuditProcess, cid: string, clause: any }[] = [];
 
             // Helper to find clause structure
             const findClauseData = (id: string) => {
@@ -71,21 +63,41 @@ export const useAuditWorkflow = () => {
                 return null;
             };
 
-            const queue = Array.from(clausesToAnalyze).map(cid => ({
-                cid,
-                clause: findClauseData(cid)
-            })).filter(item => item.clause);
+            // Loop through ALL processes
+            processes.forEach(proc => {
+                const procMatrix = proc.matrixData || {};
+                
+                Object.keys(procMatrix).forEach(cid => {
+                    // Only analyze clauses that have data entered in the matrix
+                    // AND ensure the clause actually exists in the standard structure
+                    if (procMatrix[cid].some(r => r.status === 'supplied')) {
+                        const clauseData = findClauseData(cid);
+                        if (clauseData) {
+                            queue.push({
+                                process: proc,
+                                cid: cid,
+                                clause: clauseData
+                            });
+                        }
+                    }
+                });
+            });
 
             const total = queue.length;
 
+            if (total === 0) {
+                throw new Error("No evidence found in any process to analyze.");
+            }
+
             // 2. DEFINE WORKER FUNCTION (runs in parallel)
-            const processClause = async ({ cid, clause }: { cid: string, clause: any }) => {
+            const processItem = async ({ process, cid, clause }: { process: AuditProcess, cid: string, clause: any }) => {
                 if (!clause) return null;
 
-                setCurrentAnalyzingClause(`${clause.code} ${clause.title}`);
+                const procName = process.name || "Unnamed Process";
+                setCurrentAnalyzingClause(`[${procName}] ${clause.code}`);
 
                 // OPTIMIZATION 1: DATA SLICING & PRESERVATION
-                const matrixRows = matrixData[cid] || [];
+                const matrixRows = process.matrixData[cid] || [];
                 
                 // Construct specific evidence for AI Context
                 const specificEvidenceForAI = matrixRows
@@ -94,21 +106,21 @@ export const useAuditWorkflow = () => {
                     .join("\n\n");
                 
                 // CRITICAL: Capture RAW input to inject back into result (Bypass AI Summarization)
-                // This ensures bullets, newlines, and formatting are preserved 100%
                 const rawUserEvidence = matrixRows
                     .filter(r => r.status === 'supplied')
                     .map(r => r.evidenceInput)
                     .join("\n\n");
 
-                // General evidence is sent as context
-                const safeGeneralEvidence = evidence.length > 8000 ? evidence.substring(0, 8000) + "...(truncated)" : evidence;
+                // General evidence from THIS SPECIFIC PROCESS
+                const procEvidence = process.evidence || "";
+                const safeGeneralEvidence = procEvidence.length > 8000 ? procEvidence.substring(0, 8000) + "...(truncated)" : procEvidence;
 
                 const combinedEvidence = `
                 ${specificEvidenceForAI ? `### MATRIX EVIDENCE (Specific to ${clause.code}):\n${specificEvidenceForAI}` : ''}
-                ${safeGeneralEvidence ? `### GENERAL PROCESS EVIDENCE:\n${safeGeneralEvidence}` : ''}
+                ${safeGeneralEvidence ? `### GENERAL PROCESS EVIDENCE (${procName}):\n${safeGeneralEvidence}` : ''}
                 `.trim();
 
-                const tagsText = evidenceTags
+                const tagsText = (process.evidenceTags || [])
                     .filter(t => t.clauseId === cid)
                     .map(t => `Tagged Excerpt: "${t.text}"`)
                     .join("\n");
@@ -116,10 +128,11 @@ export const useAuditWorkflow = () => {
                 const fullInput = combinedEvidence + tagsText;
 
                 // OPTIMIZATION 2: CACHING
-                const cacheKey = generateContentHash(`${cid}_${activeProcessId}_${fullInput}_${activeKeyProfile?.activeModel}`);
+                // Include Process ID in cache key to distinguish same clause across different processes
+                const cacheKey = generateContentHash(`${cid}_${process.id}_${fullInput}_${activeKeyProfile?.activeModel}`);
                 
                 if (ANALYSIS_CACHE.has(cacheKey)) {
-                    console.log(`[Cache Hit] Clause ${cid}`);
+                    console.log(`[Cache Hit] ${procName} - Clause ${cid}`);
                     processedCount.current++;
                     return ANALYSIS_CACHE.get(cacheKey)!;
                 }
@@ -137,13 +150,8 @@ export const useAuditWorkflow = () => {
                     );
 
                     const parsed = JSON.parse(jsonResult);
-                    parsed.processId = activeProcessId;
-                    const procName = processes.find(p => p.id === activeProcessId)?.name;
-                    parsed.processName = procName;
                     
                     // FORCE OVERRIDE EVIDENCE WITH RAW INPUT
-                    // If user provided specific matrix input, use that EXACTLY.
-                    // If not, fall back to what AI extracted from general context.
                     const finalEvidence = rawUserEvidence.trim().length > 0 
                         ? rawUserEvidence 
                         : (parsed.evidence || "No specific evidence cited.");
@@ -156,7 +164,7 @@ export const useAuditWorkflow = () => {
                         evidence: finalEvidence, // <--- PRESERVED FORMATTING
                         conclusion_report: parsed.conclusion_report || parsed.reason,
                         crossRefs: parsed.crossRefs || [],
-                        processId: activeProcessId || undefined,
+                        processId: process.id, // Explicitly bind to Process ID
                         processName: procName
                     };
 
@@ -165,21 +173,21 @@ export const useAuditWorkflow = () => {
                     processedCount.current++;
                     
                     // Update UI Progress
-                    if (processedCount.current % 2 === 0) {
-                        showToast(`Analyzing... ${Math.round((processedCount.current / total) * 100)}%`);
+                    if (processedCount.current % 3 === 0) {
+                        showToast(`Analyzed ${processedCount.current}/${total} items...`);
                     }
 
                     return result;
 
                 } catch (e) {
-                    console.error(`Error analyzing ${cid}`, e);
+                    console.error(`Error analyzing ${cid} in ${procName}`, e);
                     return null;
                 }
             };
 
             // OPTIMIZATION 3: CONCURRENCY
-            showToast(`Batch processing ${total} clauses...`);
-            const results = await runWithConcurrency(queue, processClause, 3);
+            showToast(`Batch processing ${total} findings across ${processes.length} processes...`);
+            const results = await runWithConcurrency(queue, processItem, 3);
 
             // 4. BATCH STATE UPDATE
             const validResults = results.filter(r => r !== null) as AnalysisResult[];
@@ -187,14 +195,25 @@ export const useAuditWorkflow = () => {
             if (validResults.length > 0) {
                 setAnalysisResult(prev => {
                     const existing = prev ? [...prev] : [];
+                    
                     validResults.forEach(newResult => {
+                        // Find existing finding for THIS Clause AND THIS Process
                         const idx = existing.findIndex(e => e.clauseId === newResult.clauseId && e.processId === newResult.processId);
-                        if (idx >= 0) existing[idx] = newResult;
-                        else existing.push(newResult);
+                        if (idx >= 0) {
+                            existing[idx] = newResult;
+                        } else {
+                            existing.push(newResult);
+                        }
                     });
-                    return existing.sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }));
+                    
+                    // Sort by Clause ID then Process Name
+                    return existing.sort((a, b) => {
+                        const clauseCompare = a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true });
+                        if (clauseCompare !== 0) return clauseCompare;
+                        return (a.processName || "").localeCompare(b.processName || "");
+                    });
                 });
-                showToast(`Analysis Completed. ${validResults.length} findings updated.`);
+                showToast(`Success! Updated ${validResults.length} findings.`);
             } else {
                 showToast("Analysis finished but returned no valid results.");
             }
@@ -206,7 +225,7 @@ export const useAuditWorkflow = () => {
             setIsAnalyzeLoading(false);
             setCurrentAnalyzingClause("");
         }
-    }, [standardKey, activeProcessId, matrixData, evidence, selectedClauses, evidenceTags, apiKeys, activeKeyId, processes, privacySettings, standards]);
+    }, [standardKey, processes, apiKeys, activeKeyId, privacySettings, standards]); // Removed 'matrixData' and 'evidence' dependencies
 
     return { 
         handleAnalyze, 
