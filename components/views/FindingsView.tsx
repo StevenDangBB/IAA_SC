@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
 import { TABS_CONFIG } from '../../constants';
-import { performShadowReview, generateAnalysis } from '../../services/geminiService';
+import { performShadowReview, generateAnalysis, translateChunk } from '../../services/geminiService';
 import { useKeyPool } from '../../contexts/KeyPoolContext';
 import { useUI } from '../../contexts/UIContext';
 import { useAudit } from '../../contexts/AuditContext';
@@ -45,9 +45,13 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
     
     // Local state for Re-Analysis (Single Clause)
     const [reanalyzingId, setReanalyzingId] = useState<string | null>(null);
+    const [translatingId, setTranslatingId] = useState<string | null>(null);
 
     // Grouping State
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    
+    // UI State for Evidence Expansion
+    const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
     
     // Matrix Visibility State
     const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
@@ -194,6 +198,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     ...newArr[index], 
                     status: parsed.status,
                     reason: parsed.reason,
+                    reason_en: parsed.reason_en,
+                    reason_vi: parsed.reason_vi,
                     suggestion: parsed.suggestion,
                     conclusion_report: parsed.conclusion_report
                 };
@@ -206,6 +212,35 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             showToast("Re-evaluation Failed: " + error.message);
         } finally {
             setReanalyzingId(null);
+        }
+    };
+
+    // --- INSTANT TRANSLATION LOGIC ---
+    const handleTranslateReason = async (index: number, finding: AnalysisResult) => {
+        const keyProfile = getActiveKey();
+        if (!keyProfile) return showToast("API Key Required");
+        
+        setTranslatingId(finding.clauseId);
+        try {
+            const targetLang = notesLanguage;
+            const textToTranslate = finding.reason || "";
+            if(!textToTranslate) return;
+
+            const translated = await translateChunk(textToTranslate, targetLang, keyProfile.key);
+            
+            setAnalysisResult(prev => {
+                if (!prev) return null;
+                const newArr = [...prev];
+                // Save to the appropriate field
+                if(targetLang === 'vi') newArr[index] = { ...newArr[index], reason_vi: translated };
+                else newArr[index] = { ...newArr[index], reason_en: translated };
+                return newArr;
+            });
+            showToast("Translation complete.");
+        } catch(e) {
+            showToast("Translation failed.");
+        } finally {
+            setTranslatingId(null);
         }
     };
 
@@ -224,12 +259,28 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         const reviewText = reviews[res.clauseId];
         const isReviewing = reviewLoading === res.clauseId;
         const isReanalyzing = reanalyzingId === res.clauseId;
+        const isTranslating = translatingId === res.clauseId;
+        const isEvidenceExpanded = expandedEvidence[res.clauseId] || false;
+
+        // Determine displayed reason text based on language preference
+        let displayReason = res.reason;
+        const hasVi = !!res.reason_vi;
+        const hasEn = !!res.reason_en;
+        
+        if (notesLanguage === 'vi') {
+            displayReason = res.reason_vi || res.reason; 
+        } else {
+            displayReason = res.reason_en || res.reason;
+        }
+
+        // Check if we need to offer translation (e.g. user wants VI but we only have default/EN)
+        const showTranslateBtn = (notesLanguage === 'vi' && !hasVi) || (notesLanguage === 'en' && !hasEn && !res.reason.match(/^[A-Za-z]/)); 
 
         return (
             <div
                 key={idx}
                 ref={!isCondensed ? el => { findingRefs.current[idx] = el; } : null}
-                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 md:p-5 border-l-[6px] transition-all duration-300 hover:shadow-depth-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'ring-2 ring-indigo-500/20 translate-x-2' : 'hover:translate-x-1 opacity-60 hover:opacity-100'} animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards`}
+                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4 md:p-5 border-l-[6px] transition-all duration-300 hover:shadow-depth-lg dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] ${styles.border} ${selectedFindings[res.clauseId] ? 'ring-2 ring-indigo-500/20 translate-x-2' : 'hover:translate-x-1 opacity-95 hover:opacity-100'} animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards`}
                 style={{ animationDelay: `${idx * 50}ms` }}
                 onClick={() => setSelectedFindings(prev => ({ ...prev, [res.clauseId]: !prev[res.clauseId] }))}
             >
@@ -274,7 +325,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                         </div>
                     </div>
 
-                    {/* EDITABLE EVIDENCE SECTION */}
+                    {/* COLLAPSIBLE EVIDENCE SECTION */}
                     <div className="mb-4 group/evidence relative">
                         {isReanalyzing && (
                             <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl flex items-center justify-center border border-indigo-100 dark:border-indigo-900">
@@ -287,43 +338,78 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 
                         <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 relative transition-colors focus-within:border-indigo-300 dark:focus-within:border-indigo-700 focus-within:ring-1 focus-within:ring-indigo-500/20" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-2">
-                                <strong className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Verified Evidence</strong>
+                                <div 
+                                    className="flex items-center gap-2 cursor-pointer select-none" 
+                                    onClick={() => setExpandedEvidence(prev => ({...prev, [res.clauseId]: !prev[res.clauseId]}))}
+                                >
+                                    <Icon name={isEvidenceExpanded ? "ChevronDown" : "ChevronRight"} size={12} className="text-indigo-500"/>
+                                    <strong className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Verified Evidence</strong>
+                                    {!isEvidenceExpanded && <span className="text-[9px] text-slate-400 font-mono">({res.evidence.length} chars)</span>}
+                                </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[9px] text-slate-400 opacity-0 group-hover/evidence:opacity-100 transition-opacity flex items-center gap-1">
-                                        <Icon name="FileEdit" size={10}/> Editable
-                                    </span>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleReAnalyze(idx, res); }}
                                         className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded text-[9px] font-bold hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors flex items-center gap-1 opacity-0 group-hover/evidence:opacity-100 focus:opacity-100"
                                         title="Re-run AI Analysis for ONLY this clause based on updated evidence"
                                     >
-                                        <Icon name="RefreshCw" size={10}/> Re-evaluate Finding
+                                        <Icon name="RefreshCw" size={10}/> Re-evaluate
                                     </button>
                                 </div>
                             </div>
                             
-                            <textarea
-                                value={res.evidence}
-                                onChange={(e) => handleUpdateFinding(idx, 'evidence', e.target.value)}
-                                className="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[80px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
-                                placeholder="Evidence content..."
-                                spellCheck={false}
-                                disabled={isReanalyzing}
-                            />
+                            {isEvidenceExpanded ? (
+                                <textarea
+                                    value={res.evidence}
+                                    onChange={(e) => handleUpdateFinding(idx, 'evidence', e.target.value)}
+                                    className="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[150px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
+                                    placeholder="Evidence content..."
+                                    spellCheck={false}
+                                    disabled={isReanalyzing}
+                                />
+                            ) : (
+                                <div 
+                                    className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 cursor-pointer font-mono opacity-80 hover:opacity-100"
+                                    onClick={() => setExpandedEvidence(prev => ({...prev, [res.clauseId]: true}))}
+                                >
+                                    {res.evidence || "No evidence recorded."}
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     <div className="mb-2">
-                        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors group-focus-within:border-indigo-500 shadow-sm" onClick={e => e.stopPropagation()}>
-                            <strong className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1 block">Auditor Conclusion</strong>
-                            {isReanalyzing ? (
+                        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors group-focus-within:border-indigo-500 shadow-sm relative" onClick={e => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-1">
+                                <strong className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">Auditor Conclusion ({notesLanguage.toUpperCase()})</strong>
+                                {showTranslateBtn && (
+                                    <button 
+                                        onClick={() => handleTranslateReason(idx, res)}
+                                        disabled={isTranslating}
+                                        className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded transition-all active:scale-95"
+                                    >
+                                        {isTranslating ? <Icon name="Loader" className="animate-spin" size={10}/> : <Icon name="Globe" size={10}/>}
+                                        Translate to {notesLanguage.toUpperCase()}
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {isReanalyzing || isTranslating ? (
                                 <div className="h-[60px] w-full bg-slate-50 dark:bg-slate-800 animate-pulse rounded"></div>
                             ) : (
                                 <textarea
-                                    value={res.reason}
-                                    onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
+                                    value={displayReason}
+                                    onChange={(e) => {
+                                        // When editing, update the field corresponding to CURRENT view language
+                                        // If it was fallback 'reason', we should ideally start populating the specific lang field
+                                        const field = notesLanguage === 'vi' ? 'reason_vi' : 'reason_en';
+                                        handleUpdateFinding(idx, field, e.target.value);
+                                        // Also update main 'reason' if it's the first edit to keep sync or just keep them separate?
+                                        // Let's keep separate to avoid overwriting original source truth.
+                                        // But if reason_en is empty, fill generic reason too?
+                                        if (notesLanguage === 'en') handleUpdateFinding(idx, 'reason', e.target.value);
+                                    }}
                                     className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
-                                    placeholder="Enter conclusion..."
+                                    placeholder={`Enter conclusion in ${notesLanguage === 'vi' ? 'Vietnamese' : 'English'}...`}
                                 />
                             )}
                         </div>

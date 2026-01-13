@@ -203,6 +203,8 @@ export const useAuditWorkflow = () => {
                         clauseId: parsed.clauseId || clause.code,
                         status: parsed.status || "N_A",
                         reason: parsed.reason || "Analysis completed.",
+                        reason_en: parsed.reason_en || parsed.reason, // NEW
+                        reason_vi: parsed.reason_vi, // NEW
                         suggestion: parsed.suggestion || "",
                         evidence: finalEvidence, 
                         conclusion_report: parsed.conclusion_report || parsed.reason,

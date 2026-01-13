@@ -32,9 +32,11 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         DETERMINE:
         1. Status (COMPLIANT, NC_MINOR, NC_MAJOR, OFI, or N_A).
         2. Reason (Why? Be specific based on evidence. If Compliant via sub-clause, state "Compliance demonstrated via evidence in Clause X").
-        3. Evidence Quote (Verbatim support, or summary of related clause evidence).
-        4. Suggestion (If NC or OFI).
-        5. CrossRefs (Array of strings, e.g. ["ISO 9001: 7.5.3"]).
+        3. **reason_en**: The Reason/Observation in clear professional English.
+        4. **reason_vi**: The Reason/Observation translated into professional Vietnamese.
+        5. Evidence Quote (Verbatim support, or summary of related clause evidence).
+        6. Suggestion (If NC or OFI).
+        7. CrossRefs (Array of strings, e.g. ["ISO 9001: 7.5.3"]).
         
         Output a SINGLE JSON Object.
         `

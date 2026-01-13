@@ -195,6 +195,8 @@ export const generateAnalysis = async (
                 clauseId: { type: Type.STRING },
                 status: { type: Type.STRING, enum: ["COMPLIANT", "NC_MINOR", "NC_MAJOR", "OFI", "N_A"] },
                 reason: { type: Type.STRING },
+                reason_en: { type: Type.STRING }, // ADDED
+                reason_vi: { type: Type.STRING }, // ADDED
                 suggestion: { type: Type.STRING },
                 evidence: { type: Type.STRING },
                 conclusion_report: { type: Type.STRING },
@@ -322,7 +324,7 @@ export const formatFindingReportSection = async (finding: AnalysisResult, lang: 
     INPUT:
     Clause: ${finding.clauseId}
     Status: ${finding.status}
-    Observation: "${finding.reason}"
+    Observation: "${finding.reason_vi && lang === 'vi' ? finding.reason_vi : finding.reason}"
     Evidence Block:
     """
     ${finding.evidence}

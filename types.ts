@@ -62,7 +62,9 @@ export type FindingsViewMode = 'list' | 'matrix';
 export interface AnalysisResult {
     clauseId: string;
     status: FindingStatus;
-    reason: string;
+    reason: string;     // Default/Fallback reason
+    reason_en?: string; // Explicit English reason
+    reason_vi?: string; // Explicit Vietnamese reason
     suggestion: string;
     evidence: string;
     conclusion_report: string;
