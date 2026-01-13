@@ -8,7 +8,7 @@ import { processSourceFile } from '../utils';
 import { AnalysisResult } from '../types';
 
 export const useReportGenerator = (exportLanguage: string) => {
-    const { analysisResult, auditInfo, standards, standardKey, setFinalReportText, selectedFindings } = useAudit();
+    const { analysisResult, auditInfo, standards, standardKey, setFinalReportText, selectedFindings, processes } = useAudit();
     const { apiKeys, activeKeyId } = useKeyPool();
     const { showToast } = useUI();
 
@@ -76,6 +76,9 @@ export const useReportGenerator = (exportLanguage: string) => {
             setReportLoadingMessage("Drafting Executive Summary...");
             setGenerationLogs(prev => [...prev, `Analysing ${activeFindings.length} selected findings...`]);
             
+            // Collect all unique interviewees across all processes for summary
+            const allInterviewees = Array.from(new Set(processes.flatMap(p => p.interviewees || []))).filter(Boolean);
+
             const summary = await generateExecutiveSummary({
                 company: auditInfo.company || "N/A",
                 address: auditInfo.address || "N/A",
@@ -85,6 +88,7 @@ export const useReportGenerator = (exportLanguage: string) => {
                 auditor: auditInfo.auditor || "N/A",
                 standard: standardName,
                 findings: activeFindings,
+                interviewees: allInterviewees,
                 lang: exportLanguage
             }, apiKey, model);
             
@@ -111,9 +115,16 @@ export const useReportGenerator = (exportLanguage: string) => {
             for (const pName of processNames) {
                 const processFindings = findingsByProcess[pName];
                 
-                // Add Process Header
+                // Add Process Header with Interviewees
                 const auditorName = auditInfo.auditor || "[Auditor Name]";
-                finalSections.push(`### PROCESS: ${pName}\n**Execution performed by:** ${auditorName}\n`);
+                
+                // Find corresponding process object to get specific interviewees
+                // Use the processId from the first finding in this group to reliably find the process
+                const representativeFinding = processFindings[0];
+                const processObj = processes.find(p => p.id === representativeFinding.processId);
+                const processInterviewees = processObj?.interviewees?.join(", ") || "N/A";
+
+                finalSections.push(`### PROCESS: ${pName}\n**Execution performed by:** ${auditorName}\n**Auditees (Interviewed):** ${processInterviewees}\n`);
                 
                 // Process findings within this group
                 for (const finding of processFindings) {

@@ -273,6 +273,9 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     Audit Type: ${data.type}
     Auditor: ${data.auditor}
     
+    PARTICIPANTS / AUDITEES:
+    ${data.interviewees ? data.interviewees.join(", ") : "Not Listed"}
+    
     FINDINGS SUMMARY:
     Total Findings: ${data.findings.length}
     Major NCs: ${data.findings.filter((f:any) => f.status === 'NC_MAJOR').length}
@@ -283,7 +286,7 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     
     OUTPUT FORMAT: Plain Text. Concise paragraphs covering:
     1. Overall Compliance Status.
-    2. Confirmation of Audit Scope and Site Address (Confirm if scope was covered adequately).
+    2. Confirmation of Audit Scope, Site Address, and Key Personnel Interviewed.
     3. Key Strengths.
     4. Major Areas for Improvement.
     5. Recommendation for Certification (Yes/No/Conditional).
