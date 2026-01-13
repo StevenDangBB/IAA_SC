@@ -14,7 +14,7 @@ export const useAuditWorkflow = () => {
     const { 
         standards, standardKey, 
         setAnalysisResult, 
-        processes, privacySettings // Changed: Removed dependency on active context (matrixData, evidence)
+        processes, privacySettings 
     } = useAudit();
     
     const { apiKeys, activeKeyId } = useKeyPool();
@@ -23,7 +23,6 @@ export const useAuditWorkflow = () => {
     const [isAnalyzeLoading, setIsAnalyzeLoading] = useState(false);
     const [currentAnalyzingClause, setCurrentAnalyzingClause] = useState("");
     
-    // Ref to track progress for UI
     const processedCount = useRef(0);
 
     const handleAnalyze = useCallback(async () => {
@@ -41,7 +40,6 @@ export const useAuditWorkflow = () => {
             const activeKeyProfile = apiKeys.find(k => k.id === activeKeyId);
             
             // 1. IDENTIFY WORKLOAD ACROSS ALL PROCESSES
-            // Structure: { process: AuditProcess, clauseId: string, clauseData: any }
             const queue: { process: AuditProcess, cid: string, clause: any }[] = [];
 
             // Helper to find clause structure
@@ -68,17 +66,16 @@ export const useAuditWorkflow = () => {
                 const procMatrix = proc.matrixData || {};
                 
                 Object.keys(procMatrix).forEach(cid => {
-                    // Only analyze clauses that have data entered in the matrix
-                    // AND ensure the clause actually exists in the standard structure
-                    if (procMatrix[cid].some(r => r.status === 'supplied')) {
-                        const clauseData = findClauseData(cid);
-                        if (clauseData) {
-                            queue.push({
-                                process: proc,
-                                cid: cid,
-                                clause: clauseData
-                            });
-                        }
+                    // CHANGE: Analyze ALL clauses present in the matrix keys (Mapped Clauses).
+                    // We no longer filter by `r.status === 'supplied'`.
+                    // If empty, the AI will judge based on General Evidence or flag it.
+                    const clauseData = findClauseData(cid);
+                    if (clauseData) {
+                        queue.push({
+                            process: proc,
+                            cid: cid,
+                            clause: clauseData
+                        });
                     }
                 });
             });
@@ -86,7 +83,7 @@ export const useAuditWorkflow = () => {
             const total = queue.length;
 
             if (total === 0) {
-                throw new Error("No evidence found in any process to analyze.");
+                throw new Error("No clauses mapped in any process. Please go to Planning tab to select clauses.");
             }
 
             // 2. DEFINE WORKER FUNCTION (runs in parallel)
@@ -96,20 +93,28 @@ export const useAuditWorkflow = () => {
                 const procName = process.name || "Unnamed Process";
                 setCurrentAnalyzingClause(`[${procName}] ${clause.code}`);
 
-                // OPTIMIZATION 1: DATA SLICING & PRESERVATION
+                // Data Prep
                 const matrixRows = process.matrixData[cid] || [];
+                const hasSpecificInput = matrixRows.some(r => r.status === 'supplied');
                 
                 // Construct specific evidence for AI Context
-                const specificEvidenceForAI = matrixRows
-                    .filter(r => r.status === 'supplied')
-                    .map(r => `[Requirement]: ${r.requirement}\n[Evidence]: ${r.evidenceInput}`)
-                    .join("\n\n");
-                
-                // CRITICAL: Capture RAW input to inject back into result (Bypass AI Summarization)
-                const rawUserEvidence = matrixRows
-                    .filter(r => r.status === 'supplied')
-                    .map(r => r.evidenceInput)
-                    .join("\n\n");
+                let specificEvidenceForAI = "";
+                let rawUserEvidence = "";
+
+                if (hasSpecificInput) {
+                    specificEvidenceForAI = matrixRows
+                        .filter(r => r.status === 'supplied')
+                        .map(r => `[Requirement]: ${r.requirement}\n[Evidence]: ${r.evidenceInput}`)
+                        .join("\n\n");
+                    
+                    rawUserEvidence = matrixRows
+                        .filter(r => r.status === 'supplied')
+                        .map(r => r.evidenceInput)
+                        .join("\n\n");
+                } else {
+                    specificEvidenceForAI = "No specific evidence provided for this clause in the matrix.";
+                    rawUserEvidence = ""; // Empty string for raw output
+                }
 
                 // General evidence from THIS SPECIFIC PROCESS
                 const procEvidence = process.evidence || "";
@@ -117,7 +122,10 @@ export const useAuditWorkflow = () => {
 
                 const combinedEvidence = `
                 ${specificEvidenceForAI ? `### MATRIX EVIDENCE (Specific to ${clause.code}):\n${specificEvidenceForAI}` : ''}
+                
                 ${safeGeneralEvidence ? `### GENERAL PROCESS EVIDENCE (${procName}):\n${safeGeneralEvidence}` : ''}
+                
+                NOTE: If Matrix Evidence is missing, evaluate compliance based on General Process Evidence. If neither is sufficient, mark as NC or OFI (Missing Evidence).
                 `.trim();
 
                 const tagsText = (process.evidenceTags || [])
@@ -127,8 +135,7 @@ export const useAuditWorkflow = () => {
 
                 const fullInput = combinedEvidence + tagsText;
 
-                // OPTIMIZATION 2: CACHING
-                // Include Process ID in cache key to distinguish same clause across different processes
+                // Cache Check
                 const cacheKey = generateContentHash(`${cid}_${process.id}_${fullInput}_${activeKeyProfile?.activeModel}`);
                 
                 if (ANALYSIS_CACHE.has(cacheKey)) {
@@ -137,7 +144,7 @@ export const useAuditWorkflow = () => {
                     return ANALYSIS_CACHE.get(cacheKey)!;
                 }
 
-                // If not cached, call API
+                // Call API
                 try {
                     const jsonResult = await generateAnalysis(
                         { code: clause.code, title: clause.title, description: clause.description },
@@ -151,20 +158,21 @@ export const useAuditWorkflow = () => {
 
                     const parsed = JSON.parse(jsonResult);
                     
-                    // FORCE OVERRIDE EVIDENCE WITH RAW INPUT
+                    // Logic: If user provided raw input, we prefer preserving it in the "evidence" field for the UI
+                    // If not, we use what the AI summarized or deduced from General Evidence
                     const finalEvidence = rawUserEvidence.trim().length > 0 
                         ? rawUserEvidence 
-                        : (parsed.evidence || "No specific evidence cited.");
+                        : (parsed.evidence || "Analyzed based on general process context.");
 
                     const result: AnalysisResult = {
                         clauseId: parsed.clauseId || clause.code,
                         status: parsed.status || "N_A",
                         reason: parsed.reason || "Analysis completed.",
                         suggestion: parsed.suggestion || "",
-                        evidence: finalEvidence, // <--- PRESERVED FORMATTING
+                        evidence: finalEvidence, 
                         conclusion_report: parsed.conclusion_report || parsed.reason,
                         crossRefs: parsed.crossRefs || [],
-                        processId: process.id, // Explicitly bind to Process ID
+                        processId: process.id,
                         processName: procName
                     };
 
@@ -172,7 +180,6 @@ export const useAuditWorkflow = () => {
                     ANALYSIS_CACHE.set(cacheKey, result);
                     processedCount.current++;
                     
-                    // Update UI Progress
                     if (processedCount.current % 3 === 0) {
                         showToast(`Analyzed ${processedCount.current}/${total} items...`);
                     }
@@ -185,11 +192,11 @@ export const useAuditWorkflow = () => {
                 }
             };
 
-            // OPTIMIZATION 3: CONCURRENCY
+            // Execution
             showToast(`Batch processing ${total} findings across ${processes.length} processes...`);
             const results = await runWithConcurrency(queue, processItem, 3);
 
-            // 4. BATCH STATE UPDATE
+            // Update State
             const validResults = results.filter(r => r !== null) as AnalysisResult[];
             
             if (validResults.length > 0) {
@@ -197,7 +204,6 @@ export const useAuditWorkflow = () => {
                     const existing = prev ? [...prev] : [];
                     
                     validResults.forEach(newResult => {
-                        // Find existing finding for THIS Clause AND THIS Process
                         const idx = existing.findIndex(e => e.clauseId === newResult.clauseId && e.processId === newResult.processId);
                         if (idx >= 0) {
                             existing[idx] = newResult;
@@ -206,7 +212,6 @@ export const useAuditWorkflow = () => {
                         }
                     });
                     
-                    // Sort by Clause ID then Process Name
                     return existing.sort((a, b) => {
                         const clauseCompare = a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true });
                         if (clauseCompare !== 0) return clauseCompare;
@@ -225,7 +230,7 @@ export const useAuditWorkflow = () => {
             setIsAnalyzeLoading(false);
             setCurrentAnalyzingClause("");
         }
-    }, [standardKey, processes, apiKeys, activeKeyId, privacySettings, standards]); // Removed 'matrixData' and 'evidence' dependencies
+    }, [standardKey, processes, apiKeys, activeKeyId, privacySettings, standards]);
 
     return { 
         handleAnalyze, 

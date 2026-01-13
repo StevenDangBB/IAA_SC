@@ -5,6 +5,7 @@ import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { generateExecutiveSummary, formatFindingReportSection } from '../services/geminiService';
 import { processSourceFile } from '../utils';
+import { AnalysisResult } from '../types';
 
 export const useReportGenerator = (exportLanguage: string) => {
     const { analysisResult, auditInfo, standards, standardKey, setFinalReportText, selectedFindings } = useAudit();
@@ -14,7 +15,6 @@ export const useReportGenerator = (exportLanguage: string) => {
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [reportLoadingMessage, setReportLoadingMessage] = useState("");
     
-    // Detailed Progress State
     const [generationLogs, setGenerationLogs] = useState<string[]>([]);
     const [progressPercent, setProgressPercent] = useState(0);
 
@@ -32,7 +32,7 @@ export const useReportGenerator = (exportLanguage: string) => {
         try {
             const start = Date.now();
             const text = await processSourceFile(file);
-            if(Date.now() - start < 500) await new Promise(r => setTimeout(r, 500)); // UX delay
+            if(Date.now() - start < 500) await new Promise(r => setTimeout(r, 500));
 
             setReportTemplate(text);
             setReportTemplateName(file.name);
@@ -78,13 +78,13 @@ export const useReportGenerator = (exportLanguage: string) => {
             
             const summary = await generateExecutiveSummary({
                 company: auditInfo.company || "N/A",
-                address: auditInfo.address || "N/A", // NEW
-                scope: auditInfo.scope || "N/A",     // NEW
-                soa: auditInfo.soa || "N/A",         // NEW
+                address: auditInfo.address || "N/A",
+                scope: auditInfo.scope || "N/A",
+                soa: auditInfo.soa || "N/A",
                 type: auditInfo.type || "Internal Audit",
                 auditor: auditInfo.auditor || "N/A",
                 standard: standardName,
-                findings: activeFindings, // Use filtered list
+                findings: activeFindings,
                 lang: exportLanguage
             }, apiKey, model);
             
@@ -92,34 +92,56 @@ export const useReportGenerator = (exportLanguage: string) => {
             setGenerationLogs(prev => [...prev, "Executive Summary: Completed"]);
             setProgressPercent(10);
 
-            // 2. DETAILED FINDINGS LOOP (Clause by Clause)
-            const total = activeFindings.length;
+            // 2. DETAILED FINDINGS (GROUPED BY PROCESS)
             finalSections.push(`## DETAILED FINDINGS`);
 
-            for (let i = 0; i < total; i++) {
-                const finding = activeFindings[i];
-                const currentClause = `Clause ${finding.clauseId}`;
+            // Group findings by Process Name
+            const findingsByProcess: Record<string, AnalysisResult[]> = {};
+            activeFindings.forEach(f => {
+                const pName = f.processName || "General / Unassigned";
+                if (!findingsByProcess[pName]) findingsByProcess[pName] = [];
+                findingsByProcess[pName].push(f);
+            });
+
+            // Iterate through groups
+            const processNames = Object.keys(findingsByProcess).sort();
+            let processedCount = 0;
+            const totalFindings = activeFindings.length;
+
+            for (const pName of processNames) {
+                const processFindings = findingsByProcess[pName];
                 
-                setReportLoadingMessage(`Processing ${currentClause}...`);
-                setGenerationLogs(prev => [...prev, `Formatting ${currentClause} (${finding.status})...`]);
+                // Add Process Header
+                const auditorName = auditInfo.auditor || "[Auditor Name]";
+                finalSections.push(`### PROCESS: ${pName}\n**Execution performed by:** ${auditorName}\n`);
                 
-                // Real Processing Call
-                const sectionText = await formatFindingReportSection(finding, exportLanguage as 'en'|'vi', apiKey, model);
-                finalSections.push(sectionText);
+                // Process findings within this group
+                for (const finding of processFindings) {
+                    const currentClause = `Clause ${finding.clauseId}`;
+                    setReportLoadingMessage(`Formatting ${pName} - ${currentClause}...`);
+                    setGenerationLogs(prev => [...prev, `Processing ${pName} / ${currentClause}...`]);
+
+                    // Real Processing Call
+                    const sectionText = await formatFindingReportSection(finding, exportLanguage as 'en'|'vi', apiKey, model);
+                    finalSections.push(sectionText);
+
+                    processedCount++;
+                    const percent = 10 + Math.round((processedCount / totalFindings) * 90);
+                    setProgressPercent(percent);
+
+                    // Rate limit buffer
+                    if (processedCount % 3 === 0) await new Promise(r => setTimeout(r, 200));
+                }
                 
-                // Update Progress
-                const percent = 10 + Math.round(((i + 1) / total) * 90);
-                setProgressPercent(percent);
-                
-                // Small UX delay to make the log readable if API is too fast
-                if (i % 3 === 0) await new Promise(r => setTimeout(r, 200));
+                // Add separator between processes
+                finalSections.push("---"); 
             }
 
             // 3. FINALIZE
             setReportLoadingMessage("Finalizing document...");
             setGenerationLogs(prev => [...prev, "Stitching report sections..."]);
             
-            const fullReport = finalSections.join("\n\n" + "=".repeat(30) + "\n\n");
+            const fullReport = finalSections.join("\n\n");
             
             if (reportTemplate) {
                 setFinalReportText(`TEMPLATE APPLIED:\n${reportTemplate}\n\nGENERATED CONTENT:\n${fullReport}`);
@@ -150,7 +172,6 @@ export const useReportGenerator = (exportLanguage: string) => {
         isTemplateProcessing,
         handleTemplateUpload,
         handleGenerateReport,
-        // New exports for UI
         generationLogs,
         progressPercent
     };

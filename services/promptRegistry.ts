@@ -35,9 +35,9 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     REPORT: {
-        id: 'system_integration_report_v3_full_evidence',
-        label: 'Process-Based Integration Format (Full Evidence)',
-        description: 'Plain Text format preserving exact evidence structure.',
+        id: 'system_integration_report_v3_process_grouped',
+        label: 'Process-Based Integration Format',
+        description: 'Plain Text format grouped by Process with Auditor info.',
         isSystemDefault: true,
         template: `
         ROLE: ISO Audit Data Processor.
@@ -45,18 +45,20 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
 
         CRITICAL FORMATTING RULES:
         1. OUTPUT MUST BE PLAIN TEXT ONLY.
-        2. Group findings by PROCESS Name.
-        3. List Interviewees for each process.
+        2. **GROUPING:** All findings must be grouped under their respective PROCESS Name.
+        3. **HEADER:** Start each process section with:
+           "PROCESS: [Process Name]"
+           "AUDITOR: {{AUDITOR}}"
         4. CRITICAL: For 'VERIFIED_EVIDENCE', you MUST output the EXACT, FULL text provided in the input JSON for that finding. 
            - Do NOT summarize, truncate, or reformat. 
            - KEEP ALL original line breaks, bullet points, and spacing exactly as they appear in the source.
-           - If the evidence spans multiple lines, print them exactly as is.
         5. Use exactly "====================" (20 dashes) as a separator between clauses.
 
         REQUIRED STRUCTURE:
 
         PROCESS: [Process Name]
-        INTERVIEWEES: [List of names]
+        AUDITOR: {{AUDITOR}}
+        INTERVIEWEES: [List of names if available]
 
         [Repeat for each finding in this process]
         CLAUSE_ID: [Code]
