@@ -3,9 +3,10 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Icon } from '../UI';
 import { AnalysisResult, FindingStatus, FindingsViewMode } from '../../types';
 import { TABS_CONFIG } from '../../constants';
-import { performShadowReview } from '../../services/geminiService';
+import { performShadowReview, generateAnalysis } from '../../services/geminiService';
 import { useKeyPool } from '../../contexts/KeyPoolContext';
 import { useUI } from '../../contexts/UIContext';
+import { useAudit } from '../../contexts/AuditContext';
 
 interface FindingsViewProps {
     analysisResult: AnalysisResult[] | null;
@@ -32,13 +33,19 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 }) => {
     const findingsContainerRef = useRef<HTMLDivElement>(null);
     const findingRefs = useRef<(HTMLDivElement | null)[]>([]);
+    
+    // Contexts
     const { getActiveKey } = useKeyPool();
     const { showToast } = useUI();
+    const { standards, standardKey, privacySettings } = useAudit();
     
     // Local state for Shadow Review
     const [reviewLoading, setReviewLoading] = useState<string | null>(null); // Clause ID
     const [reviews, setReviews] = useState<Record<string, string>>({});
     
+    // Local state for Re-Analysis (Single Clause)
+    const [reanalyzingId, setReanalyzingId] = useState<string | null>(null);
+
     // Grouping State
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     
@@ -133,11 +140,80 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         }
     };
 
+    // --- RE-EVALUATION LOGIC ---
+    const handleReAnalyze = async (index: number, finding: AnalysisResult) => {
+        const keyProfile = getActiveKey();
+        if (!keyProfile) return showToast("API Key Required");
+        if (!standardKey || !standards[standardKey]) return showToast("Standard context missing");
+
+        setReanalyzingId(finding.clauseId);
+        
+        try {
+            // 1. Find Clause Data
+            const currentStd = standards[standardKey];
+            const findClauseData = (id: string) => {
+                const traverse = (list: any[]): any => {
+                    for (const c of list) {
+                        if (c.id === id || c.code === id) return c;
+                        if (c.subClauses) {
+                            const found = traverse(c.subClauses);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
+                for (const g of currentStd.groups) {
+                    const found = traverse(g.clauses);
+                    if (found) return found;
+                }
+                return null;
+            };
+
+            const clauseData = findClauseData(finding.clauseId);
+            if (!clauseData) throw new Error("Clause definition not found");
+
+            // 2. Call AI with Updated Evidence
+            const resultJson = await generateAnalysis(
+                { code: clauseData.code, title: clauseData.title, description: clauseData.description },
+                currentStd.name,
+                finding.evidence, // Use the potentially EDITED evidence
+                "", // No tags context needed for re-eval, user input is truth
+                keyProfile.key,
+                keyProfile.activeModel,
+                privacySettings.maskCompany
+            );
+
+            const parsed = JSON.parse(resultJson);
+
+            // 3. Update State (Merge Result)
+            setAnalysisResult(prev => {
+                if (!prev) return null;
+                const newArr = [...prev];
+                // Keep the edited evidence, update status/reason/suggestion
+                newArr[index] = { 
+                    ...newArr[index], 
+                    status: parsed.status,
+                    reason: parsed.reason,
+                    suggestion: parsed.suggestion,
+                    conclusion_report: parsed.conclusion_report
+                };
+                return newArr;
+            });
+            showToast("Finding Re-evaluated Successfully");
+
+        } catch (error: any) {
+            console.error(error);
+            showToast("Re-evaluation Failed: " + error.message);
+        } finally {
+            setReanalyzingId(null);
+        }
+    };
+
     const getFindingColorStyles = (status: FindingStatus) => {
         switch (status) {
             case 'COMPLIANT': return { bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500' };
             case 'NC_MAJOR': return { bg: 'bg-red-600', text: 'text-red-700 dark:text-red-300', pill: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', border: 'border-red-600' };
-            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300', border: 'border-orange-500' };
+            case 'NC_MINOR': return { bg: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300', pill: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400', border: 'border-orange-500' };
             case 'OFI': return { bg: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', border: 'border-blue-500' };
             default: return { bg: 'bg-slate-500', text: 'text-slate-600', pill: 'bg-slate-100 text-slate-500', border: 'border-slate-300' };
         }
@@ -147,6 +223,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         const styles = getFindingColorStyles(res.status as FindingStatus);
         const reviewText = reviews[res.clauseId];
         const isReviewing = reviewLoading === res.clauseId;
+        const isReanalyzing = reanalyzingId === res.clauseId;
 
         return (
             <div
@@ -198,13 +275,31 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     </div>
 
                     {/* EDITABLE EVIDENCE SECTION */}
-                    <div className="mb-4 group/evidence">
+                    <div className="mb-4 group/evidence relative">
+                        {isReanalyzing && (
+                            <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl flex items-center justify-center border border-indigo-100 dark:border-indigo-900">
+                                <div className="flex flex-col items-center">
+                                    <Icon name="Loader" className="animate-spin text-indigo-500 mb-2" size={24}/>
+                                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 animate-pulse">Re-evaluating based on updates...</span>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 relative transition-colors focus-within:border-indigo-300 dark:focus-within:border-indigo-700 focus-within:ring-1 focus-within:ring-indigo-500/20" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-2">
                                 <strong className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Verified Evidence</strong>
-                                <span className="text-[9px] text-slate-400 opacity-0 group-hover/evidence:opacity-100 transition-opacity flex items-center gap-1">
-                                    <Icon name="FileEdit" size={10}/> Editable (Raw Data)
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] text-slate-400 opacity-0 group-hover/evidence:opacity-100 transition-opacity flex items-center gap-1">
+                                        <Icon name="FileEdit" size={10}/> Editable
+                                    </span>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleReAnalyze(idx, res); }}
+                                        className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded text-[9px] font-bold hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors flex items-center gap-1 opacity-0 group-hover/evidence:opacity-100 focus:opacity-100"
+                                        title="Re-run AI Analysis for ONLY this clause based on updated evidence"
+                                    >
+                                        <Icon name="RefreshCw" size={10}/> Re-evaluate Finding
+                                    </button>
+                                </div>
                             </div>
                             
                             <textarea
@@ -213,6 +308,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                 className="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium resize-y min-h-[80px] whitespace-pre-wrap font-mono custom-scrollbar border-l-2 border-transparent focus:border-indigo-400 pl-2 transition-all"
                                 placeholder="Evidence content..."
                                 spellCheck={false}
+                                disabled={isReanalyzing}
                             />
                         </div>
                     </div>
@@ -220,12 +316,16 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     <div className="mb-2">
                         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors group-focus-within:border-indigo-500 shadow-sm" onClick={e => e.stopPropagation()}>
                             <strong className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1 block">Auditor Conclusion</strong>
-                            <textarea
-                                value={res.reason}
-                                onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
-                                className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
-                                placeholder="Enter conclusion..."
-                            />
+                            {isReanalyzing ? (
+                                <div className="h-[60px] w-full bg-slate-50 dark:bg-slate-800 animate-pulse rounded"></div>
+                            ) : (
+                                <textarea
+                                    value={res.reason}
+                                    onChange={(e) => handleUpdateFinding(idx, 'reason', e.target.value)}
+                                    className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
+                                    placeholder="Enter conclusion..."
+                                />
+                            )}
                         </div>
                     </div>
 
