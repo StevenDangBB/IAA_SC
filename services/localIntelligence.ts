@@ -2,9 +2,11 @@
 import { AnalysisResult } from "../types";
 
 /**
- * ISO Audit Pro - Local Intelligence
- * Provides fallback analysis when offline or when API quota is exceeded.
- * Uses rule-based heuristics instead of heavy LLM weights for browser performance.
+ * ISO Audit Pro - Local Intelligence & Structure Parser
+ * 
+ * CORE FEATURES:
+ * 1. Heuristic Analysis (Offline Audit Logic)
+ * 2. Structural Parsing (Splitting huge PDFs into granular Clauses)
  */
 
 const KEYWORDS = {
@@ -46,19 +48,17 @@ export const LocalIntelligence = {
             status = 'COMPLIANT';
             reason = 'Evidence suggests requirements are met.';
         } else {
-            // Fallback if no keywords found but evidence exists
             if (evidence.length > 50) {
-                status = 'COMPLIANT'; // Benefit of the doubt in offline mode
+                status = 'COMPLIANT'; 
                 reason = 'Offline Analysis: No obvious non-conformity keywords detected.';
             }
         }
 
-        // 3. Construct JSON response simulating LLM
         const result = {
             clauseId: clauseCode,
             status: status,
             reason: reason,
-            evidence: evidence.substring(0, 100) + '...', // Snippet
+            evidence: evidence.substring(0, 100) + '...', 
             suggestion: suggestion,
             conclusion_report: `[OFFLINE] ${reason}`,
             crossRefs: []
@@ -68,102 +68,74 @@ export const LocalIntelligence = {
     },
 
     /**
-     * Extracts text for a specific clause from a large document string using Smart Hierarchical Scanning.
-     * Dramatically improved to reduce dependency on AI.
+     * ADVANCED STRUCTURE PARSER
+     * Scans a full standard text document and splits it into structured objects.
+     * { code: "4.1", title: "...", content: "..." }
      */
-    extractClauseContent(fullText: string, clauseCode: string, clauseTitle: string): string | null {
-        if (!fullText) return null;
-
-        // 1. Normalize Text: Normalize newlines and spaces to handle OCR quirks
-        // We keep newlines as distinct markers but collapse multiple spaces
-        const cleanText = fullText.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ');
-        const escapedCode = clauseCode.replace(/\./g, '\\.');
-
-        // 2. Define Scan Strategy
-        // Strategy A: Strict Header Match (Code + Start of Title) - Highest Confidence
-        // ^(Line Start) + Code + (Dot optional) + Space + Title Word
-        const titleStart = clauseTitle.split(' ')[0].replace(/[^a-zA-Z0-9]/g, ''); 
-        const regexStrict = new RegExp(`(?:^|\\n)\\s*${escapedCode}\\.?\\s+.*${titleStart}`, 'i');
-
-        // Strategy B: Loose Header Match (Code Only at Start of Line) - Medium Confidence
-        // Use this if strict fails (common in OCR where title might be misspelled)
-        const regexLoose = new RegExp(`(?:^|\\n)\\s*${escapedCode}\\.?\\s+`, 'i');
-
-        // Execute Search
-        let match = cleanText.match(regexStrict);
-        let matchType = 'strict';
+    parseStandardToStructuralData(fullText: string): { code: string, title: string, content: string }[] {
+        if (!fullText) return [];
         
-        if (!match) {
-            match = cleanText.match(regexLoose);
-            matchType = 'loose';
+        const cleanText = fullText.replace(/\r\n/g, '\n');
+        const results: { code: string, title: string, content: string }[] = [];
+        
+        // Regex to identify clause headers (e.g., "4.1 Context", "10.2 Nonconformity")
+        // Matches start of line + Digits.Digits + Space + Title (Words)
+        const headerRegex = /(?:^|\n)\s*(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+([^\n]+)/g;
+        
+        let match;
+        const matches: { code: string, title: string, index: number }[] = [];
+
+        // 1. Find all headers positions
+        while ((match = headerRegex.exec(cleanText)) !== null) {
+            // Filter out obviously wrong matches (e.g. inside a sentence)
+            // A real header usually doesn't have too much text before it on the same line if it was trimmed,
+            // but our regex handles newlines.
+            
+            // Heuristic: Code should not be too long (ISO usually max 3 levels deep e.g. 8.5.1)
+            const code = match[1];
+            if (code.length > 10) continue; 
+
+            matches.push({
+                code: code,
+                title: match[2].trim(),
+                index: match.index
+            });
         }
 
-        if (match && match.index !== undefined) {
-            const startIndex = match.index;
-            // Advance past the match header to start capturing content
-            const contentStartIndex = startIndex; // Include header in output for context
+        // 2. Extract content between headers
+        for (let i = 0; i < matches.length; i++) {
+            const current = matches[i];
+            const next = matches[i + 1];
             
-            // 3. Smart End Detection (Lookahead)
-            // We need to find where this clause ends. It ends when:
-            // a) The next sibling clause starts (e.g. if 4.1, look for 4.2)
-            // b) The next parent clause starts (e.g. if 4.1, look for 5 or 5.0 or 5.1)
-            // c) A generic new clause pattern starts at the beginning of a line
+            const start = current.index;
+            const end = next ? next.index : cleanText.length;
             
-            const parts = clauseCode.split('.').map(Number);
-            const lastNum = parts[parts.length - 1];
+            // Extract and clean
+            const rawSection = cleanText.substring(start, end);
             
-            // Construct next sibling code (e.g., 9.2 -> 9.3)
-            const nextSiblingParts = [...parts];
-            nextSiblingParts[nextSiblingParts.length - 1] = lastNum + 1;
-            const nextSiblingCode = nextSiblingParts.join('\\.');
+            // Remove the header line itself to get just the body content
+            // The header is roughly "Code Title" length
+            const firstLineBreak = rawSection.indexOf('\n');
+            const content = firstLineBreak > -1 ? rawSection.substring(firstLineBreak).trim() : rawSection;
 
-            // Construct next parent code (e.g., 9.2 -> 10)
-            const nextParentCode = (parts[0] + 1).toString();
-
-            // Regex to find the NEXT header. 
-            // We look for [NextSibling] OR [NextParent] OR [Generic Clause Pattern like X.X]
-            // We prioritize specific next codes.
-            
-            const restOfText = cleanText.substring(startIndex + match[0].length);
-            
-            // Dynamic Regex for stopping point
-            // Stop at:
-            // 1. Next Sibling (e.g. "4.2")
-            // 2. Next Parent (e.g. "5." or "5 ")
-            // 3. Annex A (Specific to ISO)
-            // 4. "Bibliography" or common footer sections if at end
-            const stopRegex = new RegExp(`(?:^|\\n)\\s*(${nextSiblingCode}|${nextParentCode}\\.|${nextParentCode}\\s|Annex|Bibliography)`, 'i');
-            
-            const nextMatch = restOfText.match(stopRegex);
-            
-            let extractedContent = "";
-            
-            if (nextMatch && nextMatch.index !== undefined) {
-                // Found a logical stopping point
-                extractedContent = match[0] + restOfText.substring(0, nextMatch.index);
-            } else {
-                // No specific sibling/parent found. 
-                // Fallback: Look for ANY likely clause header (Digit.Digit) that appears at start of line
-                // But we must be careful not to catch bullet points like "1." inside text.
-                // We assume ISO clauses are at least X.X
-                
-                const genericStopRegex = /(?:^|\n)\s*\d{1,2}\.\d{1,2}(\.\d{1,2})?\s+[A-Z]/;
-                const genericMatch = restOfText.match(genericStopRegex);
-                
-                if (genericMatch && genericMatch.index !== undefined && genericMatch.index > 50) { 
-                    // Ensure we grabbed at least some text before stopping
-                    extractedContent = match[0] + restOfText.substring(0, genericMatch.index);
-                } else {
-                    // End of document or unrecognized structure
-                    // Cap at 3000 chars to prevent returning whole doc
-                    extractedContent = match[0] + restOfText.substring(0, 3000);
-                }
+            // Only add if content has substance
+            if (content.length > 10) {
+                results.push({
+                    code: current.code,
+                    title: current.title,
+                    content: content
+                });
             }
-
-            // Cleanup
-            return extractedContent.trim();
         }
 
-        return null;
+        return results;
+    },
+
+    // Legacy/Fallback single extractor (Kept for compatibility)
+    extractClauseContent(fullText: string, clauseCode: string, clauseTitle: string): string | null {
+        // ... (This can leverage the new parser cache ideally, but keeping simple regex for now)
+        const parsed = this.parseStandardToStructuralData(fullText);
+        const found = parsed.find(p => p.code === clauseCode);
+        return found ? found.content : null;
     }
 };

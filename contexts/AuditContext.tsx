@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
-import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings } from '../types';
-import { DEFAULT_AUDIT_INFO, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
+import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings, AuditSite, AuditMember, AuditPlanConfig, AuditScheduleItem } from '../types';
+import { DEFAULT_AUDIT_INFO, DEFAULT_PLAN_CONFIG, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
 
 interface AuditContextType {
@@ -29,6 +29,8 @@ interface AuditContextType {
     setActiveProcessId: (id: string | null) => void;
     addProcess: (name: string) => void;
     renameProcess: (id: string, name: string) => void;
+    updateProcessCode: (id: string, code: string) => void;
+    updateProcessSites: (id: string, siteIds: string[]) => void; // New
     deleteProcess: (id: string) => void;
     batchUpdateProcessClauses: (updates: { processId: string, clauses: string[] }[]) => void;
     toggleProcessClause: (processId: string, clauseId: string) => void; 
@@ -36,6 +38,16 @@ interface AuditContextType {
     // Interviewee Management
     addInterviewee: (name: string) => void;
     removeInterviewee: (name: string) => void;
+
+    // Smart Planning (New)
+    auditSites: AuditSite[];
+    setAuditSites: React.Dispatch<React.SetStateAction<AuditSite[]>>;
+    auditTeam: AuditMember[];
+    setAuditTeam: React.Dispatch<React.SetStateAction<AuditMember[]>>;
+    auditPlanConfig: AuditPlanConfig;
+    setAuditPlanConfig: React.Dispatch<React.SetStateAction<AuditPlanConfig>>;
+    auditSchedule: AuditScheduleItem[];
+    setAuditSchedule: React.Dispatch<React.SetStateAction<AuditScheduleItem[]>>;
 
     // Active Data
     evidence: string;
@@ -45,7 +57,7 @@ interface AuditContextType {
     evidenceTags: EvidenceTag[];
     addEvidenceTag: (tag: EvidenceTag) => void;
     
-    // Selections (Global/Legacy - mostly for sidebar highlighting)
+    // Selections
     selectedClauses: string[];
     setSelectedClauses: React.Dispatch<React.SetStateAction<string[]>>;
     
@@ -92,11 +104,14 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [processes, setProcesses] = useState<AuditProcess[]>([]);
     const [activeProcessId, setActiveProcessId] = useState<string | null>(null);
 
-    // Active View Data (Synced with Active Process)
-    // We use `loadedProcessId` to track which process owns the current `evidence` and `matrixData` in state.
-    // This prevents race conditions where we might save data from Process A into Process B during a switch.
+    // Smart Planning State
+    const [auditSites, setAuditSites] = useState<AuditSite[]>([]);
+    const [auditTeam, setAuditTeam] = useState<AuditMember[]>([]);
+    const [auditPlanConfig, setAuditPlanConfig] = useState<AuditPlanConfig>(DEFAULT_PLAN_CONFIG);
+    const [auditSchedule, setAuditSchedule] = useState<AuditScheduleItem[]>([]);
+
+    // Active View Data
     const [loadedProcessId, setLoadedProcessId] = useState<string | null>(null);
-    
     const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
     const [matrixData, setMatrixData] = useState<Record<string, MatrixRow[]>>({});
     const [evidenceTags, setEvidenceTags] = useState<EvidenceTag[]>([]);
@@ -113,20 +128,12 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [finalReportText, setFinalReportText] = useState<string | null>(null);
 
     const standards = useMemo(() => ({ ...STANDARDS_DATA, ...customStandards }), [customStandards]);
-    
-    // Safe fallback
     const activeProcess = useMemo(() => processes.find(p => p.id === activeProcessId), [processes, activeProcessId]);
-
-    // Use a ref for processes to access them in effects without causing dependency loops
     const processesRef = useRef(processes);
     useEffect(() => { processesRef.current = processes; }, [processes]);
 
     // --- SYNC EFFECTS ---
-
-    // 1. Load Process Data (Read Layer)
-    // This runs when the user selects a different process.
     useEffect(() => {
-        // If we deselected, clear everything
         if (!activeProcessId) {
             setEvidence("");
             setMatrixData({});
@@ -134,47 +141,23 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             setLoadedProcessId(null);
             return;
         }
-
-        // Do not reload if we are already loaded (avoids spurious resets)
         if (activeProcessId === loadedProcessId) return;
 
         const target = processesRef.current.find(p => p.id === activeProcessId);
         if (target) {
-            // CRITICAL: We set the loaded ID *simultaneously* with the data.
-            // This ensures that any subsequent "Save" effect sees consistent state.
             setEvidence(target.evidence || "");
             setMatrixData(target.matrixData || {});
             setEvidenceTags(target.evidenceTags || []);
             setLoadedProcessId(activeProcessId);
         } else {
-            // Fallback if ID invalid
             setLoadedProcessId(null);
         }
     }, [activeProcessId, loadedProcessId]); 
 
-    // 2. Save View Data (Write Layer)
-    // This runs whenever the local view data changes (user typing).
-    // CRITICAL FIX: We ONLY save to `loadedProcessId`. We do NOT use `activeProcessId` here.
-    // If `activeProcessId` changed but `loadedProcessId` hasn't updated yet (race condition),
-    // this effect will effectively pause or save to the OLD process (which is safe),
-    // rather than overwriting the NEW process with OLD data.
     useEffect(() => {
         if (!loadedProcessId) return;
-        
-        // Double Guard: If for some reason activeProcessId has switched but loadedProcessId hasn't updated
-        // (e.g. during a rapid switch race), we must PAUSE saving to avoid writing old data to the wrong slot.
-        // We only save when the loaded ID matches the user's intent or if we are purely saving the loaded context.
-        // Actually, we should just save to loadedProcessId regardless of activeProcessId to ensure data persistence 
-        // before the switch completes. But to be safe against "bleeding", checking mismatch is useful.
-        
-        // HOWEVER, a strict check (activeProcessId !== loadedProcessId) might prevent the FINAL save of the old process
-        // right as we switch. 
-        // Better Strategy: The `setProcesses` update below strictly targets `loadedProcessId`.
-        // This is safe. The issue in the past was using `activeProcessId` here.
-        
         setProcesses(prev => prev.map(p => {
             if (p.id === loadedProcessId) {
-                // Optimization: Only update reference if data actually changed
                 if (p.evidence !== evidence || p.matrixData !== matrixData || p.evidenceTags !== evidenceTags) {
                     return { ...p, evidence, matrixData, evidenceTags };
                 }
@@ -184,7 +167,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }, [evidence, matrixData, evidenceTags, loadedProcessId]);
 
     // --- ACTIONS ---
-
     const addCustomStandard = (key: string, std: Standard) => {
         setCustomStandards(prev => ({ ...prev, [key]: std }));
     };
@@ -211,7 +193,8 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             interviewees: [],
             matrixData: {}, 
             evidenceTags: [], 
-            uploadedFiles: [] 
+            uploadedFiles: [],
+            siteIds: []
         };
         setProcesses(prev => [...prev, newProcess]);
         setActiveProcessId(newId);
@@ -219,6 +202,14 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
 
     const renameProcess = (id: string, name: string) => {
         setProcesses(prev => prev.map(p => p.id === id ? { ...p, name } : p));
+    };
+
+    const updateProcessCode = (id: string, code: string) => {
+        setProcesses(prev => prev.map(p => p.id === id ? { ...p, competencyCode: code } : p));
+    };
+
+    const updateProcessSites = (id: string, siteIds: string[]) => {
+        setProcesses(prev => prev.map(p => p.id === id ? { ...p, siteIds } : p));
     };
 
     const deleteProcess = (idToDelete: string) => {
@@ -274,8 +265,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return p;
         }));
         
-        // If we updated the currently loaded process, we must also update local state to reflect changes
-        // This is a special case: External modification of the ACTIVE process's structure.
         const activeUpdate = updates.find(u => u.processId === loadedProcessId);
         if (activeUpdate) {
              setMatrixData(prev => {
@@ -296,7 +285,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const toggleProcessClause = (processId: string, clauseId: string) => {
         setProcesses(prev => prev.map(p => {
             if (p.id !== processId) return p;
-
             const newMatrixData = { ...p.matrixData };
             if (newMatrixData[clauseId]) {
                 delete newMatrixData[clauseId];
@@ -304,7 +292,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 const standard = standards[standardKey];
                 const clause = findClauseInStandard(clauseId, standard);
                 const desc = clause?.description || "Requirement";
-                
                 newMatrixData[clauseId] = [{
                     id: `${clauseId}_req_0`,
                     requirement: desc,
@@ -315,7 +302,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return { ...p, matrixData: newMatrixData };
         }));
 
-        // Sync local state if we modified the currently loaded process
         if (loadedProcessId === processId) {
             setMatrixData(prev => {
                 const next = { ...prev };
@@ -378,7 +364,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
         if (standardKey) {
-            await KnowledgeStore.deleteDocument(standardKey);
+            await KnowledgeStore.deleteStandardData(standardKey);
         }
     };
 
@@ -392,7 +378,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setAuditInfo(DEFAULT_AUDIT_INFO);
         setProcesses([]);
         setActiveProcessId(null);
-        setLoadedProcessId(null); // Clear loaded tracker
+        setLoadedProcessId(null); 
         setEvidence("");
         setMatrixData({});
         setEvidenceTags([]);
@@ -403,6 +389,11 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
         setPrivacySettings(DEFAULT_PRIVACY);
+        // Reset Smart Planning
+        setAuditSites([]);
+        setAuditTeam([]);
+        setAuditSchedule([]);
+        setAuditPlanConfig(DEFAULT_PLAN_CONFIG);
     };
 
     const restoreSession = (data: any) => {
@@ -427,6 +418,11 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         if (data.selectedFindings) setSelectedFindings(data.selectedFindings);
         if (data.finalReportText) setFinalReportText(data.finalReportText);
         
+        if (data.auditSites) setAuditSites(data.auditSites);
+        if (data.auditTeam) setAuditTeam(data.auditTeam);
+        if (data.auditPlanConfig) setAuditPlanConfig(data.auditPlanConfig);
+        if (data.auditSchedule) setAuditSchedule(data.auditSchedule);
+        
         if(data.standardKey) loadKnowledgeForStandard(data.standardKey);
     };
 
@@ -434,8 +430,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
         auditInfo, setAuditInfo,
         privacySettings, setPrivacySettings,
-        processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
+        processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, updateProcessCode, updateProcessSites, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
         addInterviewee, removeInterviewee,
+        auditSites, setAuditSites, auditTeam, setAuditTeam, auditPlanConfig, setAuditPlanConfig, auditSchedule, setAuditSchedule,
         evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,
         selectedClauses, setSelectedClauses,
         knowledgeBase, knowledgeFileName, loadKnowledgeForStandard, clearKnowledge, setKnowledgeData,
@@ -444,6 +441,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }), [
         standards, standardKey, customStandards, auditInfo, privacySettings,
         processes, activeProcessId, activeProcess,
+        auditSites, auditTeam, auditPlanConfig, auditSchedule,
         evidence, matrixData, evidenceTags,
         selectedClauses, knowledgeBase, knowledgeFileName,
         analysisResult, selectedFindings, finalReportText

@@ -26,34 +26,35 @@ export interface StandardsData {
 
 export interface AuditInfo {
     company: string;
-    address: string; // New field
-    scope: string;   // New field
-    soa: string;     // New field (ISO 27001 specific)
+    address: string;
+    scope: string;
+    soa: string;
     smo: string;
     auditor: string;
+    leadAuditorCode?: string; // New: Lead Auditor Technical Code
     type: string;
-    // Interviewee removed from global scope, moved to AuditProcess
 }
 
 export interface PrivacySettings {
     maskCompany: boolean;
     maskSmo: boolean;
-    maskPeople: boolean; // Auditee/Interiewees
+    maskPeople: boolean;
     maskEmail: boolean;
     maskPhone: boolean;
     maskAddress: boolean;
     maskIP: boolean;
 }
 
-// --- NEW PROCESS ARCHITECTURE (formerly Scope) ---
 export interface AuditProcess {
     id: string;
-    name: string; // e.g., "Purchasing", "Production", "Management"
-    evidence: string; // Raw text evidence for this process
-    interviewees: string[]; // List of people interviewed for this process
-    matrixData: Record<string, MatrixRow[]>; // Matrix data for this process
+    name: string;
+    competencyCode?: string;
+    siteIds?: string[]; // New: Map process to specific sites (empty = all sites)
+    evidence: string;
+    interviewees: string[];
+    matrixData: Record<string, MatrixRow[]>;
     evidenceTags: EvidenceTag[];
-    uploadedFiles: any[]; // Store file references per process
+    uploadedFiles: any[];
 }
 
 export type FindingStatus = 'COMPLIANT' | 'NC_MAJOR' | 'NC_MINOR' | 'OFI' | 'N_A';
@@ -62,14 +63,14 @@ export type FindingsViewMode = 'list' | 'matrix';
 export interface AnalysisResult {
     clauseId: string;
     status: FindingStatus;
-    reason: string;     // Default/Fallback reason
-    reason_en?: string; // Explicit English reason
-    reason_vi?: string; // Explicit Vietnamese reason
+    reason: string;
+    reason_en?: string;
+    reason_vi?: string;
     suggestion: string;
     evidence: string;
     conclusion_report: string;
     crossRefs?: string[]; 
-    processId?: string; // Track which process this finding belongs to
+    processId?: string;
     processName?: string;
 }
 
@@ -98,15 +99,56 @@ export interface SessionSnapshot {
         auditInfo: AuditInfo;
         selectedClauses: string[];
         privacySettings?: PrivacySettings;
-        
-        // Multi-Process Data Structure
         activeProcessId: string;
         processes: AuditProcess[];
-        
+        auditSites?: AuditSite[];
+        auditTeam?: AuditMember[];
+        auditPlanConfig?: AuditPlanConfig;
+        auditSchedule?: AuditScheduleItem[];
         analysisResult: AnalysisResult[] | null;
         selectedFindings: Record<string, boolean>;
         finalReportText: string | null;
     };
+}
+
+// --- SMART PLANNING TYPES ---
+
+export interface AuditSite {
+    id: string;
+    name: string;
+    address: string;
+    scope: string; // New: Site specific scope
+    isMain: boolean;
+}
+
+export interface AuditMember {
+    id: string;
+    name: string;
+    role: 'Lead Auditor' | 'Auditor' | 'Technical Expert';
+    competencyCodes: string;
+    manDays: number;
+    isRemote: boolean; // New: Audit mode
+    availability?: string; // New: Specific constraints (e.g., "09:00-11:00 Online Only")
+}
+
+export interface AuditPlanConfig {
+    auditDates: string[]; // CHANGED: Array of specific dates (YYYY-MM-DD)
+    startTime: string;
+    endTime: string;
+    lunchStartTime: string; // New
+    lunchEndTime: string;   // New
+}
+
+export interface AuditScheduleItem {
+    day: number;
+    date: string; // New: Specific date string
+    timeSlot: string;
+    activity: string;
+    siteName: string;
+    auditorName: string;
+    processName?: string;
+    clauseRefs?: string[];
+    isRemote?: boolean;
 }
 
 // --- EXISTING TYPES ---

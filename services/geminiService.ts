@@ -5,45 +5,47 @@ import { PromptRegistry } from "./promptRegistry";
 import { VectorStore } from "./vectorStore";
 import { PrivacyService } from "./privacyService"; 
 import { LocalIntelligence } from "./localIntelligence";
-import { AnalysisResult } from "../types";
+import { AnalysisResult, AuditSite, AuditMember, AuditPlanConfig, AuditProcess, Clause } from "../types";
 
 // --- CLIENT FACTORY ---
-const getAiClient = (overrideKey?: string) => {
-    let keyToUse = overrideKey;
-    if (!keyToUse && MY_FIXED_KEYS.length > 0) keyToUse = MY_FIXED_KEYS[0];
+const getApiKey = (overrideKey?: string): string | null => {
+    if (overrideKey?.trim()) return overrideKey.trim();
+    if (MY_FIXED_KEYS.length > 0 && MY_FIXED_KEYS[0]?.trim()) return MY_FIXED_KEYS[0].trim();
     
-    if (!keyToUse) {
-        try {
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) {
             // @ts-ignore
-            if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
-                // @ts-ignore
-                keyToUse = import.meta.env.VITE_API_KEY;
-            }
-        } catch (e) {}
+            return import.meta.env.VITE_API_KEY;
+        }
+    } catch (e) {}
+
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+        return process.env.API_KEY;
     }
-    if (!keyToUse && typeof process !== 'undefined' && process.env) keyToUse = process.env.API_KEY;
-    
-    if (!keyToUse) {
-        try {
-            const poolRaw = localStorage.getItem("iso_api_keys");
-            const activeId = localStorage.getItem("iso_active_key_id");
-            if (poolRaw) {
-                const pool = JSON.parse(poolRaw);
-                if (Array.isArray(pool) && pool.length > 0) {
-                    const activeKey = pool.find((k: any) => k.id === activeId);
-                    keyToUse = activeKey ? activeKey.key : pool[0].key;
-                }
+
+    try {
+        const poolRaw = localStorage.getItem("iso_api_keys");
+        const activeId = localStorage.getItem("iso_active_key_id");
+        if (poolRaw) {
+            const pool = JSON.parse(poolRaw);
+            if (Array.isArray(pool) && pool.length > 0) {
+                const activeKey = pool.find((k: any) => k.id === activeId);
+                return activeKey ? activeKey.key : pool[0].key;
             }
-        } catch (e) {}
-    }
+        }
+    } catch (e) {}
     
-    const apiKey = (keyToUse || "").trim();
-    if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey });
+    return null;
+};
+
+const getAiClient = (overrideKey?: string) => {
+    const key = getApiKey(overrideKey);
+    if (!key) return null;
+    return new GoogleGenAI({ apiKey: key });
 };
 
 // --- MODEL HEALTH REGISTRY (In-Memory) ---
-// Tracks which models are currently "hot" (rate limited)
 const modelCooldownRegistry = new Map<string, number>();
 
 const isModelAvailable = (model: string): boolean => {
@@ -54,33 +56,23 @@ const isModelAvailable = (model: string): boolean => {
 
 const markModelRateLimited = (model: string) => {
     console.warn(`[Smart Rotator] ⚠️ Model ${model} hit rate limit. Cooling down for 60s.`);
-    // Set 60 seconds cooldown for this model
     modelCooldownRegistry.set(model, Date.now() + 60000);
 };
 
 // --- CORE UTILS ---
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * SMART WATERFALL EXECUTION STRATEGY
- * Dynamic model switching based on health status and hierarchy.
- */
 const executeWithModelCascade = async (
     preferredModel: string,
     operationName: string,
     executeFn: (model: string) => Promise<GenerateContentResponse>
 ): Promise<string> => {
-    
-    // 1. Construct Priority List
-    // Always try preferred first (if healthy), then fallback to hierarchy
-    const priorityList = [preferredModel, ...MODEL_HIERARCHY];
-    const uniqueModels = [...new Set(priorityList)].filter(m => m && !m.includes('1.5')); // 1.5 deprecated
+    // Filter out unsafe/legacy 1.5 models
+    const safeHierarchy = MODEL_HIERARCHY.filter(m => !m.includes('1.5'));
+    const priorityList = [preferredModel, ...safeHierarchy];
+    const uniqueModels = [...new Set(priorityList)].filter(Boolean);
 
-    // 2. Filter Healthy Models
     let candidates = uniqueModels.filter(m => isModelAvailable(m));
-    
-    // If ALL models are in cooldown, ignore cooldowns and force try the lowest tier (Flash Lite)
-    // This assumes Flash Lite recovers faster or user is desperate.
     if (candidates.length === 0) {
         console.warn(`[Smart Rotator] All models in cooldown. Forcing retry on fallback.`);
         candidates = ["gemini-2.0-flash-lite-preview-02-05", ...uniqueModels];
@@ -102,26 +94,15 @@ const executeWithModelCascade = async (
 
             console.warn(`[${operationName}] ❌ Failed on ${model}: ${msg}`);
 
-            // CASE 1: QUOTA EXCEEDED (429 or 503 sometimes)
             if (status === 429 || msg.includes("exhausted") || msg.includes("too many requests")) {
                 markModelRateLimited(model);
-                // Loop continues to next model immediately
-            }
-            // CASE 2: INVALID KEY (403)
-            else if (status === 403 || msg.includes("key not valid") || msg.includes("api_key_invalid")) {
+            } else if (status === 403 || msg.includes("key not valid") || msg.includes("api_key_invalid")) {
+                // Critical Auth Error - Do not rotate, fail immediately
                 throw new Error("Invalid API Key. Please check your settings.");
             }
-            // CASE 3: MODEL NOT FOUND (404)
-            else if (status === 404 || msg.includes("not found")) {
-                // Just skip this model forever in this session? 
-                // For now just continue loop
-            }
-            
-            // Short pause to prevent hammering
             await wait(500); 
         }
     }
-
     throw new Error(`All AI models failed. Last error: ${lastError?.message || 'Unknown'}`);
 };
 
@@ -130,9 +111,8 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
     if (!key) return { isValid: false, latency: 0, errorType: 'invalid', errorMessage: "Key is empty" };
     
     const ai = new GoogleGenAI({ apiKey: key });
-    
-    // Probe with the most robust model first
-    const modelsToProbe = ["gemini-2.0-flash", "gemini-3-flash-preview"];
+    // Use lightweight model for validation
+    const modelsToProbe = ["gemini-2.0-flash-lite-preview-02-05", "gemini-2.0-flash"];
 
     for (const model of modelsToProbe) {
         const start = performance.now();
@@ -146,12 +126,12 @@ export const validateApiKey = async (rawKey: string): Promise<{ isValid: boolean
             }
         }
     }
-    
-    // Assume valid if not explicitly 403 (could be quota)
+    // Fallback success assumption if models are just busy but auth passed
     return { isValid: true, latency: 999, activeModel: "gemini-2.0-flash" }; 
 };
 
-// --- ANALYSIS + HYBRID RAG ---
+// --- CORE FEATURES ---
+
 export const generateAnalysis = async (
     clause: { code: string, title: string, description: string },
     standardName: string,
@@ -168,14 +148,18 @@ export const generateAnalysis = async (
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
     
-    const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
-    const ragKey = apiKey || ""; 
-    const vectorContext = await VectorStore.search(ragQuery, ragKey);
-    
+    // Privacy Shield
     let safeEvidence = evidenceContext + "\n\nTAGGED SECTIONS:\n" + tagsContext;
     if (usePrivacyShield) {
         safeEvidence = PrivacyService.redact(safeEvidence);
     }
+    if (safeEvidence.length > 30000) safeEvidence = safeEvidence.substring(0, 30000) + "...[TRUNCATED]";
+
+    // RAG Retrieval
+    const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
+    const ragKey = apiKey || getApiKey() || ""; 
+    const vectorContext = await VectorStore.search(ragQuery, ragKey);
+    const safeRag = vectorContext.length > 5000 ? vectorContext.substring(0, 5000) : vectorContext;
 
     const template = PromptRegistry.getPrompt('ANALYSIS');
     const finalPrompt = PromptRegistry.hydrate(template.template, {
@@ -183,7 +167,7 @@ export const generateAnalysis = async (
         CLAUSE_CODE: clause.code,
         CLAUSE_TITLE: clause.title,
         CLAUSE_DESC: clause.description,
-        RAG_CONTEXT: vectorContext || "No source document available for vector search.",
+        RAG_CONTEXT: safeRag || "No source doc.",
         EVIDENCE: safeEvidence
     });
 
@@ -195,8 +179,8 @@ export const generateAnalysis = async (
                 clauseId: { type: Type.STRING },
                 status: { type: Type.STRING, enum: ["COMPLIANT", "NC_MINOR", "NC_MAJOR", "OFI", "N_A"] },
                 reason: { type: Type.STRING },
-                reason_en: { type: Type.STRING }, // ADDED
-                reason_vi: { type: Type.STRING }, // ADDED
+                reason_en: { type: Type.STRING },
+                reason_vi: { type: Type.STRING },
                 suggestion: { type: Type.STRING },
                 evidence: { type: Type.STRING },
                 conclusion_report: { type: Type.STRING },
@@ -223,7 +207,6 @@ export const generateAnalysis = async (
     }
 };
 
-// --- SHADOW REVIEWER ---
 export const performShadowReview = async (
     finding: AnalysisResult,
     apiKey?: string,
@@ -232,280 +215,300 @@ export const performShadowReview = async (
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    const prompt = `
-    ROLE: ISO Technical Reviewer.
-    TASK: Critique this finding:
+    const prompt = `Critique ISO finding (max 50 words):
     Clause: ${finding.clauseId} (${finding.status})
-    Evidence: "${finding.evidence}"
-    Reason: "${finding.reason}"
-    
-    Output max 100 words critique.
-    `;
+    Evid: "${finding.evidence.substring(0, 500)}"
+    Reason: "${finding.reason}"`;
 
     try {
         return await executeWithModelCascade(
-            model || "gemini-2.0-flash", 
+            "gemini-2.0-flash", 
             "Shadow Review",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return "Review unavailable (API Error).";
+        return "Review unavailable.";
     }
 };
 
-// --- REAL-TIME REPORT GENERATION STEPS ---
+export const generateAuditSchedule = async (
+    sites: AuditSite[],
+    team: AuditMember[],
+    processes: AuditProcess[],
+    config: AuditPlanConfig,
+    apiKey?: string,
+    model?: string,
+    leadAuditorInfo?: { name: string, code?: string }
+) => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
 
-// Step 1: Generate Executive Summary
+    let finalTeam = [...team];
+    if (leadAuditorInfo?.name && !finalTeam.find(m => m.name === leadAuditorInfo.name)) {
+        finalTeam.push({
+            id: 'lead_auto',
+            name: leadAuditorInfo.name,
+            role: 'Lead Auditor',
+            competencyCodes: leadAuditorInfo.code || "All",
+            manDays: 1,
+            isRemote: false,
+            availability: "Full Time"
+        });
+    }
+
+    // --- OPTIMIZATION: COMPACT DATA FORMATTING ---
+    const sitesCompact = sites.map(s => `ID:${s.id}|${s.name}|${s.isMain ? 'HQ' : 'Site'}`).join("\n");
+    
+    const teamCompact = finalTeam.map(m => 
+        `User:${m.name}|Role:${m.role}|Code:${m.competencyCodes}|Mode:${m.isRemote?'Remote':'OnSite'}`
+    ).join("\n");
+
+    // --- CRITICAL FIX: PRE-CALCULATE VALID AUDITORS PER PROCESS ---
+    const processReqs = processes.map(p => {
+        const siteConstraint = p.siteIds && p.siteIds.length > 0 ? `|Sites:${p.siteIds.join(',')}` : "";
+        const clauseList = Object.keys(p.matrixData).join(", ");
+        
+        // Match Making Logic
+        const reqCode = p.competencyCode ? p.competencyCode.trim() : "";
+        const validAuditors = finalTeam.filter(auditor => {
+            if (!reqCode) return true; // Process has no code req => All are valid
+            const audCodes = (auditor.competencyCodes || "").split(',').map(s => s.trim());
+            return audCodes.includes("All") || audCodes.includes(reqCode);
+        }).map(a => a.name);
+
+        const validAuditorStr = validAuditors.length > 0 ? validAuditors.join(", ") : "NONE_QUALIFIED";
+
+        return `Process:${p.name}|ReqCode:${reqCode || "None"}${siteConstraint}\n[${clauseList}]\n[VALID_AUDITORS: ${validAuditorStr}]`;
+    }).join("\n\n");
+
+    const datesList = config.auditDates.join(", ");
+
+    const template = PromptRegistry.getPrompt('SCHEDULING');
+    
+    // Inject the stricter rule into the template dynamically if not already present
+    // Note: Ideally update the promptRegistry, but this ensures it works immediately with current prompt state
+    let baseTemplate = template.template;
+    if (!baseTemplate.includes("VALID_AUDITORS")) {
+        baseTemplate += `\n\n5. **COMPETENCY ENFORCEMENT**: For each process, you MUST ONLY assign an auditor listed in the [VALID_AUDITORS] field. If valid list is 'NONE_QUALIFIED', mark activity as 'UNSTAFFED'.`;
+    }
+
+    const prompt = PromptRegistry.hydrate(baseTemplate, {
+        START_TIME: config.startTime,
+        END_TIME: config.endTime,
+        LUNCH_START: config.lunchStartTime,
+        LUNCH_END: config.lunchEndTime,
+        DATES: datesList,
+        SITES_COMPACT: sitesCompact,
+        TEAM_COMPACT: teamCompact,
+        PROCESS_REQUIREMENTS: processReqs
+    });
+
+    const configGen: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    day: { type: Type.INTEGER },
+                    date: { type: Type.STRING },
+                    timeSlot: { type: Type.STRING },
+                    activity: { type: Type.STRING },
+                    siteName: { type: Type.STRING },
+                    auditorName: { type: Type.STRING },
+                    processName: { type: Type.STRING },
+                    clauseRefs: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    isRemote: { type: Type.BOOLEAN }
+                },
+                required: ["day", "date", "timeSlot", "activity", "auditorName", "processName"]
+            }
+        }
+    };
+
+    try {
+        return await executeWithModelCascade(
+            model || "gemini-3-pro-preview", 
+            "Audit Schedule",
+            (m) => ai.models.generateContent({
+                model: m,
+                contents: prompt,
+                config: configGen
+            })
+        );
+    } catch (e) {
+        console.error("Schedule Gen Failed", e);
+        throw e;
+    }
+};
+
 export const generateExecutiveSummary = async (data: any, apiKey?: string, model?: string) => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
     const prompt = `
-    ROLE: ISO Lead Auditor.
-    TASK: Write a professional Executive Summary for an ISO Audit Report.
-    
-    CONTEXT:
-    Company: ${data.company}
-    Address: ${data.address || "N/A"}
-    Audit Scope: ${data.scope || "N/A"}
-    Statement of Applicability (SoA): ${data.soa || "N/A"}
-    Standard: ${data.standard}
-    Audit Type: ${data.type}
-    Auditor: ${data.auditor}
-    
-    PARTICIPANTS / AUDITEES:
-    ${data.interviewees ? data.interviewees.join(", ") : "Not Listed"}
-    
-    FINDINGS SUMMARY:
-    Total Findings: ${data.findings.length}
-    Major NCs: ${data.findings.filter((f:any) => f.status === 'NC_MAJOR').length}
-    Minor NCs: ${data.findings.filter((f:any) => f.status === 'NC_MINOR').length}
-    OFIs: ${data.findings.filter((f:any) => f.status === 'OFI').length}
-    
-    LANGUAGE: ${data.lang === 'vi' ? 'Vietnamese' : 'English'}
-    
-    OUTPUT FORMAT: Plain Text. Concise paragraphs covering:
-    1. Overall Compliance Status.
-    2. Confirmation of Audit Scope, Site Address, and Key Personnel Interviewed.
-    3. Key Strengths.
-    4. Major Areas for Improvement.
-    5. Recommendation for Certification (Yes/No/Conditional).
+    Write Plain Text ISO Audit Exec Summary.
+    Context: ${data.company}, ${data.type}, ${data.standard}.
+    Auditor: ${data.auditor}.
+    Findings: ${data.findings.length} Total.
+    Lang: ${data.lang}.
+    Summarize compliance, strengths, weaknesses. No Markdown.
     `;
 
     try {
         return await executeWithModelCascade(
-            model || "gemini-3-pro-preview", // Use Pro for high quality summary
+            model || "gemini-3-pro-preview", 
             "Exec Summary",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return "Executive Summary could not be generated.";
+        return "Executive Summary unavailable.";
     }
 };
 
-// Step 2: Format Single Finding (Fast, Preserving Evidence)
-export const formatFindingReportSection = async (finding: AnalysisResult, lang: 'en' | 'vi', apiKey?: string, model?: string) => {
-    const ai = getAiClient(apiKey);
-    // If offline or no key, return simple text format
-    if (!ai || !navigator.onLine) {
-        return `
-        CLAUSE: ${finding.clauseId}
-        STATUS: ${finding.status}
-        FINDING: ${finding.reason}
-        EVIDENCE:
-        ${finding.evidence}
-        `;
-    }
+// --- MISSING FUNCTIONS RESTORED ---
 
-    // Lightweight formatting prompt
-    // STRICT PRESERVATION INSTRUCTION ADDED
-    const prompt = `
-    ROLE: Audit Reporter.
-    TASK: Format this single audit finding into a final report section.
-    LANGUAGE: ${lang === 'vi' ? 'Vietnamese' : 'English'}
-    
-    INPUT:
-    Clause: ${finding.clauseId}
-    Status: ${finding.status}
-    Observation: "${finding.reason_vi && lang === 'vi' ? finding.reason_vi : finding.reason}"
-    Evidence Block:
-    """
-    ${finding.evidence}
-    """
-    
-    RULES:
-    1. Polish the 'Observation' to be professional.
-    2. CRITICAL: For 'Verified Evidence', print the content of 'Evidence Block' VERBATIM. 
-       - DO NOT summarize.
-       - DO NOT remove bullets, dashes, or line breaks. 
-       - DO NOT reformat list items into paragraphs.
-       - Keep it exactly as provided in the block.
-    3. Output in Markdown.
-    
-    OUTPUT TEMPLATE:
-    ### Clause ${finding.clauseId} - ${finding.status}
-    **Observation:** [Polished Observation]
-    **Verified Evidence:**
-    [Insert Exact Evidence Block Here]
-    `;
+export const generateOcrContent = async (prompt: string, base64Image: string, mimeType: string, apiKey?: string): Promise<string> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+
+    try {
+        const result = await ai.models.generateContent({
+            model: DEFAULT_VISION_MODEL, // gemini-2.5-flash-image
+            contents: {
+                parts: [
+                    { inlineData: { mimeType, data: base64Image } },
+                    { text: prompt + " Transcribe all visible text accurately." }
+                ]
+            }
+        });
+        return result.text || "";
+    } catch (e) {
+        console.error("OCR Failed", e);
+        throw new Error("OCR Failed: " + (e as any).message);
+    }
+};
+
+export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiKey?: string): Promise<string> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+
+    const langName = targetLang === 'vi' ? 'Vietnamese' : 'English';
+    const prompt = `Translate the following text to professional ${langName} for an ISO Audit Report. Keep technical terms precise.\n\nText:\n"${text}"`;
 
     try {
         return await executeWithModelCascade(
-            "gemini-2.0-flash", // Use Flash for speed on individual items
-            `Report Section ${finding.clauseId}`,
+            "gemini-2.0-flash", // Fast model for translation
+            "Translate",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return `### Clause ${finding.clauseId}\nError formatting section. Raw data:\n${finding.reason}\n${finding.evidence}`;
+        return text; // Fallback to original
     }
 };
 
-// Deprecated Legacy Monolithic Generator (Kept for compatibility if needed)
-export const generateTextReport = async (data: any, apiKey?: string, model?: string) => {
+export const generateMissingDescriptions = async (clauses: { code: string, title: string }[], apiKey?: string): Promise<string> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
+
+    const prompt = `
+    I have a list of ISO Clauses with titles but missing descriptions.
+    Please generate a concise, professional 1-sentence description for each based on standard ISO knowledge.
+    Output JSON array: [{ "code": "...", "description": "..." }]
     
-    const template = PromptRegistry.getPrompt('REPORT');
-    const prompt = PromptRegistry.hydrate(template.template, {
-        COMPANY: data.company,
-        STANDARD_NAME: data.standard,
-        AUDITOR: data.auditor,
-        LANGUAGE: data.lang,
-        FINDINGS_JSON: JSON.stringify(data.findings),
-        FULL_EVIDENCE_CONTEXT: data.fullEvidenceContext || "N/A"
-    });
+    Input:
+    ${JSON.stringify(clauses)}
+    `;
 
-    try {
-        return await executeWithModelCascade(
-            model || DEFAULT_GEMINI_MODEL,
-            "Report Generation",
-            (m) => ai.models.generateContent({ model: m, contents: prompt })
-        );
-    } catch (e: any) {
-        throw new Error(`Report Generation Failed: ${e.message}`);
-    }
-};
-
-// --- UTILS ---
-
-export const generateOcrContent = async (prompt: string, imageBase64: string, mimeType: string, apiKey?: string) => {
-    const ai = getAiClient(apiKey);
-    if (!ai) throw new Error("API Key missing");
-    
-    const contents = {
-        parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
-            { text: prompt }
-        ]
+    const config: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    code: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                },
+                required: ["code", "description"]
+            }
+        }
     };
 
     try {
         return await executeWithModelCascade(
-            DEFAULT_VISION_MODEL,
-            "OCR",
-            (m) => ai.models.generateContent({ model: m, contents })
+            "gemini-2.0-flash",
+            "Repair Descriptions",
+            (m) => ai.models.generateContent({ model: m, contents: prompt, config })
         );
     } catch (e) {
-        return "";
+        throw new Error("Failed to repair descriptions.");
     }
 };
 
-export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiKey?: string) => {
-    if(!text.trim()) return "";
+export const formatFindingReportSection = async (finding: AnalysisResult, lang: 'en' | 'vi', apiKey?: string, model?: string): Promise<string> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
+
+    // We pass the full finding context
+    const prompt = `
+    Format this single ISO Audit Finding into a finalized report section in strictly ${lang === 'vi' ? 'Vietnamese' : 'English'}.
+    Output PLAIN TEXT. No Markdown.
     
-    const prompt = `Translate to ${targetLang === 'vi' ? 'Vietnamese' : 'English'}. Keep formatting.\n\n${text}`;
+    Format:
+    CLAUSE: [Code] [Title]
+    STATUS: [Status]
+    OBSERVATION: [Reason]
+    EVIDENCE: [Summarized Evidence]
     
+    Input Data:
+    ${JSON.stringify(finding)}
+    `;
+
     try {
         return await executeWithModelCascade(
-            "gemini-2.0-flash", // Use 2.0 Flash for translation (fast/cheap)
-            "Translation",
+            model || "gemini-2.0-flash",
+            "Format Finding",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return text; 
+        return `[Error formatting finding ${finding.clauseId}]`;
     }
 };
 
-// Stub helpers
-export const generateMissingDescriptions = async (targets: any[]) => "[]";
-
-export const fetchFullClauseText = async (clause: any, standardName: string, context: string | null, apiKey: string) => {
+export const fetchFullClauseText = async (clause: Clause, standardName: string, context: string | null, apiKey?: string): Promise<{ en: string, vi: string }> => {
     const ai = getAiClient(apiKey);
-    if (!ai) return { en: "API Key missing", vi: "" };
+    if (!ai) throw new Error("API Key missing");
 
     const prompt = `
-    ROLE: ISO Standard Expert.
-    TASK: Provide the full official text (or detailed summary if copyrighted) for:
-    Standard: ${standardName}
-    Clause: ${clause.code} - ${clause.title}
+    Provide the full text and explanation for ISO Standard "${standardName}", Clause ${clause.code} (${clause.title}).
+    Use the provided context if available, otherwise use general knowledge.
     
-    CONTEXT (from user document):
-    """
-    ${context ? context.substring(0, 3000) : "No local context provided."}
-    """
-
-    OUTPUT: JSON Object with keys:
-    - en: English text
-    - vi: Vietnamese translation
+    Output JSON: { "en": "English explanation...", "vi": "Vietnamese explanation..." }
+    
+    Context:
+    ${context ? context.substring(0, 2000) : "No specific context."}
     `;
+
+    const config: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+                en: { type: Type.STRING },
+                vi: { type: Type.STRING }
+            },
+            required: ["en", "vi"]
+        }
+    };
 
     try {
         const text = await executeWithModelCascade(
-            DEFAULT_GEMINI_MODEL,
-            "Fetch Clause Text",
-            (m) => ai.models.generateContent({
-                model: m,
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
-            })
+            "gemini-2.0-flash",
+            "Fetch Reference",
+            (m) => ai.models.generateContent({ model: m, contents: prompt, config })
         );
         return JSON.parse(text);
     } catch (e) {
-        console.error("Fetch Clause Failed", e);
-        return { en: "Content unavailable due to API error.", vi: "" };
+        throw new Error("Reference fetch failed.");
     }
 };
-
-export const mapStandardRequirements = async (standardName: string, codes: string[], text: string) => {
-    const ai = getAiClient();
-    if (!ai) return {};
-
-    const safeText = text.length > 50000 ? text.substring(0, 50000) + "..." : text;
-
-    const prompt = `
-    ROLE: ISO Analyst.
-    TASK: Map the following Clause Codes to their Description/Requirement text found in the document.
-    
-    STANDARD: ${standardName}
-    CODES TO FIND: ${JSON.stringify(codes)}
-    
-    DOCUMENT CONTENT:
-    """
-    ${safeText}
-    """
-    
-    OUTPUT: JSON Object { "CODE": "Description text extracted from document" }.
-    Only include found codes.
-    `;
-
-    try {
-        const result = await executeWithModelCascade(
-            "gemini-2.0-flash", 
-            "Map Requirements",
-            (m) => ai.models.generateContent({
-                model: m,
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
-            })
-        );
-        return JSON.parse(result);
-    } catch (e) {
-        console.error("Mapping Failed", e);
-        return {};
-    }
-};
-
-export const generateAuditPlan = async () => "Not Implemented";
-export const parseStandardStructure = async () => ({});

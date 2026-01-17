@@ -2,7 +2,7 @@
 import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { fetchFullClauseText } from '../services/geminiService';
-import { LocalIntelligence } from '../services/localIntelligence';
+import { KnowledgeStore } from '../services/knowledgeStore'; // Import Store
 import { Clause } from '../types';
 
 export const useReferenceLookup = () => {
@@ -14,44 +14,38 @@ export const useReferenceLookup = () => {
         const openEvent = new CustomEvent('OPEN_REFERENCE', { detail: clause });
         window.dispatchEvent(openEvent);
 
-        // 2. STRATEGY: LOCAL INTELLIGENCE FIRST
-        // This dramatically reduces API costs and dependency by using the loaded document.
-        if (knowledgeBase) {
-            // Attempt smart extraction
-            const localText = LocalIntelligence.extractClauseContent(knowledgeBase, clause.code, clause.title);
-            
-            if (localText && localText.length > 20) { // Threshold to ensure we didn't just match a header
-                // Simulate a short network delay for UI fluidity, then display
+        // 2. STRATEGY: STRUCTURED LOCAL DB (FASTEST & ZERO TOKEN)
+        if (standardKey) {
+            const offlineContent = await KnowledgeStore.getClauseContent(standardKey, clause.code);
+            if (offlineContent && offlineContent.length > 20) {
+                // Simulate tiny delay for UX smoothness
                 setTimeout(() => {
                     const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
                         detail: { 
-                            en: localText, 
-                            vi: `[SOURCE DOCUMENT EXTRACT]\n\n${localText}\n\n(Auto-translated view not available in Offline Mode)` 
+                            en: offlineContent, 
+                            vi: `[OFFLINE MODE - INSTANT LOAD]\n\n${offlineContent}\n\n(Translate feature requires online AI)` 
                         } 
                     });
                     window.dispatchEvent(updateEvent);
-                }, 300);
-                return; // STOP HERE. Do not call AI.
-            } else {
-                console.warn(`[Local Lookup] Could not find clause ${clause.code} in source document. Falling back to AI.`);
+                }, 100);
+                return; // DONE. No AI needed.
             }
         }
 
-        // 3. FALLBACK: GENERATIVE AI
-        // Only reached if knowledgeBase is missing OR extraction failed.
+        // 3. FALLBACK: GENERATIVE AI (Online)
         try {
             const stdName = standards[standardKey]?.name || "";
             const activeKeyProfile = getActiveKey();
             const apiKey = activeKeyProfile?.key || "";
 
-            // We pass knowledgeBase to AI if available, so it can try extraction if our regex failed
+            // Pass knowledgeBase as raw context backup if DB failed
             const result = await fetchFullClauseText(clause, stdName, knowledgeBase, apiKey);
             const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { detail: result });
             window.dispatchEvent(updateEvent);
         } catch (e) {
             console.error("Reference Fetch Failed", e);
             const errorEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
-                detail: { en: "Failed to load content. Ensure API Key is valid or source document is attached.", vi: "" } 
+                detail: { en: "Content unavailable. Please upload a standard document to enable offline lookup.", vi: "" } 
             });
             window.dispatchEvent(errorEvent);
         }

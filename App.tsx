@@ -1,11 +1,10 @@
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import { AuditProvider, useAudit } from './contexts/AuditContext';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { KeyPoolProvider, useKeyPool } from './contexts/KeyPoolContext';
 import { MainLayout } from './components/layout/MainLayout';
 import { TabNavigation } from './components/TabNavigation';
-// Lazy Load Views
 import { AINeuralLoader } from './components/ui/Loaders';
 import ReferenceClauseModal from './components/ReferenceClauseModal';
 import { SettingsModal } from './components/modals/SettingsModal';
@@ -17,11 +16,12 @@ import { useAutoSave } from './hooks/useAutoSave';
 import { UploadedFile, FindingsViewMode, MatrixRow } from './types'; 
 import { processSourceFile } from './utils';
 
-// New Custom Hooks
+// Hooks
 import { useAuditWorkflow } from './hooks/useAuditWorkflow';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useExportManager } from './hooks/useExportManager';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
+import { useGlobalEvents } from './hooks/useGlobalEvents';
 
 // Lazy Components
 const EvidenceView = React.lazy(() => import('./components/views/EvidenceView').then(module => ({ default: module.EvidenceView })));
@@ -32,17 +32,17 @@ const PlanningView = React.lazy(() => import('./components/views/PlanningView').
 const AppContent = () => {
     const [layoutMode, setLayoutMode] = useState('planning'); 
     
-    // Enable Global Keyboard Navigation (Arrow Keys)
+    // Global Hooks
     useKeyboardNavigation();
 
     // Contexts
-    const { isSidebarOpen, sidebarWidth, showToast, modals, toggleModal, setSidebarOpen } = useUI();
+    const { isSidebarOpen, sidebarWidth, showToast, modals, toggleModal } = useUI();
     const { 
         evidence, setEvidence, matrixData, setMatrixData, evidenceTags, addEvidenceTag,
         selectedClauses, standards, standardKey, auditInfo,
         setKnowledgeData, analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings,
         finalReportText, setFinalReportText, resetSession, restoreSession,
-        addCustomStandard, setStandardKey, activeProcessId, processes, privacySettings
+        addCustomStandard, setStandardKey, activeProcessId, processes
     } = useAudit();
 
     const { apiKeys, addKey, deleteKey, refreshKeyStatus, activeKeyId, isCheckingKey, isAutoCheckEnabled, toggleAutoCheck } = useKeyPool();
@@ -60,7 +60,10 @@ const AppContent = () => {
     const [notesLanguage, setNotesLanguage] = useState<'en' | 'vi'>('en');
     const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
 
-    // --- INTEGRATE HOOKS ---
+    // Register Global Events
+    useGlobalEvents({ setReferenceState, setLayoutMode });
+
+    // Workflow Hooks
     const { 
         handleAnalyze, isAnalyzeLoading, currentAnalyzingClause, 
         progressPercent, analysisLogs 
@@ -70,28 +73,13 @@ const AppContent = () => {
         isReportLoading, reportLoadingMessage, reportTemplateName, isTemplateProcessing,
         handleTemplateUpload, handleGenerateReport, generationLogs, progressPercent: reportProgress
     } = useReportGenerator(exportLanguage);
+    
     const { 
         handleExport, exportState, setExportState, 
         rescueKey, setRescueKey, handleResumeExport, isRescuing, handleSkipExportChunk 
     } = useExportManager();
 
-    // Event Listeners
-    useEffect(() => {
-        const handleRef = (e: CustomEvent) => setReferenceState({ isOpen: true, clause: e.detail, fullText: {en:"", vi:""}, isLoading: true });
-        const handleRefUpdate = (e: CustomEvent) => setReferenceState(prev => ({ ...prev, fullText: e.detail, isLoading: false }));
-        const handleSwitch = (e: CustomEvent) => { if (e.detail) setLayoutMode(e.detail); };
-        
-        window.addEventListener('OPEN_REFERENCE', handleRef as any);
-        window.addEventListener('UPDATE_REFERENCE_CONTENT', handleRefUpdate as any);
-        window.addEventListener('SWITCH_LAYOUT', handleSwitch as any);
-        return () => {
-            window.removeEventListener('OPEN_REFERENCE', handleRef as any);
-            window.removeEventListener('UPDATE_REFERENCE_CONTENT', handleRefUpdate as any);
-            window.removeEventListener('SWITCH_LAYOUT', handleSwitch as any);
-        };
-    }, []);
-
-    // Helper: Dynamic Styles
+    // Derived State
     const liquidColorClass = useMemo(() => {
         const config = TABS_CONFIG.find(t => t.id === layoutMode);
         return config ? `${config.colorClass} ${config.borderClass}` : 'bg-slate-500 border-slate-600';
@@ -120,21 +108,14 @@ const AppContent = () => {
 
     const isReadyForAnalysis = useMemo(() => {
         if (!standardKey || !activeProcessId || isAnalyzeLoading) return false;
-        // Explicitly type the iterator to MatrixRow[] to avoid 'unknown' error
         const hasMatrixData = Object.values(matrixData).some((rows: MatrixRow[]) => rows.some(r => r.status === 'supplied'));
         const hasGlobalEvidence = evidence && evidence.trim().length > 10;
         return hasMatrixData || hasGlobalEvidence;
     }, [standardKey, activeProcessId, matrixData, evidence, isAnalyzeLoading]);
 
-    // Wrap Analyze with Auto-Switch
-    const handleAnalyzeClick = async () => {
-        setLayoutMode('findings'); // Auto-switch to see progress
-        await handleAnalyze();
-    };
-
     return (
         <MainLayout commandActions={[]} onRestoreSnapshot={restoreSession}>
-            {/* Top Bar - Color Synced Border Top */}
+            {/* Top Bar */}
             <div className={`flex-shrink-0 px-4 md:px-6 py-3 border-b border-gray-200 dark:border-slate-800 transition-colors duration-500 ease-fluid flex justify-between items-center gap-3 border-t-4 ${currentTabConfig.borderClass} ${liquidColorClass.split(' ')[0].replace('bg-', 'bg-opacity-10 ')}`}>
                 <div className="flex-1 min-w-0">
                     <TabNavigation 
@@ -159,7 +140,7 @@ const AppContent = () => {
                 </div>
             </div>
 
-            {/* MAIN CONTENT WRAPPER */}
+            {/* Content Stage */}
             <div className={`flex-1 overflow-hidden relative p-2 md:p-4 transition-colors duration-500 ease-fluid ${themeStyles}`}>
                 {showProcessBlocker && (
                     <div className="absolute inset-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in">
@@ -175,15 +156,15 @@ const AppContent = () => {
                 )}
 
                 <Suspense fallback={<AINeuralLoader message="Loading View..." />}>
-                    {layoutMode === 'planning' && <PlanningView />}
+                    {layoutMode === 'planning' && <PlanningView onExport={handleExport} />}
                     
                     {layoutMode === 'evidence' && (
                         <EvidenceView
-                            key={activeProcessId} // Forces a fresh mount when switching processes to prevent state bleeding
+                            key={activeProcessId}
                             evidence={evidence} setEvidence={setEvidence}
                             uploadedFiles={uploadedFiles} setUploadedFiles={setUploadedFiles}
                             onOcrProcess={() => {}} isOcrLoading={false}
-                            onAnalyze={handleAnalyzeClick} 
+                            onAnalyze={async () => { setLayoutMode('findings'); await handleAnalyze(); }} 
                             isReadyForAnalysis={isReadyForAnalysis} 
                             isAnalyzeLoading={isAnalyzeLoading} 
                             analyzeTooltip="Run AI Analysis"
@@ -221,10 +202,11 @@ const AppContent = () => {
                             isReadyToSynthesize={!!analysisResult && analysisResult.length > 0} 
                             onExport={handleExport} 
                             exportLanguage={exportLanguage} setExportLanguage={setExportLanguage}
-                            analysisResult={analysisResult} // Pass results for Stage Builder
+                            analysisResult={analysisResult}
                             generationLogs={generationLogs}
                             progressPercent={reportProgress}
-                            selectedFindings={selectedFindings} // PASS SELECTION STATE
+                            selectedFindings={selectedFindings}
+                            setSelectedFindings={setSelectedFindings}
                         />
                     )}
                 </Suspense>

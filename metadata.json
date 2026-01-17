@@ -1,5 +1,5 @@
 {
-  "name": "ISO Audit Assistant",
+  "name": "ISO AUDITING TOOL PRO",
   "description": "A professional ISO Audit Assistant tool leveraging Gemini AI for compliance analysis, OCR evidence extraction, and automated reporting. Supports ISO 27001, 9001, and 14001.",
   "requestFramePermissions": [
     "microphone"

@@ -16,20 +16,21 @@ interface ReportViewProps {
     handleTemplateUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleGenerateReport: () => void;
     isReadyToSynthesize: boolean;
-    onExport: (type: 'report', lang: 'en' | 'vi') => void;
+    onExport: (type: 'report', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
     exportLanguage: 'en' | 'vi';
     setExportLanguage: (lang: 'en' | 'vi') => void;
     analysisResult?: AnalysisResult[] | null; 
     generationLogs?: string[]; 
     progressPercent?: number; 
-    selectedFindings?: Record<string, boolean>; // New Prop
+    selectedFindings?: Record<string, boolean>; 
+    setSelectedFindings?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; // ADDED Setter
 }
 
 export const ReportView: React.FC<ReportViewProps> = ({
     finalReportText, setFinalReportText, isReportLoading, loadingMessage,
     templateFileName, isTemplateProcessing = false, handleTemplateUpload, handleGenerateReport,
     isReadyToSynthesize, onExport, exportLanguage, setExportLanguage,
-    analysisResult, generationLogs = [], progressPercent = 0, selectedFindings
+    analysisResult, generationLogs = [], progressPercent = 0, selectedFindings, setSelectedFindings
 }) => {
     const themeConfig = TABS_CONFIG.find(t => t.id === 'report')!;
     const { showToast } = useUI();
@@ -46,6 +47,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
     const handleCopy = (text: string, label: string) => {
         copyToClipboard(text);
         showToast(`${label} copied!`);
+    };
+
+    // --- DELETE HANDLER (SYNCED) ---
+    const handleDeleteFinding = (clauseId: string) => {
+        if (setSelectedFindings) {
+            setSelectedFindings(prev => ({ ...prev, [clauseId]: false }));
+            showToast(`Clause ${clauseId} removed from report scope.`);
+        }
     };
 
     // Filter relevant results for Smart Copy View
@@ -139,29 +148,40 @@ export const ReportView: React.FC<ReportViewProps> = ({
                         ) : (
                             <div className="space-y-4">
                                 {visibleResults.map((res, idx) => (
-                                    <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-4 hover:shadow-md transition-shadow">
-                                        <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-100 dark:border-slate-800">
-                                            <span className="font-mono font-black text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-600 dark:text-slate-300">{res.clauseId}</span>
-                                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${res.status === 'COMPLIANT' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{res.status}</span>
+                                    <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-4 hover:shadow-md transition-shadow group">
+                                        <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-gray-100 dark:border-slate-800">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono font-black text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-600 dark:text-slate-300">{res.clauseId}</span>
+                                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${res.status === 'COMPLIANT' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{res.status}</span>
+                                            </div>
+                                            
+                                            {/* DELETE BUTTON */}
+                                            <button 
+                                                onClick={() => handleDeleteFinding(res.clauseId)} 
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                                title="Remove from Report (Syncs with Findings)"
+                                            >
+                                                <Icon name="Trash2" size={14}/>
+                                            </button>
                                         </div>
                                         
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1 group">
+                                            <div className="space-y-1">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] font-bold text-slate-400 uppercase">Evidence</span>
                                                     <button onClick={() => handleCopy(res.evidence, "Evidence")} className="p-1 rounded hover:bg-indigo-50 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="Copy" size={12}/></button>
                                                 </div>
-                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent group-hover:border-indigo-200 transition-colors whitespace-pre-wrap font-mono">
+                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent hover:border-indigo-200 transition-colors whitespace-pre-wrap font-mono">
                                                     {res.evidence}
                                                 </div>
                                             </div>
                                             
-                                            <div className="space-y-1 group">
+                                            <div className="space-y-1">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] font-bold text-slate-400 uppercase">Conclusion / Finding</span>
                                                     <button onClick={() => handleCopy(res.reason, "Finding")} className="p-1 rounded hover:bg-indigo-50 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="Copy" size={12}/></button>
                                                 </div>
-                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent group-hover:border-indigo-200 transition-colors">
+                                                <div className="p-2 bg-gray-50 dark:bg-slate-950 rounded text-xs text-slate-700 dark:text-slate-300 h-20 overflow-y-auto border border-transparent hover:border-indigo-200 transition-colors">
                                                     {res.reason}
                                                 </div>
                                             </div>
@@ -194,14 +214,16 @@ export const ReportView: React.FC<ReportViewProps> = ({
                     <span className="inline text-xs uppercase tracking-wider">{isReportLoading ? "Processing..." : "Synthesize"}</span>
                 </button>
 
-                <button onClick={() => onExport('report', exportLanguage)} disabled={!finalReportText} className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-950 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
-                    <Icon name="Download" />
-                    <span className="hidden md:inline">Export</span>
-                    <div className="lang-pill-container">
-                        <span onClick={(e) => { e.stopPropagation(); setExportLanguage('en'); }} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                        <span onClick={(e) => { e.stopPropagation(); setExportLanguage('vi'); }} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                    </div>
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={() => onExport('report', exportLanguage, 'txt')} disabled={!finalReportText} className="flex-none md:w-auto px-4 md:px-6 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-950 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md">
+                        <Icon name="Download" />
+                        <span className="hidden md:inline">Export</span>
+                        <div className="lang-pill-container">
+                            <span onClick={(e) => { e.stopPropagation(); setExportLanguage('en'); }} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                            <span onClick={(e) => { e.stopPropagation(); setExportLanguage('vi'); }} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
     );

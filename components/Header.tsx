@@ -102,7 +102,7 @@ export const Header: React.FC = () => {
                 
                 <div className="flex items-center gap-3">
                     <h1 className="hidden md:block text-lg font-extrabold tracking-tight text-slate-800 dark:text-white leading-none">
-                        ISO Audit <span className="font-light text-slate-400">Pro</span>
+                        ISO AUDITING TOOL <span className="bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-1.5 py-0.5 rounded text-xs align-middle ml-1 tracking-wider shadow-sm font-black border border-white/20 dark:border-slate-800/50">PRO</span>
                     </h1>
 
                     {/* --- UNIFIED BADGES --- */}

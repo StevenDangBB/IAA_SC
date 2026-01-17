@@ -1,3 +1,4 @@
+
 import { Standard } from './types';
 
 export const ISO27001: Standard = {
@@ -20,7 +21,8 @@ export const ISO27001: Standard = {
                 { id: "6.1.1", code: "6.1.1", title: "General", description: "Risk actions." },
                 { id: "6.1.2", code: "6.1.2", title: "Risk assessment", description: "Information security risk process." },
                 { id: "6.1.3", code: "6.1.3", title: "Risk treatment", description: "SoA and planning." },
-                { id: "6.2", code: "6.2", title: "Security objectives", description: "Achievement planning." }
+                { id: "6.2", code: "6.2", title: "Security objectives", description: "Achievement planning." },
+                { id: "6.3", code: "6.3", title: "Planning of changes", description: "Changes to the ISMS shall be carried out in a planned manner." }
             ]}
         ]},
         { id: "SUPPORT_27001", title: "Support (7) Resources", icon: "LayoutList", clauses: [

@@ -90,6 +90,51 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         {{FULL_EVIDENCE_CONTEXT}}
         """
         `
+    },
+    SCHEDULING: {
+        id: 'smart_scheduler_exhaustive',
+        label: 'Exhaustive Schedule Logic',
+        description: 'Logic to map every clause to a time slot.',
+        isSystemDefault: true,
+        template: `
+        ROLE: Expert ISO Lead Auditor.
+        TASK: Create a granular Audit Agenda (JSON) that covers EVERY SINGLE clause listed in the INPUT.
+
+        CONSTRAINTS:
+        - Time: {{START_TIME}} to {{END_TIME}}
+        - Lunch: {{LUNCH_START}} to {{LUNCH_END}} (No audits during lunch)
+        - Available Dates: {{DATES}} (DD-MM-YYYY)
+        - Site Constraints: Respect "SiteIDs" in input. If empty, any site is valid.
+
+        INPUT DATA (Compact Format):
+        SITES: {{SITES_COMPACT}}
+        TEAM: {{TEAM_COMPACT}}
+        PROCESS_MAP:
+        {{PROCESS_REQUIREMENTS}}
+
+        CRITICAL RULES (ALGORITHMIC EXECUTION):
+        1. **EXHAUSTIVENESS**: You MUST schedule every clause code listed inside the [ ] brackets in PROCESS_MAP. 
+           - If a Process has [4.1, 4.2], there MUST be agenda items covering 4.1 and 4.2.
+           - You can group multiple clauses into one time slot if they are small (e.g. "4.1, 4.2, 4.3" in 60 mins).
+        2. **GROUPING**: Keep the 'Process' as the main anchor. Do not jump between processes randomly. Finish one process before moving to the next if possible.
+        3. **ALLOCATION**: Assign specific Auditors based on 'CompetencyCodes'. If no code matches, use any available Auditor.
+        4. **OUTPUT**: Strict JSON Array. No markdown.
+
+        JSON FORMAT:
+        [
+          {
+            "day": 1,
+            "date": "YYYY-MM-DD",
+            "timeSlot": "08:30-09:30",
+            "activity": "Audit of [Process Name]: [Specific Activity]",
+            "siteName": "Name of Site",
+            "auditorName": "Name of Auditor",
+            "processName": "Exact Process Name from Input",
+            "clauseRefs": ["4.1", "4.2"], // MUST list the clauses covered here
+            "isRemote": false
+          }
+        ]
+        `
     }
 };
 
@@ -113,11 +158,11 @@ class PromptRegistryService {
         }
     }
 
-    public getPrompt(type: 'ANALYSIS' | 'REPORT'): PromptTemplate {
+    public getPrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING'): PromptTemplate {
         return this.prompts[type] || DEFAULT_PROMPTS[type];
     }
 
-    public updatePrompt(type: 'ANALYSIS' | 'REPORT', newTemplate: string) {
+    public updatePrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING', newTemplate: string) {
         this.prompts[type] = {
             ...this.prompts[type],
             template: newTemplate,
@@ -126,7 +171,7 @@ class PromptRegistryService {
         localStorage.setItem('iso_prompt_overrides', JSON.stringify(this.prompts));
     }
 
-    public resetToDefault(type: 'ANALYSIS' | 'REPORT') {
+    public resetToDefault(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING') {
         this.prompts[type] = { ...DEFAULT_PROMPTS[type] };
         localStorage.setItem('iso_prompt_overrides', JSON.stringify(this.prompts));
     }

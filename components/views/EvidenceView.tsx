@@ -23,7 +23,7 @@ interface EvidenceViewProps {
     isReadyForAnalysis: boolean;
     isAnalyzeLoading: boolean;
     analyzeTooltip: string;
-    onExport: (type: 'evidence', lang: 'en' | 'vi') => void;
+    onExport: (type: 'evidence', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
     evidenceLanguage: 'en' | 'vi';
     setEvidenceLanguage: (lang: 'en' | 'vi') => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -59,9 +59,6 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     const handleLookup = useReferenceLookup();
 
     // Computed: STRICT ISOLATION MODE
-    // CRITICAL FIX: Do NOT use global `selectedClauses`. 
-    // The Audit View must ONLY reflect what is inside the active process's `matrixData`.
-    // Merging global state caused "data bleeding" where clauses from Process A would appear in Process B.
     const effectiveSelectedClauses = useMemo(() => {
         if (!matrixData) return [];
         const activeKeys = Object.keys(matrixData);
@@ -238,18 +235,20 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 </div>
 
                 {/* Right Side: Export with Language Toggle */}
-                <button 
-                    onClick={() => onExport('evidence', evidenceLanguage)} 
-                    className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm whitespace-nowrap dark:shadow-md"
-                    title="Export Raw Evidence"
-                >
-                    <Icon name="Download" />
-                    <span className="hidden md:inline">Export</span>
-                    <div className="lang-pill-container">
-                        <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('en'); }} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                        <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('vi'); }} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                    </div>
-                </button>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={() => onExport('evidence', evidenceLanguage, 'txt')} 
+                        className="flex-none md:w-auto px-4 md:px-6 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm whitespace-nowrap dark:shadow-md"
+                        title="Export Raw Evidence"
+                    >
+                        <Icon name="Download" />
+                        <span className="hidden md:inline">Export</span>
+                        <div className="lang-pill-container">
+                            <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('en'); }} className={`lang-pill-btn ${evidenceLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                            <span onClick={(e) => { e.stopPropagation(); setEvidenceLanguage('vi'); }} className={`lang-pill-btn ${evidenceLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
     );

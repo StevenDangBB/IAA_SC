@@ -2,7 +2,7 @@
 {
   "name": "iso-audit-assistant",
   "private": true,
-  "version": "3.5.0-STABLE",
+  "version": "4.0.0-GOLD",
   "type": "commonjs",
   "main": "electron/main.js",
   "homepage": "./",

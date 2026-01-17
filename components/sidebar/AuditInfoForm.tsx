@@ -220,7 +220,6 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="SMO/ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
                 </div>
                 
-                {/* NEW: Address Field with MapPin */}
                 <IconTextArea 
                     icon="MapPin" 
                     iconColor={auditFieldIconColor} 
@@ -230,7 +229,6 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     rows={2}
                 />
 
-                {/* NEW: Scope Field with Target */}
                 <IconTextArea 
                     icon="Target" 
                     iconColor={auditFieldIconColor} 
@@ -240,7 +238,6 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     rows={3}
                 />
 
-                {/* NEW: SoA Field (Conditional for 27001) */}
                 {is27001 && (
                     <div className="animate-in fade-in slide-in-from-top-2">
                         <IconInput 
@@ -277,8 +274,12 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                                     autoComplete="off"
                                 />
                             </div>
-                            <div className="text-center py-4 text-[10px] text-red-400 font-bold bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 animate-pulse">
-                                ! ACTION REQUIRED <br/> <span className="font-normal text-slate-500">Create a Process to Start</span>
+                            <div className="relative overflow-hidden flex flex-col items-center justify-center py-3 text-[10px] bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900 gap-1">
+                                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-black tracking-wide uppercase">
+                                    <Icon name="AlertCircle" size={14} className="animate-bounce" />
+                                    <span>Action Required</span>
+                                </div>
+                                <span className="font-medium text-slate-500 dark:text-slate-400">Create a Process to Start</span>
                             </div>
                         </>
                     ) : (
@@ -421,8 +422,13 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
             {/* SECTION 3: PERSONNEL */}
             <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Auditor</label>
-                <div className="grid grid-cols-1 gap-2">
-                     <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                <div className="flex gap-2">
+                     <div className="flex-1">
+                        <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />
+                     </div>
+                     <div className="w-[100px]">
+                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="CODE" value={auditInfo.leadAuditorCode || ""} onChange={(e: any) => setAuditInfo({...auditInfo, leadAuditorCode: e.target.value})} />
+                     </div>
                 </div>
             </div>
         </div>

@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo, useRef, memo, useCallback } from 'react';
+import React, { useState, useMemo, useRef, memo, useCallback, useEffect } from 'react';
 import { Icon } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
-import { Clause } from '../../types';
+import { Clause, AuditMember, AuditSite } from '../../types';
 import { useUI } from '../../contexts/UIContext';
-import { cleanFileName } from '../../utils';
+import { useKeyPool } from '../../contexts/KeyPoolContext';
+import { cleanAndParseJSON } from '../../utils';
 import { TABS_CONFIG } from '../../constants';
+import { generateAuditSchedule } from '../../services/geminiService';
 
 // --- INTERNAL TYPES ---
 interface PlanningRowProps {
@@ -13,6 +15,10 @@ interface PlanningRowProps {
     level: number;
     processes: any[];
     onSmartToggle: (procId: string, clause: Clause) => void; 
+}
+
+interface PlanningViewProps {
+    onExport?: (type: 'schedule', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
 }
 
 // --- HELPER: Get all descendant IDs ---
@@ -26,7 +32,7 @@ const getFlatClauseIds = (clause: Clause): string[] => {
     return ids;
 };
 
-// --- MEMOIZED ROW COMPONENT ---
+// --- MEMOIZED MATRIX ROW COMPONENT ---
 const PlanningRow = memo(({ 
     clause, level, processes, onSmartToggle 
 }: PlanningRowProps) => {
@@ -94,25 +100,183 @@ const PlanningRow = memo(({
 });
 
 
-export const PlanningView = () => {
+export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const { 
-        standards, standardKey, processes, 
-        addProcess, batchUpdateProcessClauses, toggleProcessClause
+        standards, standardKey, processes, auditInfo,
+        addProcess, batchUpdateProcessClauses, toggleProcessClause,
+        auditSites, setAuditSites, auditTeam, setAuditTeam, auditPlanConfig, setAuditPlanConfig,
+        auditSchedule, setAuditSchedule, updateProcessCode, updateProcessSites
     } = useAudit();
     
     const { showToast, setSidebarOpen } = useUI();
+    const { getActiveKey } = useKeyPool();
+    
+    // Tab State
+    const [activeTab, setActiveTab] = useState<'matrix' | 'resources'>('matrix');
+    
+    // Matrix View State
     const [search, setSearch] = useState("");
-    const [exportLang, setExportLang] = useState<'en' | 'vi'>('en');
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
-
+    const logsEndRef = useRef<HTMLDivElement>(null);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     
-    const currentStandard = standards[standardKey];
+    // Logistics State
+    const [newSite, setNewSite] = useState<AuditSite>({ id: "", name: "", address: "", scope: "", isMain: false });
+    const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+    const [newMember, setNewMember] = useState<Partial<AuditMember>>({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
     
-    // --- COLOR THEME SYNC ---
+    // Export Lang State
+    const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
+
+    // Dates Logic
+    const [dateInput, setDateInput] = useState("");
+
+    // Site Editing State
+    const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+    const [tempSite, setTempSite] = useState<AuditSite | null>(null);
+
+    // AI Generation State
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [genProgress, setGenProgress] = useState(0);
+    const [genLogs, setGenLogs] = useState<string[]>([]);
+
+    // --- NEW: DYNAMIC AGENDA COLUMNS ---
+    const [agendaColumns, setAgendaColumns] = useState(['timeSlot', 'siteName', 'processName', 'activity', 'auditorName', 'clauseRefs']);
+    const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+
+    const COLUMN_LABELS: Record<string, string> = {
+        timeSlot: "Time",
+        siteName: "Site",
+        auditorName: "Auditor",
+        clauseRefs: "Clauses",
+        activity: "Activity",
+        processName: "Process / Auditee"
+    };
+
+    const currentStandard = standards[standardKey];
     const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
 
+    // Auto-scroll logs
+    useEffect(() => {
+        if (isGenerating && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [genLogs, isGenerating]);
+
+    // --- HELPER: LOGGING ---
+    const addLog = (msg: string) => setGenLogs(prev => [...prev, msg]);
+
+    // --- AGENDA DRAG & DROP LOGIC ---
+    const handleDragStart = (e: React.DragEvent, colId: string) => {
+        setDraggedColumn(colId);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setDragImage(e.currentTarget as Element, 20, 20);
+    };
+
+    const handleDragOver = (e: React.DragEvent, colId: string) => {
+        e.preventDefault();
+        if (!draggedColumn || draggedColumn === colId) return;
+        
+        const newCols = [...agendaColumns];
+        const draggedIdx = newCols.indexOf(draggedColumn);
+        const targetIdx = newCols.indexOf(colId);
+        
+        // Swap
+        newCols.splice(draggedIdx, 1);
+        newCols.splice(targetIdx, 0, draggedColumn);
+        
+        setAgendaColumns(newCols);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedColumn(null);
+    };
+
+    // --- AGENDA SORTING & MERGING LOGIC ---
+    // 1. Sort data strictly by the visual column order
+    const getSortedSchedule = (daySchedule: any[]) => {
+        return [...daySchedule].sort((a, b) => {
+            for (const col of agendaColumns) {
+                // Get values
+                const valA = a[col] || "";
+                const valB = b[col] || "";
+                
+                if (valA === valB) continue; 
+
+                // Special handling for Time Slots
+                return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true, sensitivity: 'base' });
+            }
+            return 0;
+        });
+    };
+
+    // 2. Calculate RowSpans based on Cascading Group By logic
+    // MODIFIED: Specific rules for Auditor/Process to allow merging even if Time changes (provided Site is same)
+    const calculateRowSpans = (data: any[], columns: string[]) => {
+        const rowSpans: Record<string, number> = {}; 
+        
+        // Initialize all spans to 0 (meaning "hidden" unless calculated otherwise)
+        // Actually, logic is: 
+        // If > 0: render cell with span.
+        // If === 0: don't render cell.
+        
+        for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+            for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+                const key = `${rowIdx}_${colIdx}`;
+                // Default every cell to span 1 unless marked 0 by previous iteration
+                if (rowSpans[key] === 0) continue; 
+                rowSpans[key] = 1;
+            }
+        }
+
+        // Iterate Columns from Left to Right
+        for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+            const colName = columns[colIdx];
+            
+            // Iterate Rows from Top to Bottom
+            for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+                const key = `${rowIdx}_${colIdx}`;
+                if (rowSpans[key] === 0) continue; // Already merged into a previous row
+
+                const currentVal = data[rowIdx][colName];
+                
+                // Look ahead for matches
+                for (let nextIdx = rowIdx + 1; nextIdx < data.length; nextIdx++) {
+                    const nextVal = data[nextIdx][colName];
+                    const nextKey = `${nextIdx}_${colIdx}`;
+                    
+                    let parentMatch = true;
+                    // CUSTOM MERGE LOGIC: Auditor and Process should merge if SITE is the same, ignoring Time.
+                    // This allows grouping of long-running auditors or processes that span multiple time slots.
+                    if (colName === 'auditorName' || colName === 'processName') {
+                        // Check if Site Name is the same (Assuming siteName exists in data)
+                        // If columns order changes, this hardcoded check ensures logical consistency over visual strictness for these specific fields
+                        const valSiteA = data[rowIdx]['siteName'];
+                        const valSiteB = data[nextIdx]['siteName'];
+                        if (valSiteA !== valSiteB) parentMatch = false;
+                    } else if (colIdx > 0) {
+                        // Standard strict cascading for other columns
+                        for (let p = 0; p < colIdx; p++) {
+                            if (data[rowIdx][columns[p]] !== data[nextIdx][columns[p]]) {
+                                parentMatch = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (currentVal === nextVal && parentMatch) {
+                        rowSpans[key]++;
+                        rowSpans[nextKey] = 0; // Mark next row's cell as hidden
+                    } else {
+                        break; // Stop merging sequence
+                    }
+                }
+            }
+        }
+        return rowSpans;
+    };
+
+    // --- MATRIX LOGIC START ---
     const getPDCAStyle = (groupId: string) => {
         const key = groupId.toUpperCase();
         if (key.includes('PLAN')) return 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-l-4 border-orange-500';
@@ -202,12 +366,8 @@ export const PlanningView = () => {
     const handleToggleAll = () => {
         if (!currentStandard) return;
         const allGroupIds = currentStandard.groups.map(g => g.id);
-        
-        if (areAllCollapsed) {
-            setCollapsedGroups(new Set());
-        } else {
-            setCollapsedGroups(new Set(allGroupIds));
-        }
+        if (areAllCollapsed) setCollapsedGroups(new Set());
+        else setCollapsedGroups(new Set(allGroupIds));
     };
 
     const coverageStats = useMemo(() => {
@@ -248,90 +408,139 @@ export const PlanningView = () => {
             return matchingClauses.length > 0 ? { ...g, clauses: matchingClauses } : null;
         }).filter(g => g !== null) as typeof currentStandard.groups;
     }, [currentStandard, search]);
+    // --- MATRIX LOGIC END ---
 
-
-    const handleExportTemplate = () => {
-        if (processes.length === 0) { showToast("No processes to export."); return; }
-        const templateData = processes.map(p => ({ name: p.name, clauses: Object.keys(p.matrixData) }));
-        const blob = new Blob([JSON.stringify(templateData, null, 2)], { type: "application/json" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `${cleanFileName(currentStandard.name)}_Plan.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast("JSON Template exported.");
-    };
-
-    const handleExportTxt = () => {
-        if (processes.length === 0) { showToast("No data to export."); return; }
-        
-        const codeMap: Record<string, string> = {};
-        const traverse = (list: Clause[]) => list.forEach(c => {
-            codeMap[c.id] = c.code;
-            if(c.subClauses) traverse(c.subClauses);
-        });
-        currentStandard?.groups.forEach(g => traverse(g.clauses));
-
-        let output = "";
-        if (exportLang === 'vi') output += `NGÀY XUẤT: ${new Date().toLocaleDateString('vi-VN')}\nTIÊU CHUẨN: ${currentStandard.name}\n====================\n\n`;
-        else output += `EXPORT DATE: ${new Date().toLocaleDateString()}\nSTANDARD: ${currentStandard.name}\n====================\n\n`;
-
-        processes.forEach(p => {
-            const clauses = Object.keys(p.matrixData)
-                .map(id => codeMap[id] || id) 
-                .sort((a,b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-            
-            if (clauses.length > 0) {
-                output += `${exportLang === 'vi' ? 'QUY TRÌNH' : 'PROCESS'}: ${p.name}\n`;
-                output += `${exportLang === 'vi' ? 'ĐIỀU KHOẢN' : 'SCOPE'}: [${clauses.join(', ')}]\n\n`;
-            }
-        });
-
-        const blob = new Blob([output], { type: "text/plain" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `${cleanFileName(currentStandard.name)}_Scope_${exportLang}.txt`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast(`TXT Scope exported (${exportLang.toUpperCase()}).`);
-    };
-
-    const handleImportTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                const content = ev.target?.result as string;
-                const templateData = JSON.parse(content);
-                if (!Array.isArray(templateData)) throw new Error("Invalid format");
-                
-                templateData.forEach((item: any) => {
-                    if (item.name) addProcess(item.name); 
-                });
-                showToast(`Imported ${templateData.length} processes structure.`);
-            } catch (err) { showToast("Import failed."); }
+    // --- SITE MANAGEMENT LOGIC ---
+    const handleAddSite = () => {
+        if (!newSite.name.trim()) return;
+        const site: AuditSite = {
+            id: `site_${Date.now()}`,
+            name: newSite.name.trim(),
+            address: newSite.address || "",
+            scope: newSite.scope || "",
+            isMain: newSite.isMain
         };
-        reader.readAsText(file);
-        e.target.value = '';
+        setAuditSites([...auditSites, site]);
+        setNewSite({ id: "", name: "", address: "", scope: "", isMain: false });
     };
+
+    const handleStartEditSite = (site: AuditSite) => {
+        setEditingSiteId(site.id);
+        setTempSite({ ...site });
+    };
+
+    const handleSaveSite = () => {
+        if (tempSite && editingSiteId) {
+            setAuditSites(prev => prev.map(s => s.id === editingSiteId ? tempSite : s));
+            setEditingSiteId(null);
+            setTempSite(null);
+        }
+    };
+
+    const handleCancelEditSite = () => {
+        setEditingSiteId(null);
+        setTempSite(null);
+    };
+
+    // --- TEAM MANAGEMENT LOGIC ---
+    const handleSaveMember = () => {
+        if (!newMember.name?.trim()) return;
+        
+        if (editingMemberId) {
+            setAuditTeam(prev => prev.map(m => m.id === editingMemberId ? { ...m, ...newMember } as AuditMember : m));
+            setEditingMemberId(null);
+        } else {
+            const member: AuditMember = {
+                id: `mem_${Date.now()}`,
+                name: newMember.name.trim(),
+                role: newMember.role as any,
+                competencyCodes: newMember.competencyCodes?.trim() || "",
+                manDays: newMember.manDays || 1,
+                isRemote: newMember.isRemote || false,
+                availability: newMember.availability || ""
+            };
+            setAuditTeam([...auditTeam, member]);
+        }
+        setNewMember({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
+    };
+
+    const handleEditMember = (m: AuditMember) => {
+        setEditingMemberId(m.id);
+        setNewMember({ ...m });
+    };
+
+    // --- DATE MANAGEMENT LOGIC ---
+    const handleAddDate = () => {
+        if (!dateInput) return;
+        const exists = auditPlanConfig.auditDates.includes(dateInput);
+        if (!exists) {
+            const newDates = [...auditPlanConfig.auditDates, dateInput].sort();
+            setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
+        }
+        setDateInput("");
+    };
+
+    const handleRemoveDate = (date: string) => {
+        const newDates = auditPlanConfig.auditDates.filter(d => d !== date);
+        setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
+    };
+
+    const handleGenerateSchedule = async () => {
+        const key = getActiveKey();
+        if (!key) { showToast("API Key Required."); return; }
+        if (auditTeam.length === 0) { showToast("Please add at least one auditor."); return; }
+        if (processes.length === 0) { showToast("No processes found to schedule."); return; }
+        if (auditPlanConfig.auditDates.length === 0) { showToast("Please add at least one audit date."); return; }
+
+        setIsGenerating(true);
+        setGenProgress(5);
+        setGenLogs(["Initializing Smart Planner...", "Validating resources and process map..."]);
+
+        try {
+            // SIMULATE STEPS for Visualization (Since API call is single-shot)
+            setTimeout(() => { setGenProgress(20); addLog("Analyzing Auditor Competencies..."); }, 800);
+            setTimeout(() => { setGenProgress(40); addLog(`Mapping ${processes.length} Processes to Sites...`); }, 2000);
+            setTimeout(() => { setGenProgress(60); addLog("Optimizing time slots & balancing workload..."); }, 3500);
+            setTimeout(() => { setGenProgress(80); addLog("Finalizing Agenda Structure..."); }, 5000);
+
+            const resultJson = await generateAuditSchedule(
+                auditSites,
+                auditTeam,
+                processes,
+                auditPlanConfig,
+                key.key,
+                key.activeModel,
+                { name: auditInfo.auditor, code: auditInfo.leadAuditorCode }
+            );
+            
+            // Clean JSON
+            const schedule = cleanAndParseJSON(resultJson);
+            
+            if (Array.isArray(schedule) && schedule.length > 0) {
+                setGenProgress(100);
+                addLog("Success! Rendering Schedule...");
+                await new Promise(r => setTimeout(r, 800)); // Small delay to show 100%
+                setAuditSchedule(schedule);
+                showToast("Schedule Generated Successfully!");
+            } else {
+                throw new Error("AI returned invalid schedule format. Try again.");
+            }
+        } catch (e: any) {
+            console.error(e);
+            addLog(`ERROR: ${e.message}`);
+            showToast("Planning Failed: Check Logs.");
+            await new Promise(r => setTimeout(r, 2000)); // Delay to show error log
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+    // --- RESOURCES LOGIC END ---
 
     const handleSelectStandardFocus = () => {
         setSidebarOpen(true);
         setTimeout(() => {
             const el = document.getElementById('sidebar-standard-select');
-            if (el) {
-                el.focus();
-                try {
-                    if ('showPicker' in el) {
-                        (el as any).showPicker();
-                    } else {
-                        el.click(); 
-                    }
-                } catch (e) {}
-            }
+            if (el) { el.focus(); try { (el as any).showPicker(); } catch (e) { el.click(); } }
         }, 300);
     };
 
@@ -348,176 +557,539 @@ export const PlanningView = () => {
     return (
         <div className="h-full flex flex-col animate-fade-in-up gap-4 relative">
             
-            {/* Header / Stats */}
+            {/* Header / Stats / Tab Switcher */}
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between shrink-0 transition-colors duration-500 ease-fluid">
                 <div className="flex items-center gap-6">
                     <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
                         <svg className="transform -rotate-90 w-16 h-16">
-                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-100 dark:text-slate-800" />
-                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className={`${themeConfig.textClass.replace('text-', 'text-opacity-80 ')} transition-all duration-1000 ease-out`} strokeLinecap="round" />
+                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-200 dark:text-slate-700" />
+                            <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="text-orange-500 dark:text-orange-400 transition-all duration-1000 ease-out filter drop-shadow-sm" strokeLinecap="round" />
                         </svg>
-                        <span className="absolute text-xs font-black text-slate-700 dark:text-white">{coverageStats.percent}%</span>
+                        <span className="absolute text-sm font-black text-orange-600 dark:text-orange-400">{coverageStats.percent}%</span>
                     </div>
                     <div className="flex flex-col gap-1">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">{currentStandard.name}</h3>
-                        <p className="text-xs text-slate-500">
-                            <span className={`font-bold ${themeConfig.textClass}`}>{coverageStats.covered}</span> of {coverageStats.total} clauses mapped.
-                        </p>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => setActiveTab('matrix')}
+                                className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${activeTab === 'matrix' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
+                            >
+                                1. Clause Matrix
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('resources')}
+                                className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${activeTab === 'resources' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
+                            >
+                                2. Logistics & Schedule
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-2 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-64 group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
-                            <Icon name="Search" size={16}/>
+                {activeTab === 'matrix' && (
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64 group">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                                <Icon name="Search" size={16}/>
+                            </div>
+                            <input 
+                                ref={searchInputRef}
+                                className="w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
+                                placeholder="Filter clauses..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                            {search && (
+                                <button onClick={() => { setSearch(""); searchInputRef.current?.focus(); }} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors">
+                                    <Icon name="X" size={14} />
+                                </button>
+                            )}
                         </div>
-                        <input 
-                            ref={searchInputRef}
-                            className="w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
-                            placeholder="Filter clauses..."
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                        />
-                        {search && (
-                            <button 
-                                onClick={() => { setSearch(""); searchInputRef.current?.focus(); }}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"
-                            >
-                                <Icon name="X" size={14} />
-                            </button>
-                        )}
-                    </div>
-                    
-                    <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImportTemplate} />
-                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600" title="Import Plan">
-                        <Icon name="UploadCloud" size={18}/>
-                    </button>
-                    
-                    <button 
-                        onClick={handleExportTemplate}
-                        className="p-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 shadow-sm active:scale-95 transition-all hover:border-indigo-300 dark:hover:border-slate-600 flex items-center gap-2"
-                        title="Export Template (JSON)"
-                    >
-                        <Icon name="Grid" size={18}/>
-                        <span className="text-xs font-bold hidden md:inline">Template</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* MATRIX CONTAINER - THEMED BORDER TOP */}
-            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col transition-colors duration-500 ease-fluid`}>
-                {processes.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                        <p className="mb-4">No processes defined.</p>
-                        <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 rounded-xl bg-indigo-50 dark:bg-indigo-900/10 text-indigo-500">
-                            Create processes in the sidebar to begin planning.
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 overflow-auto custom-scrollbar relative">
-                        <table className="w-full text-left border-collapse">
-                            <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
-                                <tr>
-                                    <th 
-                                        className={`p-3 border-b border-r border-gray-200 dark:border-slate-800 sticky left-0 z-40 min-w-[300px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group select-none ${themeConfig.bgSoft}`}
-                                        onClick={handleToggleAll}
-                                        title={areAllCollapsed ? "Click to Expand All" : "Click to Collapse All"}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${themeConfig.textClass}`}>
-                                                Clause Reference
-                                            </span>
-                                        </div>
-                                    </th>
-                                    {processes.map(p => (
-                                        <th key={p.id} className={`p-3 text-[10px] font-bold uppercase tracking-wider border-b border-gray-200 dark:border-slate-800 min-w-[120px] text-center ${themeConfig.textClass}`}>
-                                            <div className="flex flex-col items-center gap-2">
-                                                <span className="truncate max-w-[100px]" title={p.name}>{p.name}</span>
-                                                <span className="text-[10px] font-bold bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full shadow-sm">
-                                                    {Object.keys(p.matrixData).length}
-                                                </span>
-                                            </div>
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            
-                            <tbody className="divide-y divide-gray-100 dark:divide-slate-800/50">
-                                {filteredGroups.map(group => {
-                                    const isCollapsed = collapsedGroups.has(group.id);
-                                    const groupStyle = getPDCAStyle(group.id); 
-                                    const groupFlatList = getGroupClauses(group.clauses);
-
-                                    return (
-                                        <React.Fragment key={group.id}>
-                                            <tr className={`sticky z-20 hover:brightness-95 transition-all duration-500 ease-fluid ${groupStyle}`}>
-                                                <td 
-                                                    className="p-2 border-r border-black/5 dark:border-white/5 font-black text-xs uppercase tracking-widest sticky left-0 z-20 bg-inherit shadow-sm cursor-pointer"
-                                                    onClick={() => toggleGroupCollapse(group.id)}
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            <Icon name={group.icon} size={14} className="opacity-70"/>
-                                                            {group.title}
-                                                        </div>
-                                                        <Icon name="ChevronDown" size={14} className={`transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}/>
-                                                    </div>
-                                                </td>
-                                                {processes.map(p => {
-                                                    const flatIds: string[] = [];
-                                                    const traverse = (list: Clause[]) => list.forEach(c => { flatIds.push(c.id); if(c.subClauses) traverse(c.subClauses); });
-                                                    traverse(group.clauses);
-                                                    const proc = processes.find(proc => proc.id === p.id);
-                                                    const allSelected = proc ? flatIds.every(cid => !!proc.matrixData[cid]) : false;
-
-                                                    return (
-                                                        <td key={`group_action_${p.id}_${group.id}`} className="p-2 text-center bg-inherit">
-                                                            {!isCollapsed && (
-                                                                <button 
-                                                                    onClick={(e) => handleGroupToggle(e, p.id, group.clauses)}
-                                                                    className="p-1.5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors opacity-70 hover:opacity-100"
-                                                                    title={allSelected ? "Deselect Group" : "Select Entire Group"}
-                                                                >
-                                                                    <Icon name={allSelected ? "CheckSquare" : "Square"} size={16} />
-                                                                </button>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-
-                                            {!isCollapsed && groupFlatList.map(({ clause, level }) => (
-                                                <PlanningRow 
-                                                    key={clause.id}
-                                                    clause={clause}
-                                                    level={level}
-                                                    processes={processes}
-                                                    onSmartToggle={handleSmartToggle}
-                                                />
-                                            ))}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
                     </div>
                 )}
             </div>
-            
-            <div className="flex-shrink-0 flex flex-row items-center md:justify-end gap-2 md:gap-3 w-full pt-2">
-                <div className="flex-1"></div>
-                <button 
-                    onClick={handleExportTxt} 
-                    disabled={processes.length === 0} 
-                    className="flex-none md:w-auto px-3 md:px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md"
-                >
-                    <Icon name="FileText" />
-                    <span className="hidden md:inline">Export</span>
-                    <div className="lang-pill-container">
-                        <span onClick={(e) => { e.stopPropagation(); setExportLang('en'); }} className={`lang-pill-btn ${exportLang === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                        <span onClick={(e) => { e.stopPropagation(); setExportLang('vi'); }} className={`lang-pill-btn ${exportLang === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+
+            {/* CONTENT CONTAINER */}
+            <div className={`flex-1 bg-white dark:bg-slate-900 rounded-2xl border ${themeConfig.borderClass.replace('border-', 'border-opacity-30 border-')} border-t-4 border-t-${themeConfig.borderClass.replace('border-', '')} dark:border-slate-800 overflow-hidden shadow-sm relative flex flex-col transition-colors duration-500 ease-fluid`}>
+                
+                {/* VIEW 1: MATRIX */}
+                {activeTab === 'matrix' && (
+                    processes.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                            <p className="mb-4">No processes defined.</p>
+                            <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 rounded-xl bg-indigo-50 dark:bg-indigo-900/10 text-indigo-500">
+                                Create processes in the sidebar to begin planning.
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex-1 overflow-auto custom-scrollbar relative">
+                            <table className="w-full text-left border-collapse">
+                                <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
+                                    <tr>
+                                        <th 
+                                            className={`p-3 border-b border-r border-gray-200 dark:border-slate-800 sticky left-0 z-40 min-w-[300px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group select-none ${themeConfig.bgSoft}`}
+                                            onClick={handleToggleAll}
+                                            title={areAllCollapsed ? "Click to Expand All" : "Click to Collapse All"}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${themeConfig.textClass}`}>
+                                                    Clause Reference
+                                                </span>
+                                            </div>
+                                        </th>
+                                        {processes.map(p => (
+                                            <th key={p.id} className={`p-3 text-[10px] font-bold uppercase tracking-wider border-b border-gray-200 dark:border-slate-800 min-w-[120px] text-center ${themeConfig.textClass}`}>
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <span className="truncate max-w-[100px]" title={p.name}>{p.name}</span>
+                                                    <span className="text-[10px] font-bold bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full shadow-sm">
+                                                        {Object.keys(p.matrixData).length}
+                                                    </span>
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                
+                                <tbody className="divide-y divide-gray-100 dark:divide-slate-800/50">
+                                    {filteredGroups.map(group => {
+                                        const isCollapsed = collapsedGroups.has(group.id);
+                                        const groupStyle = getPDCAStyle(group.id); 
+                                        const groupFlatList = getGroupClauses(group.clauses);
+
+                                        return (
+                                            <React.Fragment key={group.id}>
+                                                <tr className={`sticky z-20 hover:brightness-95 transition-all duration-500 ease-fluid ${groupStyle}`}>
+                                                    <td 
+                                                        className="p-2 border-r border-black/5 dark:border-white/5 font-black text-xs uppercase tracking-widest sticky left-0 z-20 bg-inherit shadow-sm cursor-pointer"
+                                                        onClick={() => toggleGroupCollapse(group.id)}
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <Icon name={group.icon} size={14} className="opacity-70"/>
+                                                                {group.title}
+                                                            </div>
+                                                            <Icon name="ChevronDown" size={14} className={`transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}/>
+                                                        </div>
+                                                    </td>
+                                                    {processes.map(p => {
+                                                        const flatIds: string[] = [];
+                                                        const traverse = (list: Clause[]) => list.forEach(c => { flatIds.push(c.id); if(c.subClauses) traverse(c.subClauses); });
+                                                        traverse(group.clauses);
+                                                        const proc = processes.find(proc => proc.id === p.id);
+                                                        const allSelected = proc ? flatIds.every(cid => !!proc.matrixData[cid]) : false;
+
+                                                        return (
+                                                            <td key={`group_action_${p.id}_${group.id}`} className="p-2 text-center bg-inherit">
+                                                                {!isCollapsed && (
+                                                                    <button 
+                                                                        onClick={(e) => handleGroupToggle(e, p.id, group.clauses)}
+                                                                        className="p-1.5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors opacity-70 hover:opacity-100"
+                                                                        title={allSelected ? "Deselect Group" : "Select Entire Group"}
+                                                                    >
+                                                                        <Icon name={allSelected ? "CheckSquare" : "Square"} size={16} />
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+
+                                                {!isCollapsed && groupFlatList.map(({ clause, level }) => (
+                                                    <PlanningRow 
+                                                        key={clause.id}
+                                                        clause={clause}
+                                                        level={level}
+                                                        processes={processes}
+                                                        onSmartToggle={handleSmartToggle}
+                                                    />
+                                                ))}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )
+                )}
+
+                {/* VIEW 2: RESOURCES & SCHEDULE */}
+                {activeTab === 'resources' && (
+                    <div className="flex-1 flex overflow-hidden relative">
+                        {/* LEFT: INPUTS */}
+                        <div className="w-[380px] min-w-[320px] border-r border-gray-100 dark:border-slate-800 bg-orange-50/50 dark:bg-orange-950/20 flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4">
+                            {/* ... (Existing Inputs: Logistics, Sites, Team, Mapping) ... */}
+                            {/* Card: Logistics */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <Icon name="Session7_Compass" size={14}/> Logistics
+                                </h4>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase">Audit Dates (Multiple)</label>
+                                        <div className="flex gap-2 mb-2">
+                                            <input 
+                                                type="date" 
+                                                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" 
+                                                value={dateInput} 
+                                                onChange={e => setDateInput(e.target.value)} 
+                                            />
+                                            <button 
+                                                onClick={handleAddDate}
+                                                className="px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-colors"
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {auditPlanConfig.auditDates.length === 0 && <span className="text-[10px] text-slate-400 italic">No dates added.</span>}
+                                            {auditPlanConfig.auditDates.map((date, idx) => (
+                                                <span key={idx} className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-gray-200 dark:border-slate-700 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm animate-in zoom-in-95">
+                                                    Day {idx+1}: {date}
+                                                    <button onClick={() => handleRemoveDate(date)} className="text-slate-400 hover:text-red-500"><Icon name="X" size={10}/></button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Work Start</label>
+                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.startTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, startTime: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Work End</label>
+                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.endTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, endTime: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 border-t border-dashed border-gray-200 dark:border-slate-700 pt-2">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Lunch Start</label>
+                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.lunchStartTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchStartTime: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Lunch End</label>
+                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.lunchEndTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchEndTime: e.target.value})} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card: Sites */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <Icon name="MapPin" size={14}/> Sites
+                                </h4>
+                                <div className="flex flex-col gap-2 mb-2">
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Site Name (e.g. Factory A)" value={newSite.name} onChange={e => setNewSite({...newSite, name: e.target.value})} />
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Address / Location" value={newSite.address} onChange={e => setNewSite({...newSite, address: e.target.value})} />
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Scope (e.g. Manufacturing)" value={newSite.scope} onChange={e => setNewSite({...newSite, scope: e.target.value})} />
+                                    
+                                    <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                                        <input type="checkbox" checked={newSite.isMain} onChange={e => setNewSite({...newSite, isMain: e.target.checked})} className="accent-orange-500" />
+                                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Is Main Site / HQ?</span>
+                                    </label>
+
+                                    <button onClick={handleAddSite} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors text-xs font-bold flex items-center justify-center gap-2"><Icon name="Plus" size={14}/> Add Site</button>
+                                </div>
+                                <div className="space-y-1">
+                                    {auditSites.map(s => (
+                                        <div key={s.id} className="flex flex-col bg-slate-50 dark:bg-slate-800 rounded-lg border border-transparent hover:border-orange-200 dark:hover:border-orange-800 p-2 text-xs group">
+                                            {editingSiteId === s.id && tempSite ? (
+                                                <div className="flex flex-col gap-2">
+                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.name} onChange={e => setTempSite({...tempSite, name: e.target.value})} placeholder="Name" />
+                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.address} onChange={e => setTempSite({...tempSite, address: e.target.value})} placeholder="Address" />
+                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.scope} onChange={e => setTempSite({...tempSite, scope: e.target.value})} placeholder="Scope" />
+                                                    <label className="flex items-center gap-2">
+                                                        <input type="checkbox" checked={tempSite.isMain} onChange={e => setTempSite({...tempSite, isMain: e.target.checked})} />
+                                                        <span className="text-[10px] text-slate-900 dark:text-white">Is HQ</span>
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 text-white rounded py-1 font-bold">Save</button>
+                                                        <button onClick={handleCancelEditSite} className="flex-1 bg-gray-200 text-slate-600 rounded py-1">Cancel</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-start cursor-pointer" onClick={() => handleStartEditSite(s)} title="Click to Edit">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-800 dark:text-slate-200">{s.name} {s.isMain && <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded ml-1">HQ</span>}</span>
+                                                        <span className="text-[9px] text-slate-500 truncate max-w-[150px]">{s.address}</span>
+                                                    </div>
+                                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); setAuditSites(prev => prev.filter(x => x.id !== s.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Card: Team */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <Icon name="Users" size={14}/> Audit Team
+                                </h4>
+                                <div className="space-y-2 mb-2">
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Member Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
+                                    
+                                    <div className="flex gap-2">
+                                        <select className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as any})}>
+                                            <option value="Auditor">Auditor</option>
+                                            <option value="Lead Auditor">Lead Auditor</option>
+                                            <option value="Technical Expert">Tech Expert</option>
+                                        </select>
+                                        <input className="w-24 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="CODE" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
+                                    </div>
+                                    
+                                    {/* Availability / Constraints */}
+                                    <input 
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" 
+                                        placeholder="Constraints (e.g., 09:00-11:00 Online Only)" 
+                                        value={newMember.availability} 
+                                        onChange={e => setNewMember({...newMember, availability: e.target.value})} 
+                                    />
+
+                                    <div className="flex gap-2 items-center">
+                                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 flex-1">
+                                            <input type="number" className="w-10 bg-transparent text-xs font-bold text-center outline-none text-slate-900 dark:text-white" value={newMember.manDays} onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value)})} step="0.5" min="0.5" />
+                                            <span className="text-[9px] text-slate-500 uppercase">Days</span>
+                                        </div>
+                                        <button 
+                                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 transition-all ${newMember.isRemote ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700'}`}
+                                            onClick={() => setNewMember({...newMember, isRemote: !newMember.isRemote})}
+                                        >
+                                            <Icon name={newMember.isRemote ? "Globe" : "MapPin"} size={12}/>
+                                            {newMember.isRemote ? "Remote" : "On-Site"}
+                                        </button>
+                                    </div>
+                                    
+                                    <button onClick={handleSaveMember} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg text-xs font-bold hover:bg-orange-200 transition-colors">
+                                        {editingMemberId ? "Update Member" : "Add Member"}
+                                    </button>
+                                    {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:""}); }} className="w-full text-[10px] text-slate-400 underline">Cancel Edit</button>}
+                                </div>
+                                
+                                <div className="space-y-1">
+                                    {auditTeam.map(m => (
+                                        <div key={m.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-800 rounded-lg group border border-transparent hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer" onClick={() => handleEditMember(m)} title="Click to Edit">
+                                            <div className="flex-1">
+                                                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                                    {m.name}
+                                                    {m.isRemote && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">REMOTE</span>}
+                                                </div>
+                                                <div className="text-[9px] text-slate-500">{m.role} • {m.manDays}d</div>
+                                                {m.availability && <div className="text-[9px] text-orange-600 dark:text-orange-400 italic mt-0.5">{m.availability}</div>}
+                                            </div>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setAuditTeam(prev => prev.filter(x => x.id !== m.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Card: Process Mapping */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <Icon name="Tag" size={14}/> Process Mapping
+                                </h4>
+                                <div className="space-y-3 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                    {processes.map(p => (
+                                        <div key={p.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700">
+                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate flex-1" title={p.name}>{p.name}</span>
+                                                <input 
+                                                    className="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded p-1 text-[9px] font-mono text-center outline-none focus:ring-1 focus:ring-orange-500 text-slate-800 dark:text-white" 
+                                                    placeholder="CODE"
+                                                    value={p.competencyCode || ""}
+                                                    onChange={(e) => updateProcessCode(p.id, e.target.value)}
+                                                />
+                                            </div>
+                                            <select 
+                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded p-1 text-[10px] text-slate-600 dark:text-slate-300 outline-none"
+                                                value={p.siteIds?.[0] || ""}
+                                                onChange={(e) => updateProcessSites(p.id, e.target.value ? [e.target.value] : [])}
+                                            >
+                                                <option value="">All Sites (Default)</option>
+                                                {auditSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                            </select>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button onClick={handleGenerateSchedule} disabled={isGenerating} className={`w-full py-3 rounded-xl font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${!isGenerating ? "btn-shrimp text-white hover:shadow-indigo-500/40" : "bg-gray-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"}`}>
+                                {isGenerating ? <Icon name="Loader" className="animate-spin" size={14}/> : <Icon name="Wand2" size={14}/>}
+                                {isGenerating ? "AI Planning..." : "SCHEDULING"}
+                            </button>
+
+                        </div>
+
+                        {/* RIGHT: SCHEDULE TABLE & GENERATION OVERLAY */}
+                        <div className="flex-1 bg-white dark:bg-slate-900 relative flex flex-col overflow-hidden">
+                            
+                            {/* --- AI GENERATION OVERLAY --- */}
+                            {isGenerating && (
+                                <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300 rounded-2xl border border-white/20 dark:border-slate-800">
+                                    <div className="w-full max-w-lg space-y-6">
+                                        <div className="flex flex-col items-center">
+                                            <div className="relative w-16 h-16 mb-4">
+                                                <div className="absolute inset-0 border-4 border-orange-100 dark:border-slate-700 rounded-full"></div>
+                                                <div className="absolute inset-0 border-t-4 border-orange-500 rounded-full animate-spin"></div>
+                                                <Icon name="Session7_Compass" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-orange-500" size={24}/>
+                                            </div>
+                                            <h3 className="text-xl font-black text-slate-800 dark:text-white animate-pulse">Designing Audit Plan...</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-1">{genProgress}% Complete</p>
+                                        </div>
+
+                                        {/* Progress Bar */}
+                                        <div className="w-full h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                            <div 
+                                                className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 ease-out" 
+                                                style={{ width: `${genProgress}%` }}
+                                            ></div>
+                                        </div>
+
+                                        {/* Logs Console */}
+                                        <div className="w-full h-40 bg-black/5 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-slate-800 p-4 font-mono text-xs overflow-y-auto custom-scrollbar shadow-inner">
+                                            {genLogs.map((log, idx) => (
+                                                <div key={idx} className="mb-1 text-slate-600 dark:text-slate-400 flex gap-2">
+                                                    <span className="text-orange-400 select-none">&gt;</span>
+                                                    <span>{log}</span>
+                                                </div>
+                                            ))}
+                                            <div ref={logsEndRef} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                                {auditSchedule.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                        <Icon name="Session7_Compass" size={48} className="mb-4 opacity-20"/>
+                                        <p className="font-bold text-slate-500">No Schedule Generated</p>
+                                        <p className="text-xs mt-2">Setup resources and click Generate.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-8 pb-16">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                                <Icon name="Session7_Compass" className="text-orange-500"/> Audit Agenda
+                                            </h3>
+                                            <span className="text-[10px] text-slate-400 italic">
+                                                Drag column headers to sort & group data
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Group by Day */}
+                                        {[...new Set(auditSchedule.map(s => s.day))].sort().map(day => {
+                                            // Get the first occurrence of this day to find the date
+                                            const dayItems = auditSchedule.filter(s => s.day === day);
+                                            const dateLabel = dayItems[0]?.date || `Day ${day}`;
+                                            const daySchedule = getSortedSchedule(dayItems);
+                                            const rowSpans = calculateRowSpans(daySchedule, agendaColumns);
+
+                                            return (
+                                                <div key={day} className="mb-8">
+                                                    <h4 className="text-sm font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-4 py-1.5 rounded-lg inline-block mb-4 shadow-sm border border-orange-100 dark:border-orange-800/50">
+                                                        Day {day}: {dateLabel}
+                                                    </h4>
+                                                    
+                                                    <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                                                        <table className="w-full border-collapse text-left bg-white dark:bg-slate-900">
+                                                            <thead>
+                                                                <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 text-[10px] uppercase tracking-wider text-slate-500 select-none">
+                                                                    {agendaColumns.map(col => (
+                                                                        <th 
+                                                                            key={col} 
+                                                                            className="p-3 font-bold border-r border-gray-100 dark:border-slate-800 cursor-move hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                                                                            draggable
+                                                                            onDragStart={(e) => handleDragStart(e, col)}
+                                                                            onDragOver={(e) => handleDragOver(e, col)}
+                                                                            onDragEnd={handleDragEnd}
+                                                                        >
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Icon name="Grid" size={10} className="opacity-50"/>
+                                                                                {COLUMN_LABELS[col]}
+                                                                            </div>
+                                                                        </th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="text-xs divide-y divide-gray-100 dark:divide-slate-800/50">
+                                                                {daySchedule.map((item: any, idx: number) => (
+                                                                    <tr key={idx} className="hover:bg-orange-50/30 dark:hover:bg-slate-800/30 transition-colors">
+                                                                        {agendaColumns.map((col, colIdx) => {
+                                                                            const span = rowSpans[`${idx}_${colIdx}`];
+                                                                            if (span === 0) return null; // Hidden cell due to merge
+
+                                                                            return (
+                                                                                <td 
+                                                                                    key={col} 
+                                                                                    rowSpan={span}
+                                                                                    className="p-3 border-r border-gray-100 dark:border-slate-800 align-top bg-white dark:bg-slate-900"
+                                                                                >
+                                                                                    {col === 'timeSlot' && <span className="font-mono font-bold text-slate-600 dark:text-slate-400">{item.timeSlot}</span>}
+                                                                                    {col === 'siteName' && <span className="text-slate-500">{item.siteName}</span>}
+                                                                                    {col === 'auditorName' && (
+                                                                                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                                                            {item.auditorName}
+                                                                                            {item.isRemote && <span className="ml-2 text-[9px] bg-purple-100 text-purple-600 px-1 rounded border border-purple-200">REMOTE</span>}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {col === 'processName' && (
+                                                                                        <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                                                                            <Icon name="Session11_GridAdd" size={12}/> 
+                                                                                            {item.processName || "General"}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {col === 'activity' && (
+                                                                                        <div className="font-bold text-slate-800 dark:text-slate-200">
+                                                                                            {item.activity}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {col === 'clauseRefs' && (
+                                                                                        item.clauseRefs && item.clauseRefs.length > 0 ? (
+                                                                                            <div className="flex flex-wrap gap-1">
+                                                                                                {item.clauseRefs.map((c: string) => (
+                                                                                                    <span key={c} className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-600 dark:text-slate-400">{c}</span>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        ) : <span className="text-slate-300 text-[10px]">-</span>
+                                                                                    )}
+                                                                                </td>
+                                                                            );
+                                                                        })}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* EXPORT TOOLBAR - FIXED AT BOTTOM */}
+                            {auditSchedule.length > 0 && (
+                                <div className="flex-none p-4 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 flex justify-end gap-2 shadow-inner">
+                                    <button onClick={() => onExport && onExport('schedule', exportLanguage, 'docx', { columns: agendaColumns })} className="px-4 h-[40px] bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-lg whitespace-nowrap">
+                                        <Icon name="Download" />
+                                        <span className="hidden md:inline">Export</span>
+                                        <div className="lang-pill-container ml-1">
+                                            <span onClick={(e) => { e.stopPropagation(); setExportLanguage('en'); }} className={`lang-pill-btn ${exportLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                                            <span onClick={(e) => { e.stopPropagation(); setExportLanguage('vi'); }} className={`lang-pill-btn ${exportLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </button>
+                )}
             </div>
         </div>
     );

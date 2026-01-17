@@ -7,9 +7,18 @@ export interface SourceDocument {
     metadata?: any;
 }
 
+export interface ClauseRecord {
+    id: string; // Composite key: standardKey_clauseCode (e.g., "ISO9001_4.1")
+    standardKey: string;
+    code: string;
+    title: string;
+    content: string;
+}
+
 const DB_NAME = 'ISO_AUDIT_DB';
-const STORE_NAME = 'knowledge_files';
-const DB_VERSION = 1;
+const STORE_DOCS = 'knowledge_files';
+const STORE_CLAUSES = 'structured_clauses';
+const DB_VERSION = 2; // Bump version for migration
 
 class KnowledgeStoreService {
     private dbPromise: Promise<IDBDatabase> | null = null;
@@ -22,9 +31,17 @@ class KnowledgeStoreService {
 
             request.onupgradeneeded = (event) => {
                 const db = (event.target as IDBOpenDBRequest).result;
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    // Create object store with standardKey as the primary key
-                    db.createObjectStore(STORE_NAME, { keyPath: 'standardKey' });
+                
+                // Store 1: Raw Documents
+                if (!db.objectStoreNames.contains(STORE_DOCS)) {
+                    db.createObjectStore(STORE_DOCS, { keyPath: 'standardKey' });
+                }
+
+                // Store 2: Structured Clauses (New)
+                if (!db.objectStoreNames.contains(STORE_CLAUSES)) {
+                    const clauseStore = db.createObjectStore(STORE_CLAUSES, { keyPath: 'id' });
+                    clauseStore.createIndex('standardKey', 'standardKey', { unique: false });
+                    clauseStore.createIndex('code', 'code', { unique: false });
                 }
             };
 
@@ -41,12 +58,14 @@ class KnowledgeStoreService {
         return this.dbPromise;
     }
 
+    // --- RAW DOCUMENT OPERATIONS ---
+
     async saveDocument(standardKey: string, fileName: string, content: string): Promise<void> {
         try {
             const db = await this.openDB();
             return new Promise((resolve, reject) => {
-                const transaction = db.transaction([STORE_NAME], 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
+                const transaction = db.transaction([STORE_DOCS], 'readwrite');
+                const store = transaction.objectStore(STORE_DOCS);
                 
                 const doc: SourceDocument = {
                     standardKey,
@@ -56,12 +75,11 @@ class KnowledgeStoreService {
                 };
 
                 const request = store.put(doc);
-
                 request.onsuccess = () => resolve();
                 request.onerror = () => reject(request.error);
             });
         } catch (error) {
-            console.error("KnowledgeStore: Save Error", error);
+            console.error("KnowledgeStore: Save Doc Error", error);
             throw error;
         }
     }
@@ -70,59 +88,85 @@ class KnowledgeStoreService {
         try {
             const db = await this.openDB();
             return new Promise((resolve, reject) => {
-                const transaction = db.transaction([STORE_NAME], 'readonly');
-                const store = transaction.objectStore(STORE_NAME);
+                const transaction = db.transaction([STORE_DOCS], 'readonly');
+                const store = transaction.objectStore(STORE_DOCS);
                 const request = store.get(standardKey);
 
-                request.onsuccess = () => {
-                    resolve(request.result ? (request.result as SourceDocument) : null);
-                };
+                request.onsuccess = () => resolve(request.result ? (request.result as SourceDocument) : null);
                 request.onerror = () => reject(request.error);
             });
         } catch (error) {
-            console.error("KnowledgeStore: Get Error", error);
             return null;
         }
     }
 
-    async deleteDocument(standardKey: string): Promise<void> {
-        try {
-            const db = await this.openDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction([STORE_NAME], 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.delete(standardKey);
+    // --- STRUCTURED CLAUSE OPERATIONS ---
 
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
+    async bulkSaveClauses(standardKey: string, clauses: { code: string, title: string, content: string }[]): Promise<void> {
+        const db = await this.openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_CLAUSES], 'readwrite');
+            const store = transaction.objectStore(STORE_CLAUSES);
+
+            clauses.forEach(c => {
+                const record: ClauseRecord = {
+                    id: `${standardKey}_${c.code}`,
+                    standardKey,
+                    code: c.code,
+                    title: c.title,
+                    content: c.content
+                };
+                store.put(record);
             });
-        } catch (error) {
-            console.error("KnowledgeStore: Delete Error", error);
-            throw error;
-        }
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
-    /**
-     * Migration Helper: Checks if there is legacy data in LocalStorage 
-     * and moves it to IndexedDB if found.
-     */
-    async migrateFromLocalStorage(standardKey: string): Promise<boolean> {
-        const legacyContentKey = `iso_kb_content_${standardKey}`;
-        const legacyNameKey = `iso_kb_name_${standardKey}`;
-        
-        const content = localStorage.getItem(legacyContentKey);
-        const name = localStorage.getItem(legacyNameKey);
+    async getClauseContent(standardKey: string, code: string): Promise<string | null> {
+        try {
+            const db = await this.openDB();
+            return new Promise((resolve) => {
+                const transaction = db.transaction([STORE_CLAUSES], 'readonly');
+                const store = transaction.objectStore(STORE_CLAUSES);
+                const request = store.get(`${standardKey}_${code}`);
 
-        if (content && name) {
-            console.log(`KnowledgeStore: Migrating ${standardKey} from LocalStorage to IndexedDB...`);
-            await this.saveDocument(standardKey, name, content);
+                request.onsuccess = () => {
+                    const res = request.result as ClauseRecord;
+                    resolve(res ? res.content : null);
+                };
+                request.onerror = () => resolve(null);
+            });
+        } catch (e) { return null; }
+    }
+
+    async deleteStandardData(standardKey: string): Promise<void> {
+        const db = await this.openDB();
+        
+        // 1. Delete Raw Doc
+        const t1 = db.transaction([STORE_DOCS], 'readwrite');
+        t1.objectStore(STORE_DOCS).delete(standardKey);
+
+        // 2. Delete Clauses (Need to use cursor or index range in a real robust impl, 
+        // but for now we rely on the composite key logic or delete individually if we had the list. 
+        // For simplicity in this implementation, we will iterate index).
+        return new Promise((resolve) => {
+            const t2 = db.transaction([STORE_CLAUSES], 'readwrite');
+            const store = t2.objectStore(STORE_CLAUSES);
+            const index = store.index('standardKey');
+            const request = index.openKeyCursor(IDBKeyRange.only(standardKey));
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest).result;
+                if (cursor) {
+                    store.delete(cursor.primaryKey);
+                    cursor.continue();
+                }
+            };
             
-            // Clean up LocalStorage
-            localStorage.removeItem(legacyContentKey);
-            localStorage.removeItem(legacyNameKey);
-            return true;
-        }
-        return false;
+            t2.oncomplete = () => resolve();
+        });
     }
 }
 

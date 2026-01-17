@@ -20,7 +20,7 @@ interface FindingsViewProps {
     setViewMode: (mode: FindingsViewMode) => void;
     focusedFindingIndex: number;
     setFocusedFindingIndex: (index: number) => void;
-    onExport: (type: 'notes', lang: 'en' | 'vi') => void;
+    onExport: (type: 'notes', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
     notesLanguage: 'en' | 'vi';
     setNotesLanguage: (lang: 'en' | 'vi') => void;
     progressPercent?: number; // Added
@@ -264,6 +264,8 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         }
     };
 
+    // Render Function... (Keeping same logic but updating container)
+    // ... [Use existing renderFindingCard logic]
     const renderFindingCard = (res: AnalysisResult, idx: number, isCondensed = false) => {
         const styles = getFindingColorStyles(res.status as FindingStatus);
         const reviewText = reviews[res.clauseId];
@@ -272,7 +274,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         const isTranslating = translatingId === res.clauseId;
         const isEvidenceExpanded = expandedEvidence[res.clauseId] || false;
 
-        // Determine displayed reason text based on language preference
         let displayReason = res.reason;
         const hasVi = !!res.reason_vi;
         const hasEn = !!res.reason_en;
@@ -283,7 +284,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
             displayReason = res.reason_en || res.reason;
         }
 
-        // Check if we need to offer translation (e.g. user wants VI but we only have default/EN)
         const showTranslateBtn = (notesLanguage === 'vi' && !hasVi) || (notesLanguage === 'en' && !hasEn && !res.reason.match(/^[A-Za-z]/)); 
 
         return (
@@ -412,7 +412,6 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                                         // When editing, update the field corresponding to CURRENT view language
                                         const field = notesLanguage === 'vi' ? 'reason_vi' : 'reason_en';
                                         handleUpdateFinding(idx, field, e.target.value);
-                                        // Also update main 'reason' if it's the first edit to keep sync or just keep them separate?
                                         if (notesLanguage === 'en') handleUpdateFinding(idx, 'reason', e.target.value);
                                     }}
                                     className="w-full bg-transparent outline-none text-base text-slate-800 dark:text-slate-200 leading-relaxed resize-none h-auto min-h-[60px]"
@@ -459,7 +458,7 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     </div>
                 )}
                 
-                {/* --- NEURAL DASHBOARD OVERLAY (Matches ReportView Style) --- */}
+                {/* --- NEURAL DASHBOARD OVERLAY --- */}
                 {isAnalyzeLoading && (
                     <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300 rounded-3xl border border-white/20 dark:border-slate-800">
                         <div className="w-full max-w-lg space-y-6">
@@ -606,14 +605,17 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
                     </button>
                 )}
 
-                <button onClick={() => onExport('notes', notesLanguage)} disabled={!analysisResult} className="flex-none md:w-auto px-6 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md hover:shadow-lg">
-                    <Icon name="Download" />
-                    <span className="hidden md:inline">Export Findings</span>
-                    <div className="lang-pill-container">
-                        <span onClick={(e) => { e.stopPropagation(); setNotesLanguage('en'); }} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
-                        <span onClick={(e) => { e.stopPropagation(); setNotesLanguage('vi'); }} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
-                    </div>
-                </button>
+                {/* --- UPDATED EXPORT BUTTONS --- */}
+                <div className="flex gap-2">
+                    <button onClick={() => onExport('notes', notesLanguage, 'txt')} disabled={!analysisResult} className="flex-none px-4 h-[52px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-50 whitespace-nowrap dark:shadow-md hover:shadow-lg">
+                        <Icon name="Download" />
+                        <span className="hidden md:inline">Export</span>
+                        <div className="lang-pill-container">
+                            <span onClick={(e) => { e.stopPropagation(); setNotesLanguage('en'); }} className={`lang-pill-btn ${notesLanguage === 'en' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>EN</span>
+                            <span onClick={(e) => { e.stopPropagation(); setNotesLanguage('vi'); }} className={`lang-pill-btn ${notesLanguage === 'vi' ? 'lang-pill-active' : 'lang-pill-inactive'}`}>VI</span>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
     );

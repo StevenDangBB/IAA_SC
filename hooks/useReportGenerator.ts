@@ -92,12 +92,21 @@ export const useReportGenerator = (exportLanguage: string) => {
                 lang: exportLanguage
             }, apiKey, model);
             
-            finalSections.push(`# AUDIT REPORT: ${auditInfo.company}\n\n## EXECUTIVE SUMMARY\n${summary}\n`);
+            // Clean markdown chars (safety net)
+            const cleanSummary = summary.replace(/[#*`]/g, '');
+
+            finalSections.push(`AUDIT REPORT: ${auditInfo.company}\n\nEXECUTIVE SUMMARY\n${cleanSummary}\n`);
+            
+            // Explicitly add Auditee List if AI missed it (safety net) or reinforce it
+            if(!cleanSummary.toLowerCase().includes('auditee')) {
+                 finalSections.push(`Auditee list: ${allInterviewees.join(', ')}\n`);
+            }
+
             setGenerationLogs(prev => [...prev, "Executive Summary: Completed"]);
             setProgressPercent(10);
 
             // 2. DETAILED FINDINGS (GROUPED BY PROCESS)
-            finalSections.push(`## DETAILED FINDINGS`);
+            finalSections.push(`DETAILED FINDINGS`);
 
             // Group findings by Process Name
             const findingsByProcess: Record<string, AnalysisResult[]> = {};
@@ -119,12 +128,12 @@ export const useReportGenerator = (exportLanguage: string) => {
                 const auditorName = auditInfo.auditor || "[Auditor Name]";
                 
                 // Find corresponding process object to get specific interviewees
-                // Use the processId from the first finding in this group to reliably find the process
                 const representativeFinding = processFindings[0];
                 const processObj = processes.find(p => p.id === representativeFinding.processId);
                 const processInterviewees = processObj?.interviewees?.join(", ") || "N/A";
 
-                finalSections.push(`### PROCESS: ${pName}\n**Execution performed by:** ${auditorName}\n**Auditees (Interviewed):** ${processInterviewees}\n`);
+                // PLAIN TEXT HEADER
+                finalSections.push(`PROCESS: ${pName}\nExecution performed by: ${auditorName}\nAuditees (Interviewed): ${processInterviewees}\n`);
                 
                 // Process findings within this group
                 for (const finding of processFindings) {
@@ -134,7 +143,10 @@ export const useReportGenerator = (exportLanguage: string) => {
 
                     // Real Processing Call
                     const sectionText = await formatFindingReportSection(finding, exportLanguage as 'en'|'vi', apiKey, model);
-                    finalSections.push(sectionText);
+                    
+                    // CLEAN UP MARKDOWN CHARS from specific finding section
+                    const cleanSection = sectionText.replace(/[#*`]/g, '');
+                    finalSections.push(cleanSection);
 
                     processedCount++;
                     const percent = 10 + Math.round((processedCount / totalFindings) * 90);
@@ -145,7 +157,7 @@ export const useReportGenerator = (exportLanguage: string) => {
                 }
                 
                 // Add separator between processes
-                finalSections.push("---"); 
+                finalSections.push("----------------------------------------"); 
             }
 
             // 3. FINALIZE

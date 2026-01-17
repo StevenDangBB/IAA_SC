@@ -1,12 +1,12 @@
 
-import { StandardsData, AuditInfo } from './types';
+import { StandardsData, AuditInfo, AuditPlanConfig } from './types';
 import { ISO9001 } from './iso9001Data';
 import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "5.2.0-REFACTOR"; 
-export const BUILD_TIMESTAMP = "2026-03-05 08:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.0.0-GOLD"; 
+export const BUILD_TIMESTAMP = "2026-03-06 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -20,6 +20,14 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
     smo: "", 
     auditor: "", 
     type: "" 
+};
+
+export const DEFAULT_PLAN_CONFIG: AuditPlanConfig = {
+    auditDates: [new Date().toISOString().split('T')[0]], // Default to today
+    startTime: "08:30",
+    endTime: "17:00",
+    lunchStartTime: "12:00",
+    lunchEndTime: "13:00"
 };
 
 // --- USER CONFIGURATION: FIXED API KEYS ---
@@ -91,20 +99,21 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
-        version: "5.2.0-REFACTOR",
-        date: "2026-03-05",
+        version: "4.0.0-GOLD",
+        date: "2026-03-06",
         features: [
-            "CORE: Performance Architecture. Implemented Lazy Loading and Memoized Contexts.",
-            "UI: Enhanced Depth & Contrast (Layered Shadows).",
-            "TECH: React 19 Strict Mode Compatibility."
+            "PRD DEPLOYMENT: System Architecture finalized. Dual-Stream Analysis engine is now stable.",
+            "PERFORMANCE: React Rendering optimization for Evidence Matrix with >500 rows.",
+            "DOCS: Added comprehensive 'User Manual' and 'Data Topology' in the Info section."
         ]
     },
     {
-        version: "5.1.0-SMART-ROUTING",
-        date: "2026-03-01",
+        version: "3.6.1-PLANNING",
+        date: "2026-03-05",
         features: [
-            "CORE: Added Smart Model Rotator. Automatically switches to Flash/Lite models when Pro quota is exceeded.",
-            "QUOTA: Integrated Gemini 2.0 Flash Lite for maximum availability."
+            "PLANNER: Multi-day support. Can now schedule non-continuous audit days.",
+            "PLANNER: Smart HQ selection and optimized logic for time slot distribution.",
+            "UI: Dark mode contrast fixes for input fields."
         ]
     }
 ];
