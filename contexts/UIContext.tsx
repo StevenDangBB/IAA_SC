@@ -18,7 +18,7 @@ interface UIContextType {
         integrity: boolean;
         recall: boolean;
         addStandard: boolean;
-        privacy: boolean;
+        // Privacy modal removed - moved to Settings
     };
     toggleModal: (modal: keyof UIContextType['modals'], state?: boolean) => void;
     
@@ -54,7 +54,6 @@ export const UIProvider = ({ children }: React.PropsWithChildren<{}>) => {
         integrity: false,
         recall: false,
         addStandard: false,
-        privacy: false,
     });
 
     const toggleModal = (modal: keyof typeof modals, state?: boolean) => {

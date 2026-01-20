@@ -1,9 +1,9 @@
 
 import React, { useRef, useState, useMemo } from 'react';
 import { Icon, IconSelect, IconInput } from '../UI';
-import { AUDIT_TYPES } from '../../constants';
 import { useUI } from '../../contexts/UIContext';
 import { useAudit } from '../../contexts/AuditContext';
+import { AuditSite } from '../../types';
 
 interface AuditInfoFormProps {
     onAddNewStandard: () => void;
@@ -30,6 +30,13 @@ const IconTextArea = ({ icon, iconColor, placeholder, value, onChange, className
     </div>
 );
 
+// Helper for Mandatory Label
+const LabelRequired = ({ text }: { text: string }) => (
+    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">
+        {text} <span className="text-red-500" title="Required Field">*</span>
+    </label>
+);
+
 export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
     onAddNewStandard, onOpenIntegrity, onKnowledgeUpload, 
     health, auditFieldIconColor, standardOptions
@@ -39,7 +46,9 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
         standardKey, setStandardKey, auditInfo, setAuditInfo, standards,
         knowledgeFileName, clearKnowledge,
         processes, activeProcessId, setActiveProcessId,
-        addProcess, renameProcess, deleteProcess
+        addProcess, renameProcess, deleteProcess,
+        auditTypeOptions,
+        auditSites, setAuditSites 
     } = useAudit();
 
     const { showToast } = useUI();
@@ -84,6 +93,32 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
         if (e.target.files && e.target.files.length > 0) {
             onKnowledgeUpload(e);
             e.target.value = '';
+        }
+    };
+
+    // --- TOTAL SITES LOGIC ---
+    const handleTotalSitesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = parseInt(e.target.value) || 0;
+        const diff = val - auditSites.length;
+
+        if (diff > 0) {
+            // Add new empty sites
+            const newSites: AuditSite[] = [];
+            for (let i = 0; i < diff; i++) {
+                newSites.push({
+                    id: `site_auto_${Date.now()}_${i}`,
+                    name: `Site ${auditSites.length + i + 1}`,
+                    address: "",
+                    scope: "",
+                    isMain: false,
+                    employeeCount: 0
+                });
+            }
+            setAuditSites([...auditSites, ...newSites]);
+        } else if (diff < 0) {
+            // Remove last sites (Simple trim)
+            const remaining = auditSites.slice(0, val);
+            setAuditSites(remaining);
         }
     };
 
@@ -176,7 +211,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
 
             {/* SECTION 1: STANDARD */}
             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Audit Standard</label>
+                <LabelRequired text="Audit Standard" />
                 <div className="relative group/source">
                     <IconSelect 
                         id="sidebar-standard-select"
@@ -207,17 +242,63 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     )}
                 </div>
                 
-                <IconSelect icon="FileEdit" iconColor={auditFieldIconColor} value={auditInfo.type} onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} options={Object.keys(AUDIT_TYPES).map(key => ({ value: key, label: key }))} defaultText="Select Audit Type" />
+                <div className="mt-2">
+                    <LabelRequired text="Audit Type" />
+                    <IconSelect 
+                        icon="FileEdit" 
+                        iconColor={auditFieldIconColor} 
+                        value={auditInfo.type} 
+                        onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} 
+                        options={Object.keys(auditTypeOptions).map(key => ({ value: key, label: key }))} 
+                        defaultText="Select Audit Type" 
+                    />
+                </div>
             </div>
 
             <div className="h-px bg-gray-200 dark:bg-slate-700/50"></div>
 
             {/* SECTION 2: ENTITY & CONTEXT */}
             <div className="space-y-3">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Organization Context</label>
-                <div className="grid grid-cols-[1.5fr_1fr] gap-2">
-                    <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
-                    <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="SMO/ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                <LabelRequired text="Organization Context" />
+                
+                {/* Row 1: Company Name (Full Width) */}
+                <IconInput icon="Building" iconColor={auditFieldIconColor} placeholder="Company Name" value={auditInfo.company} onChange={(e: any) => setAuditInfo({...auditInfo, company: e.target.value})} />
+                
+                {/* Row 2: SMO & Total Sites & Total Employees (Split 50-25-25) */}
+                <div className="flex gap-2">
+                    <div className="basis-1/2">
+                        <IconInput icon="Tag" iconColor={auditFieldIconColor} placeholder="SMO/ID" value={auditInfo.smo} onChange={(e: any) => setAuditInfo({...auditInfo, smo: e.target.value})} />
+                    </div>
+                    
+                    {/* TOTAL SITES INPUT */}
+                    <div className="basis-1/4 relative group">
+                        <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300">
+                            <div className={auditFieldIconColor}><Icon name="MapPin" size={14} /></div>
+                        </div>
+                        <input 
+                            type="number"
+                            placeholder="Sites"
+                            title="Total Sites (Auto-Syncs with Logistics)"
+                            value={auditSites.length || ""} // Use array length as source of truth for display reactivity
+                            onChange={handleTotalSitesChange}
+                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                    </div>
+
+                    {/* TOTAL EMPLOYEES INPUT */}
+                    <div className="basis-1/4 relative group">
+                        <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300">
+                            <div className={auditFieldIconColor}><Icon name="Users" size={14} /></div>
+                        </div>
+                        <input 
+                            type="number"
+                            placeholder="Staff"
+                            title="Total Employees (All Sites)"
+                            value={auditInfo.totalEmployees || ""}
+                            onChange={(e) => setAuditInfo({...auditInfo, totalEmployees: parseInt(e.target.value) || 0})}
+                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                    </div>
                 </div>
                 
                 <IconTextArea 
@@ -253,7 +334,9 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                 {/* PROCESS MANAGEMENT DROPDOWN */}
                 <div className="space-y-2 pt-1">
                     <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase">Process Management</label>
+                        <label className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase">
+                            Process Management <span className="text-red-500" title="Required Field">*</span>
+                        </label>
                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">{displayProcesses.length} Items</span>
                     </div>
                     
@@ -270,26 +353,19 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                                     placeholder="Enter Process/Department..."
                                     onChange={(e) => setInputValue(e.target.value)}
                                     onKeyDown={handleAddKeyDown}
-                                    className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 placeholder-indigo-300 dark:placeholder-slate-600 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
+                                    className="w-full pl-10 pr-3 h-11 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 placeholder-indigo-300 dark:placeholder-slate-600 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
                                     autoComplete="off"
                                 />
-                            </div>
-                            <div className="relative overflow-hidden flex flex-col items-center justify-center py-3 text-[10px] bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900 gap-1">
-                                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-black tracking-wide uppercase">
-                                    <Icon name="AlertCircle" size={14} className="animate-bounce" />
-                                    <span>Action Required</span>
-                                </div>
-                                <span className="font-medium text-slate-500 dark:text-slate-400">Create a Process to Start</span>
                             </div>
                         </>
                     ) : (
                         <div className="relative">
                             <div 
                                 onClick={() => { if(!isCreating) setIsProcessMenuOpen(!isProcessMenuOpen); }}
-                                className={`w-full flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                                className={`w-full h-11 flex items-center justify-between px-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                                     isProcessMenuOpen || isCreating 
                                         ? 'border-indigo-500 ring-1 ring-indigo-500 bg-white dark:bg-slate-900 shadow-md z-20' 
-                                        : 'bg-white dark:bg-slate-950 border-gray-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-slate-700'
+                                        : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-slate-700'
                                 }`}
                             >
                                 <div className="flex items-center gap-3 overflow-hidden flex-1">
@@ -421,7 +497,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
 
             {/* SECTION 3: PERSONNEL */}
             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Auditor</label>
+                <LabelRequired text="Auditor" />
                 <div className="flex gap-2">
                      <div className="flex-1">
                         <IconInput icon="AuditUser" iconColor={auditFieldIconColor} placeholder="Lead Auditor Name" value={auditInfo.auditor} onChange={(e: any) => setAuditInfo({...auditInfo, auditor: e.target.value})} />

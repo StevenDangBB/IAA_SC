@@ -4,3 +4,4 @@ export * from './ui/Primitives';
 export * from './ui/Loaders';
 export * from './ui/CommandPalette';
 export * from './ui/FontSizeController';
+export * from './ui/GlassDatePicker';

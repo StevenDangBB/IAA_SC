@@ -1,7 +1,7 @@
 
 # ISO Audit Assistant (Project Onyx)
 
-**Version:** 4.4.0-BASELINE
+**Version:** 4.1.0-STABLE
 **Engine:** Google Gemini 3.0 Pro / Flash 3.0
 
 Professional ISO Audit Assistant leveraging Gemini AI for compliance analysis, OCR evidence extraction, and automated reporting.
@@ -46,8 +46,9 @@ npm run checkpoint
 ```
 This will create a timestamped backup in the `_backups` directory, preserving all source code and configuration.
 
-## 🌟 Key Features (v4.4.0)
+## 🌟 Key Features (v4.1.0)
 
+- **Smart Resource Sync:** Bi-directional synchronization between Logistics planning and Global Audit Context.
 - **Performance Core:** React Memoization for high-speed table rendering (Matrix/Planning).
 - **Dual-Stream Analysis:** Combines Structured Matrix evidence with Unstructured Documents.
 - **Privacy Shield:** Client-side PII redaction before AI transmission.

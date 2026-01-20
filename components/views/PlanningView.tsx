@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, memo, useCallback, useEffect } from 'react';
-import { Icon } from '../UI';
+import { Icon, GlassDatePicker } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
 import { Clause, AuditMember, AuditSite } from '../../types';
 import { useUI } from '../../contexts/UIContext';
@@ -91,6 +91,7 @@ const PlanningRow = memo(({
 }, (prev, next) => {
     if (prev.processes.length !== next.processes.length) return false;
     
+    // Deep check to prevent re-render unless matrix data actually changed for this row
     const hasChange = prev.processes.some((pp, idx) => {
         const np = next.processes[idx];
         return pp.matrixData !== np.matrixData;
@@ -101,9 +102,10 @@ const PlanningRow = memo(({
 
 
 export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
+    // --- CONTEXT ---
     const { 
         standards, standardKey, processes, auditInfo,
-        addProcess, batchUpdateProcessClauses, toggleProcessClause,
+        batchUpdateProcessClauses, toggleProcessClause,
         auditSites, setAuditSites, auditTeam, setAuditTeam, auditPlanConfig, setAuditPlanConfig,
         auditSchedule, setAuditSchedule, updateProcessCode, updateProcessSites
     } = useAudit();
@@ -111,6 +113,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const { showToast, setSidebarOpen } = useUI();
     const { getActiveKey } = useKeyPool();
     
+    // --- LOCAL STATE ---
     // Tab State
     const [activeTab, setActiveTab] = useState<'matrix' | 'resources'>('matrix');
     
@@ -120,27 +123,23 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const logsEndRef = useRef<HTMLDivElement>(null);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     
-    // Logistics State
-    const [newSite, setNewSite] = useState<AuditSite>({ id: "", name: "", address: "", scope: "", isMain: false });
+    // Logistics Input State
+    const [newSite, setNewSite] = useState<AuditSite>({ id: "", name: "", address: "", scope: "", isMain: false, employeeCount: 0 });
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     const [newMember, setNewMember] = useState<Partial<AuditMember>>({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
-    
-    // Export Lang State
-    const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
-
-    // Dates Logic
-    const [dateInput, setDateInput] = useState("");
-
-    // Site Editing State
     const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
     const [tempSite, setTempSite] = useState<AuditSite | null>(null);
+    
+    // Misc UI State
+    const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
     // AI Generation State
     const [isGenerating, setIsGenerating] = useState(false);
     const [genProgress, setGenProgress] = useState(0);
     const [genLogs, setGenLogs] = useState<string[]>([]);
 
-    // --- NEW: DYNAMIC AGENDA COLUMNS ---
+    // Schedule Grid Configuration
     const [agendaColumns, setAgendaColumns] = useState(['timeSlot', 'siteName', 'processName', 'activity', 'auditorName', 'clauseRefs']);
     const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
@@ -156,17 +155,17 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const currentStandard = standards[standardKey];
     const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
 
-    // Auto-scroll logs
+    // --- EFFECTS ---
     useEffect(() => {
         if (isGenerating && logsEndRef.current) {
             logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [genLogs, isGenerating]);
 
-    // --- HELPER: LOGGING ---
+    // --- HELPER METHODS ---
     const addLog = (msg: string) => setGenLogs(prev => [...prev, msg]);
 
-    // --- AGENDA DRAG & DROP LOGIC ---
+    // --- DRAG & DROP HANDLERS ---
     const handleDragStart = (e: React.DragEvent, colId: string) => {
         setDraggedColumn(colId);
         e.dataTransfer.effectAllowed = 'move';
@@ -181,81 +180,55 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         const draggedIdx = newCols.indexOf(draggedColumn);
         const targetIdx = newCols.indexOf(colId);
         
-        // Swap
         newCols.splice(draggedIdx, 1);
         newCols.splice(targetIdx, 0, draggedColumn);
-        
         setAgendaColumns(newCols);
     };
 
-    const handleDragEnd = () => {
-        setDraggedColumn(null);
-    };
+    const handleDragEnd = () => setDraggedColumn(null);
 
-    // --- AGENDA SORTING & MERGING LOGIC ---
-    // 1. Sort data strictly by the visual column order
+    // --- DATA TRANSFORMATION FOR TABLE ---
     const getSortedSchedule = (daySchedule: any[]) => {
         return [...daySchedule].sort((a, b) => {
             for (const col of agendaColumns) {
-                // Get values
                 const valA = a[col] || "";
                 const valB = b[col] || "";
-                
                 if (valA === valB) continue; 
-
-                // Special handling for Time Slots
                 return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true, sensitivity: 'base' });
             }
             return 0;
         });
     };
 
-    // 2. Calculate RowSpans based on Cascading Group By logic
-    // MODIFIED: Specific rules for Auditor/Process to allow merging even if Time changes (provided Site is same)
     const calculateRowSpans = (data: any[], columns: string[]) => {
         const rowSpans: Record<string, number> = {}; 
-        
-        // Initialize all spans to 0 (meaning "hidden" unless calculated otherwise)
-        // Actually, logic is: 
-        // If > 0: render cell with span.
-        // If === 0: don't render cell.
         
         for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
             for (let colIdx = 0; colIdx < columns.length; colIdx++) {
                 const key = `${rowIdx}_${colIdx}`;
-                // Default every cell to span 1 unless marked 0 by previous iteration
                 if (rowSpans[key] === 0) continue; 
                 rowSpans[key] = 1;
             }
         }
 
-        // Iterate Columns from Left to Right
         for (let colIdx = 0; colIdx < columns.length; colIdx++) {
             const colName = columns[colIdx];
-            
-            // Iterate Rows from Top to Bottom
             for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
                 const key = `${rowIdx}_${colIdx}`;
-                if (rowSpans[key] === 0) continue; // Already merged into a previous row
+                if (rowSpans[key] === 0) continue; 
 
                 const currentVal = data[rowIdx][colName];
                 
-                // Look ahead for matches
                 for (let nextIdx = rowIdx + 1; nextIdx < data.length; nextIdx++) {
                     const nextVal = data[nextIdx][colName];
                     const nextKey = `${nextIdx}_${colIdx}`;
                     
                     let parentMatch = true;
-                    // CUSTOM MERGE LOGIC: Auditor and Process should merge if SITE is the same, ignoring Time.
-                    // This allows grouping of long-running auditors or processes that span multiple time slots.
                     if (colName === 'auditorName' || colName === 'processName') {
-                        // Check if Site Name is the same (Assuming siteName exists in data)
-                        // If columns order changes, this hardcoded check ensures logical consistency over visual strictness for these specific fields
                         const valSiteA = data[rowIdx]['siteName'];
                         const valSiteB = data[nextIdx]['siteName'];
                         if (valSiteA !== valSiteB) parentMatch = false;
                     } else if (colIdx > 0) {
-                        // Standard strict cascading for other columns
                         for (let p = 0; p < colIdx; p++) {
                             if (data[rowIdx][columns[p]] !== data[nextIdx][columns[p]]) {
                                 parentMatch = false;
@@ -266,9 +239,9 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                     if (currentVal === nextVal && parentMatch) {
                         rowSpans[key]++;
-                        rowSpans[nextKey] = 0; // Mark next row's cell as hidden
+                        rowSpans[nextKey] = 0; 
                     } else {
-                        break; // Stop merging sequence
+                        break; 
                     }
                 }
             }
@@ -276,7 +249,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         return rowSpans;
     };
 
-    // --- MATRIX LOGIC START ---
+    // --- MATRIX LOGIC ---
     const getPDCAStyle = (groupId: string) => {
         const key = groupId.toUpperCase();
         if (key.includes('PLAN')) return 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-l-4 border-orange-500';
@@ -408,9 +381,12 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             return matchingClauses.length > 0 ? { ...g, clauses: matchingClauses } : null;
         }).filter(g => g !== null) as typeof currentStandard.groups;
     }, [currentStandard, search]);
-    // --- MATRIX LOGIC END ---
 
-    // --- SITE MANAGEMENT LOGIC ---
+    // --- SITE & TEAM MANAGEMENT ---
+    const totalEmployees = auditInfo.totalEmployees || 0;
+    const allocatedEmployees = auditSites.reduce((sum, s) => sum + (s.employeeCount || 0), 0);
+    const unallocatedEmployees = Math.max(0, totalEmployees - allocatedEmployees); // Display only
+
     const handleAddSite = () => {
         if (!newSite.name.trim()) return;
         const site: AuditSite = {
@@ -418,10 +394,11 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             name: newSite.name.trim(),
             address: newSite.address || "",
             scope: newSite.scope || "",
-            isMain: newSite.isMain
+            isMain: newSite.isMain,
+            employeeCount: newSite.employeeCount || 0
         };
         setAuditSites([...auditSites, site]);
-        setNewSite({ id: "", name: "", address: "", scope: "", isMain: false });
+        setNewSite({ id: "", name: "", address: "", scope: "", isMain: false, employeeCount: 0 });
     };
 
     const handleStartEditSite = (site: AuditSite) => {
@@ -442,7 +419,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         setTempSite(null);
     };
 
-    // --- TEAM MANAGEMENT LOGIC ---
     const handleSaveMember = () => {
         if (!newMember.name?.trim()) return;
         
@@ -469,19 +445,14 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         setNewMember({ ...m });
     };
 
-    // --- DATE MANAGEMENT LOGIC ---
-    const handleAddDate = () => {
-        if (!dateInput) return;
-        const exists = auditPlanConfig.auditDates.includes(dateInput);
-        if (!exists) {
-            const newDates = [...auditPlanConfig.auditDates, dateInput].sort();
-            setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
-        }
-        setDateInput("");
+    // --- DATE & SCHEDULE LOGIC ---
+    const handleUpdateDates = (newDates: string[]) => {
+        setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
     };
 
     const handleRemoveDate = (date: string) => {
-        const newDates = auditPlanConfig.auditDates.filter(d => d !== date);
+        const currentDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
+        const newDates = currentDates.filter(d => d !== date);
         setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
     };
 
@@ -490,14 +461,16 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         if (!key) { showToast("API Key Required."); return; }
         if (auditTeam.length === 0) { showToast("Please add at least one auditor."); return; }
         if (processes.length === 0) { showToast("No processes found to schedule."); return; }
-        if (auditPlanConfig.auditDates.length === 0) { showToast("Please add at least one audit date."); return; }
+        
+        const safeDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
+        if (safeDates.length === 0) { showToast("Please add at least one audit date."); return; }
 
         setIsGenerating(true);
         setGenProgress(5);
         setGenLogs(["Initializing Smart Planner...", "Validating resources and process map..."]);
 
         try {
-            // SIMULATE STEPS for Visualization (Since API call is single-shot)
+            // Simulated steps for UI feedback
             setTimeout(() => { setGenProgress(20); addLog("Analyzing Auditor Competencies..."); }, 800);
             setTimeout(() => { setGenProgress(40); addLog(`Mapping ${processes.length} Processes to Sites...`); }, 2000);
             setTimeout(() => { setGenProgress(60); addLog("Optimizing time slots & balancing workload..."); }, 3500);
@@ -513,13 +486,12 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 { name: auditInfo.auditor, code: auditInfo.leadAuditorCode }
             );
             
-            // Clean JSON
             const schedule = cleanAndParseJSON(resultJson);
             
             if (Array.isArray(schedule) && schedule.length > 0) {
                 setGenProgress(100);
                 addLog("Success! Rendering Schedule...");
-                await new Promise(r => setTimeout(r, 800)); // Small delay to show 100%
+                await new Promise(r => setTimeout(r, 800)); 
                 setAuditSchedule(schedule);
                 showToast("Schedule Generated Successfully!");
             } else {
@@ -529,13 +501,13 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             console.error(e);
             addLog(`ERROR: ${e.message}`);
             showToast("Planning Failed: Check Logs.");
-            await new Promise(r => setTimeout(r, 2000)); // Delay to show error log
+            await new Promise(r => setTimeout(r, 2000));
         } finally {
             setIsGenerating(false);
         }
     };
-    // --- RESOURCES LOGIC END ---
 
+    // --- RENDER ---
     const handleSelectStandardFocus = () => {
         setSidebarOpen(true);
         setTimeout(() => {
@@ -553,6 +525,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             </button>
         </div>
     );
+
+    const safeAuditDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
 
     return (
         <div className="h-full flex flex-col animate-fade-in-up gap-4 relative">
@@ -623,6 +597,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                         </div>
                     ) : (
                         <div className="flex-1 overflow-auto custom-scrollbar relative">
+                            {/* ... Matrix Table Code ... */}
                             <table className="w-full text-left border-collapse">
                                 <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
                                     <tr>
@@ -717,7 +692,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                     <div className="flex-1 flex overflow-hidden relative">
                         {/* LEFT: INPUTS */}
                         <div className="w-[380px] min-w-[320px] border-r border-gray-100 dark:border-slate-800 bg-orange-50/50 dark:bg-orange-950/20 flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4">
-                            {/* ... (Existing Inputs: Logistics, Sites, Team, Mapping) ... */}
+                            
                             {/* Card: Logistics */}
                             <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
                                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -725,31 +700,29 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 </h4>
                                 <div className="space-y-3">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase">Audit Dates (Multiple)</label>
-                                        <div className="flex gap-2 mb-2">
-                                            <input 
-                                                type="date" 
-                                                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" 
-                                                value={dateInput} 
-                                                onChange={e => setDateInput(e.target.value)} 
-                                            />
-                                            <button 
-                                                onClick={handleAddDate}
-                                                className="px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-colors"
-                                            >
-                                                Add
-                                            </button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {auditPlanConfig.auditDates.length === 0 && <span className="text-[10px] text-slate-400 italic">No dates added.</span>}
-                                            {auditPlanConfig.auditDates.map((date, idx) => (
-                                                <span key={idx} className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-gray-200 dark:border-slate-700 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm animate-in zoom-in-95">
-                                                    Day {idx+1}: {date}
-                                                    <button onClick={() => handleRemoveDate(date)} className="text-slate-400 hover:text-red-500"><Icon name="X" size={10}/></button>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Audit Dates (Multiple)</label>
+                                        
+                                        {/* Smart Calendar Trigger */}
+                                        <button 
+                                            onClick={() => setIsCalendarOpen(true)}
+                                            className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl shadow-glow transition-all active:scale-95 flex items-center justify-center gap-2 mb-2 group"
+                                        >
+                                            <Icon name="Calendar" size={18} className="group-hover:-rotate-12 transition-transform duration-500"/>
+                                            <span className="font-bold text-sm">Plan Audit Dates</span>
+                                        </button>
+
+                                        {/* Date Chips */}
+                                        <div className="flex flex-wrap gap-2 min-h-[30px]">
+                                            {safeAuditDates.length === 0 && <span className="text-[10px] text-slate-400 italic">No dates selected.</span>}
+                                            {safeAuditDates.map((date, idx) => (
+                                                <span key={idx} className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm animate-in zoom-in-95">
+                                                    <span className="text-orange-500 font-bold">D{idx+1}:</span> {date}
+                                                    <button onClick={() => handleRemoveDate(date)} className="text-slate-400 hover:text-red-500 ml-1"><Icon name="X" size={10}/></button>
                                                 </span>
                                             ))}
                                         </div>
                                     </div>
+                                    
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
                                             <label className="text-[10px] font-bold text-slate-500 uppercase">Work Start</label>
@@ -775,36 +748,56 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                             {/* Card: Sites */}
                             <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <Icon name="MapPin" size={14}/> Sites
-                                </h4>
-                                <div className="flex flex-col gap-2 mb-2">
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Site Name (e.g. Factory A)" value={newSite.name} onChange={e => setNewSite({...newSite, name: e.target.value})} />
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Address / Location" value={newSite.address} onChange={e => setNewSite({...newSite, address: e.target.value})} />
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Scope (e.g. Manufacturing)" value={newSite.scope} onChange={e => setNewSite({...newSite, scope: e.target.value})} />
-                                    
-                                    <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
-                                        <input type="checkbox" checked={newSite.isMain} onChange={e => setNewSite({...newSite, isMain: e.target.checked})} className="accent-orange-500" />
-                                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Is Main Site / HQ?</span>
-                                    </label>
-
-                                    <button onClick={handleAddSite} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors text-xs font-bold flex items-center justify-center gap-2"><Icon name="Plus" size={14}/> Add Site</button>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="MapPin" size={14}/> Sites
+                                    </h4>
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${unallocatedEmployees === 0 && totalEmployees > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                        Allocated: {allocatedEmployees} / {totalEmployees}
+                                    </span>
                                 </div>
-                                <div className="space-y-1">
+                                
+                                {totalEmployees > 0 && (
+                                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mb-3 overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-500 ${allocatedEmployees > totalEmployees ? 'bg-red-500' : allocatedEmployees === totalEmployees ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                            style={{ width: `${Math.min(100, (allocatedEmployees / totalEmployees) * 100)}%` }}
+                                        ></div>
+                                    </div>
+                                )}
+
+                                {/* LIST AT TOP */}
+                                <div className="space-y-1 mb-3">
                                     {auditSites.map(s => (
-                                        <div key={s.id} className="flex flex-col bg-slate-50 dark:bg-slate-800 rounded-lg border border-transparent hover:border-orange-200 dark:hover:border-orange-800 p-2 text-xs group">
+                                        <div key={s.id} className="flex flex-col bg-slate-50 dark:bg-slate-800 rounded-lg border border-transparent hover:border-orange-200 dark:hover:border-orange-800 p-2 text-xs group animate-in slide-in-from-top-1 fade-in">
                                             {editingSiteId === s.id && tempSite ? (
                                                 <div className="flex flex-col gap-2">
-                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.name} onChange={e => setTempSite({...tempSite, name: e.target.value})} placeholder="Name" />
-                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.address} onChange={e => setTempSite({...tempSite, address: e.target.value})} placeholder="Address" />
-                                                    <input className="bg-white dark:bg-slate-900 border border-indigo-300 rounded px-2 py-1 text-slate-900 dark:text-white" value={tempSite.scope} onChange={e => setTempSite({...tempSite, scope: e.target.value})} placeholder="Scope" />
-                                                    <label className="flex items-center gap-2">
-                                                        <input type="checkbox" checked={tempSite.isMain} onChange={e => setTempSite({...tempSite, isMain: e.target.checked})} />
-                                                        <span className="text-[10px] text-slate-900 dark:text-white">Is HQ</span>
-                                                    </label>
+                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.name} onChange={e => setTempSite({...tempSite, name: e.target.value})} placeholder="Site Name" />
+                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.address} onChange={e => setTempSite({...tempSite, address: e.target.value})} placeholder="Address" />
+                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.scope} onChange={e => setTempSite({...tempSite, scope: e.target.value})} placeholder="Scope" />
+                                                    
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 flex items-center gap-2">
+                                                            <Icon name="Users" size={12} className="text-slate-400"/>
+                                                            <input 
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="Employees"
+                                                                className="bg-transparent w-full text-xs font-bold text-slate-900 dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                                                value={tempSite.employeeCount || ""} 
+                                                                onChange={e => setTempSite({...tempSite, employeeCount: parseInt(e.target.value) || 0})}
+                                                            />
+                                                            <span className="text-[9px] text-slate-400 whitespace-nowrap">Auto-Syncs Total</span>
+                                                        </div>
+                                                        <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 h-full">
+                                                            <input type="checkbox" checked={tempSite.isMain} onChange={e => setTempSite({...tempSite, isMain: e.target.checked})} className="accent-orange-500" />
+                                                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">HQ</span>
+                                                        </label>
+                                                    </div>
+
                                                     <div className="flex gap-2">
-                                                        <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 text-white rounded py-1 font-bold">Save</button>
-                                                        <button onClick={handleCancelEditSite} className="flex-1 bg-gray-200 text-slate-600 rounded py-1">Cancel</button>
+                                                        <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-1.5 font-bold text-xs shadow-sm transition-colors">Save Changes</button>
+                                                        <button onClick={handleCancelEditSite} className="flex-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg py-1.5 text-xs font-bold transition-colors">Cancel</button>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -812,6 +805,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                     <div className="flex flex-col">
                                                         <span className="font-bold text-slate-800 dark:text-slate-200">{s.name} {s.isMain && <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded ml-1">HQ</span>}</span>
                                                         <span className="text-[9px] text-slate-500 truncate max-w-[150px]">{s.address}</span>
+                                                        <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1 mt-0.5"><Icon name="Users" size={10}/> {s.employeeCount || 0} Staff</span>
                                                     </div>
                                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
@@ -822,6 +816,39 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* SEPARATOR */}
+                                <div className="border-t border-dashed border-gray-200 dark:border-slate-700 my-3 relative">
+                                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 bg-white dark:bg-slate-900 px-2 text-[9px] text-slate-400 uppercase tracking-wider">Add New</div>
+                                </div>
+
+                                {/* INPUTS AT BOTTOM */}
+                                <div className="flex flex-col gap-2">
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Site Name (e.g. Factory A)" value={newSite.name} onChange={e => setNewSite({...newSite, name: e.target.value})} />
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Address / Location" value={newSite.address} onChange={e => setNewSite({...newSite, address: e.target.value})} />
+                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Scope (e.g. Manufacturing)" value={newSite.scope} onChange={e => setNewSite({...newSite, scope: e.target.value})} />
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 flex items-center gap-2">
+                                            <Icon name="Users" size={12} className="text-slate-400"/>
+                                            <input 
+                                                type="number" 
+                                                min="0"
+                                                className="bg-transparent w-full text-xs font-bold text-slate-900 dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                                placeholder="Employees" 
+                                                value={newSite.employeeCount || ""} 
+                                                onChange={e => setNewSite({...newSite, employeeCount: parseInt(e.target.value) || 0})}
+                                            />
+                                            <span className="text-[9px] text-slate-400 whitespace-nowrap">Auto-Syncs Total</span>
+                                        </div>
+                                        <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 h-full">
+                                            <input type="checkbox" checked={newSite.isMain} onChange={e => setNewSite({...newSite, isMain: e.target.checked})} className="accent-orange-500" />
+                                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">HQ</span>
+                                        </label>
+                                    </div>
+
+                                    <button onClick={handleAddSite} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors text-xs font-bold flex items-center justify-center gap-2"><Icon name="Plus" size={14}/> Add Site</button>
+                                </div>
                             </div>
 
                             {/* Card: Team */}
@@ -829,6 +856,38 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                     <Icon name="Users" size={14}/> Audit Team
                                 </h4>
+
+                                {/* LIST AT TOP */}
+                                <div className="space-y-1 mb-3">
+                                    {auditTeam.map(m => (
+                                        <div key={m.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-800 rounded-lg group border border-transparent hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer animate-in slide-in-from-top-1 fade-in" onClick={() => handleEditMember(m)} title="Click to Edit">
+                                            <div className="flex-1">
+                                                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                                                    {m.name}
+                                                    {m.competencyCodes && (
+                                                        <span className="text-[9px] bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800 font-mono" title="Competency Code">
+                                                            {m.competencyCodes}
+                                                        </span>
+                                                    )}
+                                                    {m.isRemote && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">REMOTE</span>}
+                                                </div>
+                                                <div className="text-[9px] text-slate-500">{m.role} • {m.manDays}d</div>
+                                                {m.availability && <div className="text-[9px] text-orange-600 dark:text-orange-400 italic mt-0.5">{m.availability}</div>}
+                                            </div>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setAuditTeam(prev => prev.filter(x => x.id !== m.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* SEPARATOR */}
+                                <div className="border-t border-dashed border-gray-200 dark:border-slate-700 my-3 relative">
+                                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 bg-white dark:bg-slate-900 px-2 text-[9px] text-slate-400 uppercase tracking-wider">Add New</div>
+                                </div>
+
+                                {/* INPUTS AT BOTTOM */}
                                 <div className="space-y-2 mb-2">
                                     <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Member Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
                                     
@@ -851,7 +910,14 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                                     <div className="flex gap-2 items-center">
                                         <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 flex-1">
-                                            <input type="number" className="w-10 bg-transparent text-xs font-bold text-center outline-none text-slate-900 dark:text-white" value={newMember.manDays} onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value)})} step="0.5" min="0.5" />
+                                            <input 
+                                                type="number" 
+                                                className="w-full bg-transparent text-xs font-bold text-center outline-none text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                                value={newMember.manDays} 
+                                                onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value)})} 
+                                                step="0.5" 
+                                                min="0.5" 
+                                            />
                                             <span className="text-[9px] text-slate-500 uppercase">Days</span>
                                         </div>
                                         <button 
@@ -868,25 +934,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                     </button>
                                     {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:""}); }} className="w-full text-[10px] text-slate-400 underline">Cancel Edit</button>}
                                 </div>
-                                
-                                <div className="space-y-1">
-                                    {auditTeam.map(m => (
-                                        <div key={m.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-800 rounded-lg group border border-transparent hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer" onClick={() => handleEditMember(m)} title="Click to Edit">
-                                            <div className="flex-1">
-                                                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                                    {m.name}
-                                                    {m.isRemote && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">REMOTE</span>}
-                                                </div>
-                                                <div className="text-[9px] text-slate-500">{m.role} • {m.manDays}d</div>
-                                                {m.availability && <div className="text-[9px] text-orange-600 dark:text-orange-400 italic mt-0.5">{m.availability}</div>}
-                                            </div>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
-                                                <button onClick={(e) => { e.stopPropagation(); setAuditTeam(prev => prev.filter(x => x.id !== m.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
                             </div>
 
                             {/* Card: Process Mapping */}
@@ -894,7 +941,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                     <Icon name="Tag" size={14}/> Process Mapping
                                 </h4>
-                                <div className="space-y-3 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                <div className="space-y-3">
                                     {processes.map(p => (
                                         <div key={p.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700">
                                             <div className="flex items-center justify-between gap-2 mb-2">
@@ -928,6 +975,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                         {/* RIGHT: SCHEDULE TABLE & GENERATION OVERLAY */}
                         <div className="flex-1 bg-white dark:bg-slate-900 relative flex flex-col overflow-hidden">
+                            {/* ... Content on the right side (AI logs, Table) remains unchanged ... */}
                             
                             {/* --- AI GENERATION OVERLAY --- */}
                             {isGenerating && (
@@ -985,7 +1033,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                         
                                         {/* Group by Day */}
                                         {[...new Set(auditSchedule.map(s => s.day))].sort().map(day => {
-                                            // Get the first occurrence of this day to find the date
                                             const dayItems = auditSchedule.filter(s => s.day === day);
                                             const dateLabel = dayItems[0]?.date || `Day ${day}`;
                                             const daySchedule = getSortedSchedule(dayItems);
@@ -1091,6 +1138,14 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                     </div>
                 )}
             </div>
+
+            {/* Smart Calendar Modal */}
+            <GlassDatePicker 
+                isOpen={isCalendarOpen} 
+                onClose={() => setIsCalendarOpen(false)}
+                selectedDates={safeAuditDates}
+                onChange={handleUpdateDates}
+            />
         </div>
     );
 };

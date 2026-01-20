@@ -31,8 +31,10 @@ export interface AuditInfo {
     soa: string;
     smo: string;
     auditor: string;
-    leadAuditorCode?: string; // New: Lead Auditor Technical Code
+    leadAuditorCode?: string; 
     type: string;
+    totalEmployees?: number; // Global Headcount Cap
+    totalSites?: number; // New: Total Sites count
 }
 
 export interface PrivacySettings {
@@ -49,7 +51,7 @@ export interface AuditProcess {
     id: string;
     name: string;
     competencyCode?: string;
-    siteIds?: string[]; // New: Map process to specific sites (empty = all sites)
+    siteIds?: string[]; 
     evidence: string;
     interviewees: string[];
     matrixData: Record<string, MatrixRow[]>;
@@ -117,8 +119,9 @@ export interface AuditSite {
     id: string;
     name: string;
     address: string;
-    scope: string; // New: Site specific scope
+    scope: string; 
     isMain: boolean;
+    employeeCount?: number; // New: Headcount at this specific site
 }
 
 export interface AuditMember {
@@ -127,21 +130,21 @@ export interface AuditMember {
     role: 'Lead Auditor' | 'Auditor' | 'Technical Expert';
     competencyCodes: string;
     manDays: number;
-    isRemote: boolean; // New: Audit mode
-    availability?: string; // New: Specific constraints (e.g., "09:00-11:00 Online Only")
+    isRemote: boolean; 
+    availability?: string; 
 }
 
 export interface AuditPlanConfig {
-    auditDates: string[]; // CHANGED: Array of specific dates (YYYY-MM-DD)
+    auditDates: string[]; 
     startTime: string;
     endTime: string;
-    lunchStartTime: string; // New
-    lunchEndTime: string;   // New
+    lunchStartTime: string; 
+    lunchEndTime: string;   
 }
 
 export interface AuditScheduleItem {
     day: number;
-    date: string; // New: Specific date string
+    date: string; 
     timeSlot: string;
     activity: string;
     siteName: string;

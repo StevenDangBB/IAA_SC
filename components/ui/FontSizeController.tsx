@@ -33,7 +33,7 @@ export const FontSizeController = ({ fontSizeScale, adjustFontSize }: any) => {
             <button 
                 ref={buttonRef}
                 onClick={handleToggle} 
-                className={`p-2 rounded-xl transition-all duration-300 shadow-sm ${isOpen ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-700 dark:text-indigo-400 scale-105' : 'bg-gray-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                className={`p-2 rounded-xl transition-all active:scale-95 ${isOpen ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 title="Adjust Font Size"
             >
                 <Icon name="TextSize" size={18}/>

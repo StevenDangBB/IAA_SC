@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings, AuditSite, AuditMember, AuditPlanConfig, AuditScheduleItem } from '../types';
-import { DEFAULT_AUDIT_INFO, DEFAULT_PLAN_CONFIG, STANDARDS_DATA, INITIAL_EVIDENCE } from '../constants';
+import { DEFAULT_AUDIT_INFO, DEFAULT_PLAN_CONFIG, STANDARDS_DATA, INITIAL_EVIDENCE, AUDIT_TYPES as DEFAULT_AUDIT_TYPES } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
 
 interface AuditContextType {
@@ -21,6 +21,12 @@ interface AuditContextType {
     // Privacy
     privacySettings: PrivacySettings;
     setPrivacySettings: React.Dispatch<React.SetStateAction<PrivacySettings>>;
+
+    // Audit Types Management (Dynamic)
+    auditTypeOptions: Record<string, string>;
+    addAuditType: (type: string, objective: string) => void;
+    deleteAuditType: (type: string) => void;
+    resetAuditTypes: () => void;
 
     // Process Management
     processes: AuditProcess[];
@@ -100,6 +106,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const [auditInfo, setAuditInfo] = useState<AuditInfo>(DEFAULT_AUDIT_INFO);
     const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(DEFAULT_PRIVACY);
     
+    // Dynamic Audit Types
+    const [auditTypeOptions, setAuditTypeOptions] = useState<Record<string, string>>(DEFAULT_AUDIT_TYPES);
+
     // Processes (Start Empty)
     const [processes, setProcesses] = useState<AuditProcess[]>([]);
     const [activeProcessId, setActiveProcessId] = useState<string | null>(null);
@@ -131,6 +140,18 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const activeProcess = useMemo(() => processes.find(p => p.id === activeProcessId), [processes, activeProcessId]);
     const processesRef = useRef(processes);
     useEffect(() => { processesRef.current = processes; }, [processes]);
+
+    // --- INIT AUDIT TYPES ---
+    useEffect(() => {
+        const savedTypes = localStorage.getItem("iso_audit_types_config");
+        if (savedTypes) {
+            try {
+                setAuditTypeOptions(JSON.parse(savedTypes));
+            } catch (e) {
+                console.error("Failed to load audit types config", e);
+            }
+        }
+    }, []);
 
     // --- SYNC EFFECTS ---
     useEffect(() => {
@@ -166,6 +187,33 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         }));
     }, [evidence, matrixData, evidenceTags, loadedProcessId]);
 
+    // --- NEW: INTELLIGENT SYNC (Sites & Staff) ---
+    // Mirrors the logic: Total must reflect reality of Planning allocations.
+    useEffect(() => {
+        const allocatedEmployees = auditSites.reduce((sum, s) => sum + (s.employeeCount || 0), 0);
+        
+        setAuditInfo(prev => {
+            let next = { ...prev };
+            let hasChange = false;
+
+            // 1. Sync Total Sites Count (Strict Equality)
+            if (prev.totalSites !== auditSites.length) {
+                next.totalSites = auditSites.length;
+                hasChange = true;
+            }
+
+            // 2. Sync Total Staff (Floor Constraint: Cap cannot be less than allocated)
+            // Allows user to set buffer in Sidebar, but auto-expands if Planning needs more.
+            const currentCap = prev.totalEmployees || 0;
+            if (allocatedEmployees > currentCap) {
+                next.totalEmployees = allocatedEmployees;
+                hasChange = true;
+            }
+
+            return hasChange ? next : prev;
+        });
+    }, [auditSites, auditInfo.totalEmployees, auditInfo.totalSites]);
+
     // --- ACTIONS ---
     const addCustomStandard = (key: string, std: Standard) => {
         setCustomStandards(prev => ({ ...prev, [key]: std }));
@@ -182,6 +230,29 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return next;
         });
         if (standardKey === key) setStandardKey("");
+    };
+
+    // AUDIT TYPE MANAGEMENT
+    const addAuditType = (type: string, objective: string) => {
+        setAuditTypeOptions(prev => {
+            const next = { ...prev, [type]: objective };
+            localStorage.setItem("iso_audit_types_config", JSON.stringify(next));
+            return next;
+        });
+    };
+
+    const deleteAuditType = (type: string) => {
+        setAuditTypeOptions(prev => {
+            const next = { ...prev };
+            delete next[type];
+            localStorage.setItem("iso_audit_types_config", JSON.stringify(next));
+            return next;
+        });
+    };
+
+    const resetAuditTypes = () => {
+        setAuditTypeOptions(DEFAULT_AUDIT_TYPES);
+        localStorage.removeItem("iso_audit_types_config");
     };
 
     const addProcess = (name: string) => {
@@ -420,7 +491,16 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         
         if (data.auditSites) setAuditSites(data.auditSites);
         if (data.auditTeam) setAuditTeam(data.auditTeam);
-        if (data.auditPlanConfig) setAuditPlanConfig(data.auditPlanConfig);
+        
+        // SAFE RESTORE: MERGE WITH DEFAULT TO PREVENT UNDEFINED ARRAYS
+        if (data.auditPlanConfig) {
+            setAuditPlanConfig({
+                ...DEFAULT_PLAN_CONFIG,
+                ...data.auditPlanConfig,
+                auditDates: data.auditPlanConfig.auditDates || DEFAULT_PLAN_CONFIG.auditDates
+            });
+        }
+        
         if (data.auditSchedule) setAuditSchedule(data.auditSchedule);
         
         if(data.standardKey) loadKnowledgeForStandard(data.standardKey);
@@ -430,6 +510,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
         auditInfo, setAuditInfo,
         privacySettings, setPrivacySettings,
+        auditTypeOptions, addAuditType, deleteAuditType, resetAuditTypes,
         processes, activeProcessId, activeProcess, setActiveProcessId, addProcess, renameProcess, updateProcessCode, updateProcessSites, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
         addInterviewee, removeInterviewee,
         auditSites, setAuditSites, auditTeam, setAuditTeam, auditPlanConfig, setAuditPlanConfig, auditSchedule, setAuditSchedule,
@@ -439,7 +520,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         analysisResult, setAnalysisResult, selectedFindings, setSelectedFindings, finalReportText, setFinalReportText,
         resetSession, restoreSession
     }), [
-        standards, standardKey, customStandards, auditInfo, privacySettings,
+        standards, standardKey, customStandards, auditInfo, privacySettings, auditTypeOptions,
         processes, activeProcessId, activeProcess,
         auditSites, auditTeam, auditPlanConfig, auditSchedule,
         evidence, matrixData, evidenceTags,

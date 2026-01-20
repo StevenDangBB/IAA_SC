@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.0.0-GOLD"; 
-export const BUILD_TIMESTAMP = "2026-03-06 09:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.1.0-STABLE"; 
+export const BUILD_TIMESTAMP = "2026-03-07 14:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -19,7 +19,9 @@ export const DEFAULT_AUDIT_INFO: AuditInfo = {
     soa: "",
     smo: "", 
     auditor: "", 
-    type: "" 
+    type: "",
+    totalEmployees: 0,
+    totalSites: 0 
 };
 
 export const DEFAULT_PLAN_CONFIG: AuditPlanConfig = {
@@ -81,14 +83,23 @@ export const TABS_CONFIG = [
 ];
 
 export const AUDIT_TYPES: Record<string, string> = {
-    "Stage 1": "Initial review of documentation and readiness.",
-    "Stage 2": "Evaluation of implementation and effectiveness.",
-    "Internal": "First-party audit to check own system.",
-    "PRE ASSESSMENT": "Gap analysis assessment.",
-    "PRE TRANSFER REVIEW": "Check valid certification for transfer.",
-    "TRANSITION AUDIT": "Ensure transition to new standard version.",
-    "CAV": "Surveillance assessment.",
-    "RAV": "Re-assessment of existing certification."
+    "Pre Assessment": "The objective of the assessment is to ascertain the organisation's progress towards implementing a management system by conducting a gap analysis.",
+    "Pre-transfer Review": "To confirm if the certification is valid and eligible for transfer, recommending a result.",
+    "Pre-transfer visit": "To confirm if the certification is valid and eligible for transfer, recommending a result.",
+    "Readiness Review": "The objective of the readiness review is to ensure the client organization has planned and initiated the implementation of the changes within the standard that will affect their transition process. The review will also include confirmation of the time needed, locations to be visited, and timeframes to allow planning of the transition audit.",
+    "IAV1": "The objective of the assessment is to determine the organisation's readiness for the stage 2 audit and to ensure its effective planning.",
+    "IAV2": "The objective of the assessment is to conduct a certification assessment to ensure the elements of the proposed scope of registration and the requirements of the management standard are effectively addressed by the organisation's management system and to confirm the forward strategic plan. If this visit is part of a multi-location assessment, the final recommendation will be contingent of the findings from all assessments.",
+    "CAV": "The objective of the assessment is to conduct a surveillance assessment and look for positive evidence to ensure the elements of the scope of certification and the requirements of the management standard are effectively addressed by the organisation's management system demonstrating the ability to support the achievement of statutory, regulatory and contractual requirements and the organisations specified objectives, as applicable with regard to the scope of the management standard, and to confirm the on-going achievement and applicability of the forward strategic plan.",
+    "M-NC Close out": "The objective of the assessment is to verify the effectiveness of the corrective action taken to address the major non-conformity and the minor non-conformities raised at the last assessment visit.",
+    "Migration Op1": "The objective of the visit is to conduct an audit against the requirements of ISO 45001 which takes into consideration existing arrangements for certification to BS OHSAS 18001. The audit will ensure the proposed scope of certification to ISO 45001 and the requirements of the management system are effectively addressed and implemented.",
+    "Migration Op2": "The objective of the visit is to plan and progress migration to ISO 45001 whilst confirming existing management system arrangements for conformity to BS OHSAS 18001 are maintained. The audit will provide a plan for ensuring the proposed scope of certification to ISO 45001 and the requirements of the management system are effectively addressed and implemented.",
+    "Migration Op3": "The objective of the visit is to conduct an audit against the requirements of ISO 45001 as part of a full recertification audit. The audit will ensure the proposed scope of certification to ISO 45001 and the requirements of the management system are effectively addressed and implemented. (Note: this option is not applicable to registrations that involve recertification by strategic review and additional time will be required to cover the significant new and changed requirements in ISO 45001:2018)",
+    "Recert op1": "The objective of the assessment is to ascertain the integrity of the organisation's management system over the current assessment cycle to enable re-certification and confirm the forward strategic assessment plan.",
+    "Recert op2": "The objective of the assessment is to conduct a re-assessment of the existing certification to ensure the elements of the proposed scope of registration and the requirements of the management standard are effectively addressed by the organisation's management system.",
+    "Transition Audit (1)": "The objective of the visit is to conduct a certification transition assessment to ensure the elements of the scope of registration and the requirements of the new management standard are effectively addressed by the organization's management system.",
+    "Transition Audit (2)": "The objective of the visit is to conduct a certification transition and surveillance assessment to ensure the elements of the scope of registration and the requirements of the new management standard are effectively addressed by the organization's management system.",
+    "Transition Audit (3)": "The objective of the visit is to conduct a certification transition and recertification assessment to ensure the elements of the scope of registration and the requirements of the new management standard are effectively addressed by the organization's management system.",
+    "Verification Audit": "The objective of the assessment was to conduct verification of the requirements of the management standard are effectively addressed by the organization's management system and to confirm the forward strategic plan."
 };
 
 export const STANDARDS_DATA: StandardsData = {
@@ -99,21 +110,21 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "4.1.0-STABLE",
+        date: "2026-03-07",
+        features: [
+            "REFACTOR: Codebase cleanup and performance optimization for Planning View.",
+            "FEATURE: Bi-directional Resource Sync. Adding staff in Planning now auto-updates Global Headcount.",
+            "UX: Improved Auditor Competency tagging and visual cues."
+        ]
+    },
+    {
         version: "4.0.0-GOLD",
         date: "2026-03-06",
         features: [
             "PRD DEPLOYMENT: System Architecture finalized. Dual-Stream Analysis engine is now stable.",
             "PERFORMANCE: React Rendering optimization for Evidence Matrix with >500 rows.",
             "DOCS: Added comprehensive 'User Manual' and 'Data Topology' in the Info section."
-        ]
-    },
-    {
-        version: "3.6.1-PLANNING",
-        date: "2026-03-05",
-        features: [
-            "PLANNER: Multi-day support. Can now schedule non-continuous audit days.",
-            "PLANNER: Smart HQ selection and optimized logic for time slot distribution.",
-            "UI: Dark mode contrast fixes for input fields."
         ]
     }
 ];

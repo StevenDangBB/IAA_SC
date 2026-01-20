@@ -30,7 +30,7 @@ export const IconSelect = ({ icon, iconColor, value, onChange, options, defaultT
             id={id}
             value={value} 
             onChange={onChange}
-            className={`w-full appearance-none pl-10 pr-8 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}
+            className={`w-full appearance-none pl-10 pr-8 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] ${value ? 'text-slate-700 dark:text-slate-300' : 'text-gray-400'}`}
         >
             <option value="" disabled>{defaultText}</option>
             {options.map((opt: any) => (
@@ -53,7 +53,7 @@ export const IconInput = ({ icon, iconColor, placeholder, value, onChange, class
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
+            className="w-full pl-10 pr-3 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
         />
     </div>
 );

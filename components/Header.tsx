@@ -20,10 +20,26 @@ export const Header: React.FC = () => {
     const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
 
     // --- SHARED STYLES ---
-    const badgeBaseClass = "flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-all duration-300";
-    const textBaseClass = "text-[10px] font-black uppercase tracking-widest leading-none";
+    // Added h-7 for fixed height synchronization across all badges
+    const badgeBaseClass = "flex items-center justify-center gap-2 px-3 h-7 rounded-full border shadow-sm backdrop-blur-md transition-all duration-300";
+    const textBaseClass = "text-[10px] font-black uppercase tracking-widest leading-none pt-px";
 
-    // --- AI BADGE CONFIG ---
+    // --- HELPER: GET MODEL NAME ---
+    const activeModelName = useMemo(() => {
+        if (!activeKeyProfile) return "OFFLINE";
+        const m = (activeKeyProfile.activeModel || "").toLowerCase();
+        
+        if (m.includes("3-pro")) return "PRO 3.0";
+        if (m.includes("3-flash")) return "FLASH 3.0";
+        if (m.includes("lite")) return "LITE 2.0";
+        if (m.includes("2.0-flash")) return "FLASH 2.0";
+        if (m.includes("1.5-pro")) return "PRO 1.5";
+        if (m.includes("1.5-flash")) return "FLASH 1.5";
+        
+        return "GEMINI";
+    }, [activeKeyProfile]);
+
+    // --- AI STATUS CONFIG ---
     const aiStatusConfig = useMemo(() => {
         if (!activeKeyProfile) return { 
             status: "offline",
@@ -32,18 +48,11 @@ export const Header: React.FC = () => {
             tooltip: "AI Offline: No API Key Configured"
         };
 
-        const modelRaw = activeKeyProfile.activeModel || "Unknown";
-        let modelDisplay = "GEMINI";
-        
-        if (modelRaw.includes("2.0-flash")) modelDisplay = "Flash 2.0";
-        else if (modelRaw.includes("3-pro")) modelDisplay = "Pro 3.0";
-        else if (modelRaw.includes("lite")) modelDisplay = "Flash Lite";
-
         if (activeKeyProfile.status === 'valid') return {
             status: "online",
             dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse",
             borderColor: "border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400",
-            tooltip: `AI Ready: ${modelDisplay}`
+            tooltip: `AI Ready: ${activeModelName}`
         };
         
         if (activeKeyProfile.status === 'quota_exceeded') return {
@@ -59,7 +68,15 @@ export const Header: React.FC = () => {
             borderColor: "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
             tooltip: "Connection Error: Check API Key"
         };
-    }, [activeKeyProfile]);
+    }, [activeKeyProfile, activeModelName]);
+
+    // --- PRIVACY BADGE STYLE ---
+    const privacyBadgeStyle = useMemo(() => {
+        if (isPrivacyActive) {
+            return "bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50 shadow-[0_0_8px_rgba(16,185,129,0.1)]";
+        }
+        return "bg-slate-50/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 opacity-80";
+    }, [isPrivacyActive]);
 
     // --- STANDARD BADGE CONFIG ---
     const displayBadge = useMemo(() => {
@@ -70,7 +87,6 @@ export const Header: React.FC = () => {
 
     const badgeColorClass = useMemo(() => {
         const text = displayBadge.toUpperCase();
-        // Use soft backgrounds (opacity) to match AI Badge style
         if (text.includes('EMS') || text.includes('14001')) return "bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50";
         if (text.includes('QMS') || text.includes('9001')) return "bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50";
         if (text.includes('ISMS') || text.includes('27001')) return "bg-purple-50/50 dark:bg-purple-900/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/50";
@@ -107,19 +123,26 @@ export const Header: React.FC = () => {
 
                     {/* --- UNIFIED BADGES --- */}
                     <div className="hidden lg:flex items-center gap-2">
-                        {/* 1. AI Badge */}
+                        {/* 1. Model Badge (READ ONLY) */}
                         <div 
-                            onClick={() => toggleModal('settings', true)}
-                            className={`${badgeBaseClass} ${aiStatusConfig.borderColor} cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-95`}
+                            className={`${badgeBaseClass} ${aiStatusConfig.borderColor} cursor-default select-none`}
                             title={aiStatusConfig.tooltip}
                         >
-                            <div className={`w-2 h-2 rounded-full ${aiStatusConfig.dotColor}`}></div>
-                            <span className={textBaseClass}>AI</span>
+                            <div className={`w-1.5 h-1.5 rounded-full ${aiStatusConfig.dotColor}`}></div>
+                            <span className={textBaseClass}>{activeModelName}</span>
+                        </div>
+
+                        {/* 2. Privacy Shield Badge (ICON ONLY) */}
+                        <div 
+                            className={`${badgeBaseClass} ${privacyBadgeStyle}`}
+                            title={isPrivacyActive ? "Privacy Shield: Active (Data Redacted)" : "Privacy Shield: Inactive"}
+                        >
+                            <Icon name="ShieldEye" size={14} className={isPrivacyActive ? "animate-pulse" : ""} />
                         </div>
                         
-                        {/* 2. Standard Badge */}
+                        {/* 3. Standard Badge */}
                         <div className={`${badgeBaseClass} ${badgeColorClass}`}>
-                            <Icon name="Book" size={10} className="opacity-70"/>
+                            <Icon name="Book" size={12} className="opacity-70"/>
                             <span className={textBaseClass}>{displayBadge}</span>
                         </div>
                     </div>
@@ -128,15 +151,14 @@ export const Header: React.FC = () => {
 
             {/* Right: Controls */}
             <div className="flex items-center gap-2">
+                {/* Settings / Config Button (Gear Icon) */}
                 <button 
-                    onClick={() => toggleModal('privacy', true)} 
-                    className={`p-2 rounded-xl transition-all active:scale-95 border ${isPrivacyActive ? 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100 border-transparent dark:hover:bg-slate-800'}`} 
-                    title={isPrivacyActive ? "Privacy Shield Active" : "Configure Privacy Shield"}
+                    onClick={() => toggleModal('settings', true)} 
+                    className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95" 
+                    title="Settings & Configuration"
                 >
-                    <Icon name="ShieldEye" size={18}/>
+                    <Icon name="Settings" size={18}/>
                 </button>
-
-                <div className="hidden lg:block w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
                 <div className="hidden lg:block">
                     <FontSizeController fontSizeScale={fontSizeScale} adjustFontSize={(dir: 'increase' | 'decrease') => setFontSizeScale(prev => dir === 'increase' ? Math.min(prev + 0.1, 1.3) : Math.max(prev - 0.1, 0.8))} />

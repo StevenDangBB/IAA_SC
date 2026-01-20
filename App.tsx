@@ -126,16 +126,40 @@ const AppContent = () => {
                     />
                 </div>
                 <div className="flex gap-2 items-center flex-shrink-0 pl-2 border-l border-gray-200 dark:border-slate-800">
-                    <button onClick={() => toggleModal('recall', true)} className={`h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all border shadow-sm ${lastSavedTime ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-500'}`}>
-                        <div className="relative">
-                            <Icon name="History" size={18}/>
-                            {lastSavedTime && <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5"><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isSaving ? 'bg-red-500' : 'bg-emerald-500'}`}></span></span>}
+                    {/* Ghost Recall Button (Emerald & Neon) */}
+                    <button 
+                        onClick={() => toggleModal('recall', true)} 
+                        className="group relative h-9 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 border border-transparent 
+                        text-emerald-600 dark:text-emerald-400 
+                        hover:bg-emerald-50 hover:text-emerald-700 
+                        dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300 
+                        dark:hover:border-emerald-500/50 dark:hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                        title="Recall Session"
+                    >
+                        <div className="relative transition-transform group-hover:scale-110">
+                            <Icon name="History" size={16} className="dark:group-hover:drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"/>
+                            {lastSavedTime && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                    <span className={`relative inline-flex rounded-full h-2 w-2 ${isSaving ? 'bg-red-500' : 'bg-emerald-500'} group-hover:animate-ping`}></span>
+                                    <span className={`absolute inline-flex rounded-full h-2 w-2 ${isSaving ? 'bg-red-500' : 'bg-emerald-500'} opacity-75`}></span>
+                                </span>
+                            )}
                         </div>
-                        <span className="hidden xl:inline text-xs font-bold">Recall</span>
+                        <span className="hidden xl:inline text-xs font-bold dark:group-hover:drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]">Recall</span>
                     </button>
-                    <button onClick={() => { if(confirm("Start New Session?")) { createManualBackup(); resetSession(); showToast("Session Reset."); }}} className="h-10 px-4 bg-amber-50 dark:bg-amber-950/30 text-amber-600 border border-amber-200 rounded-xl flex items-center justify-center gap-2 hover:bg-amber-100 transition-all shadow-sm">
-                        <Icon name="Session4_FilePlus" size={18}/>
-                        <span className="hidden md:inline text-xs font-bold">New</span>
+
+                    {/* Ghost New Session Button (Amber & Neon) */}
+                    <button 
+                        onClick={() => { if(confirm("Start New Session?")) { createManualBackup(); resetSession(); showToast("Session Reset."); }}} 
+                        className="group h-9 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 border border-transparent 
+                        text-amber-600 dark:text-amber-400 
+                        hover:bg-amber-50 hover:text-amber-700 
+                        dark:hover:bg-amber-950/30 dark:hover:text-amber-300 
+                        dark:hover:border-amber-500/50 dark:hover:shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+                        title="Start New Session"
+                    >
+                        <Icon name="Session4_FilePlus" size={16} className="transition-transform group-hover:scale-110 dark:group-hover:drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]"/>
+                        <span className="hidden md:inline text-xs font-bold dark:group-hover:drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">New</span>
                     </button>
                 </div>
             </div>

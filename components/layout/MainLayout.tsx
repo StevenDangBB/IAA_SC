@@ -8,7 +8,6 @@ import { Toast } from '../UI';
 import { SettingsModal } from '../modals/SettingsModal';
 import { AddStandardModal } from '../modals/AddStandardModal';
 import { IntegrityModal } from '../modals/IntegrityModal';
-import { PrivacySettingsModal } from '../modals/PrivacySettingsModal';
 import RecallModal from '../RecallModal';
 import ProjectInfoModal from '../ReleaseNotesModal';
 
@@ -69,12 +68,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, commandActions
                 onRestore={onRestoreSnapshot}
             />
             
-            <PrivacySettingsModal
-                isOpen={modals.privacy}
-                onClose={() => toggleModal('privacy', false)}
-                settings={privacySettings}
-                setSettings={setPrivacySettings}
-            />
+            {/* Privacy Modal removed - moved to Settings */}
         </div>
     );
 };

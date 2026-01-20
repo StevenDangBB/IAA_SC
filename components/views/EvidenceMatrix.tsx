@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useImperativeHandle, forwardRef, useCallback, useRef } from 'react';
 import { Icon } from '../UI';
 import { Standard, MatrixRow, UploadedFile, Clause } from '../../types';
-import { copyToClipboard, serializeMatrixData } from '../../utils';
+import { copyToClipboard } from '../../utils';
 import { useStandardUtils } from '../../hooks/useStandardUtils';
 
 export interface EvidenceMatrixHandle {
@@ -263,7 +263,13 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                     <div className="p-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white/50 dark:bg-slate-900/50">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requirement Checklist</span>
                         <button 
-                            onClick={() => { const t = serializeMatrixData(matrixData, selectedClauses); if(t) copyToClipboard(t); }}
+                            onClick={() => { 
+                                const list = selectedClauses.map(cid => {
+                                    const c = getClauseById(cid);
+                                    return c ? `[${c.code}] ${c.title}` : null;
+                                }).filter(Boolean).join('\n');
+                                if(list) copyToClipboard(list); 
+                            }}
                             className="text-[10px] text-indigo-500 hover:text-indigo-600 font-bold flex items-center gap-1 transition-colors"
                         >
                             <Icon name="Copy" size={10}/> Copy All
