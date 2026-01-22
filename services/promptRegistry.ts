@@ -117,7 +117,10 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
            - If a Process has [4.1, 4.2], there MUST be agenda items covering 4.1 and 4.2.
            - You can group multiple clauses into one time slot if they are small (e.g. "4.1, 4.2, 4.3" in 60 mins).
         2. **GROUPING**: Keep the 'Process' as the main anchor. Do not jump between processes randomly. Finish one process before moving to the next if possible.
-        3. **ALLOCATION**: Assign specific Auditors based on 'CompetencyCodes'. If no code matches, use any available Auditor.
+        3. **ALLOCATION PRIORITY (MANDATORY)**: 
+           - **Strict Competency**: Only assign auditors listed in [VALID_AUDITORS] for a process.
+           - **Role Hierarchy**: If a Process requires a specific code (ReqCode is NOT "None"), you MUST prioritize an 'Auditor' or 'Technical Expert' over a 'Lead Auditor' if both are available.
+           - **Lead Auditor Restriction**: Do NOT assign the 'Lead Auditor' to a technical process with a specific Code requirement unless they are the *only* person in [VALID_AUDITORS]. The Lead Auditor should handle "None" code processes (Management, Context, Leadership) first.
         4. **OUTPUT**: Strict JSON Array. No markdown.
 
         JSON FORMAT:
@@ -134,6 +137,22 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
             "isRemote": false
           }
         ]
+        `
+    },
+    OCR: {
+        id: 'ocr_extraction',
+        label: 'OCR Text Extraction',
+        description: 'Instructions for extracting text from images.',
+        isSystemDefault: true,
+        template: `
+        You are an advanced OCR engine. 
+        TASK: Transcribe ALL visible text from this image exactly as it appears. 
+        
+        RULES:
+        1. Preserve original structure, lists, and line breaks where possible.
+        2. Do not add conversational filler like "Here is the text". Just output the content.
+        3. If there are tables, try to represent them with pipe (|) characters or clear spacing.
+        4. Ignore random visual artifacts or noise.
         `
     }
 };
@@ -158,11 +177,11 @@ class PromptRegistryService {
         }
     }
 
-    public getPrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING'): PromptTemplate {
+    public getPrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING' | 'OCR'): PromptTemplate {
         return this.prompts[type] || DEFAULT_PROMPTS[type];
     }
 
-    public updatePrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING', newTemplate: string) {
+    public updatePrompt(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING' | 'OCR', newTemplate: string) {
         this.prompts[type] = {
             ...this.prompts[type],
             template: newTemplate,
@@ -171,7 +190,7 @@ class PromptRegistryService {
         localStorage.setItem('iso_prompt_overrides', JSON.stringify(this.prompts));
     }
 
-    public resetToDefault(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING') {
+    public resetToDefault(type: 'ANALYSIS' | 'REPORT' | 'SCHEDULING' | 'OCR') {
         this.prompts[type] = { ...DEFAULT_PROMPTS[type] };
         localStorage.setItem('iso_prompt_overrides', JSON.stringify(this.prompts));
     }

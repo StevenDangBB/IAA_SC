@@ -36,7 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } = useAudit();
     
     const [tab, setTab] = useState<'keys' | 'prompts' | 'types' | 'privacy'>('keys');
-    const [promptType, setPromptType] = useState<'ANALYSIS' | 'REPORT' | 'SCHEDULING'>('ANALYSIS');
+    const [promptType, setPromptType] = useState<'ANALYSIS' | 'REPORT' | 'SCHEDULING' | 'OCR'>('ANALYSIS');
     const [promptText, setPromptText] = useState("");
 
     // Audit Types State
@@ -311,10 +311,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {tab === 'prompts' && (
                 <div className="flex flex-col h-[60vh]">
-                    <div className="flex gap-2 mb-3">
-                        <button onClick={() => setPromptType('ANALYSIS')} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${promptType === 'ANALYSIS' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Analysis Logic</button>
-                        <button onClick={() => setPromptType('REPORT')} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${promptType === 'REPORT' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Report Format</button>
-                        <button onClick={() => setPromptType('SCHEDULING')} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${promptType === 'SCHEDULING' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Scheduling Plan</button>
+                    <div className="flex gap-2 mb-3 overflow-x-auto custom-scrollbar pb-1">
+                        <button onClick={() => setPromptType('ANALYSIS')} className={`flex-shrink-0 px-3 py-2 text-xs font-bold rounded-lg border whitespace-nowrap ${promptType === 'ANALYSIS' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Analysis Logic</button>
+                        <button onClick={() => setPromptType('REPORT')} className={`flex-shrink-0 px-3 py-2 text-xs font-bold rounded-lg border whitespace-nowrap ${promptType === 'REPORT' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Report Format</button>
+                        <button onClick={() => setPromptType('SCHEDULING')} className={`flex-shrink-0 px-3 py-2 text-xs font-bold rounded-lg border whitespace-nowrap ${promptType === 'SCHEDULING' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>Scheduling</button>
+                        <button onClick={() => setPromptType('OCR')} className={`flex-shrink-0 px-3 py-2 text-xs font-bold rounded-lg border whitespace-nowrap ${promptType === 'OCR' ? 'bg-indigo-100 border-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' : 'border-gray-200 dark:border-slate-700 text-slate-500'}`}>OCR</button>
                     </div>
                     
                     <div className="flex-1 relative border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">

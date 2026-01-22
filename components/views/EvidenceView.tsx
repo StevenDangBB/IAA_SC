@@ -5,6 +5,7 @@ import { UploadedFile, EvidenceTag, StandardsData, MatrixRow } from '../../types
 import { EvidenceMatrix, EvidenceMatrixHandle } from './EvidenceMatrix'; 
 import { fileToBase64 } from '../../utils';
 import { generateOcrContent } from '../../services/geminiService';
+import { PromptRegistry } from '../../services/promptRegistry';
 import { useAudit } from '../../contexts/AuditContext';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { ProcessHeader } from './evidence/ProcessHeader';
@@ -107,6 +108,8 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
         if (pendingFiles.length === 0) return;
 
         setIsMatrixProcessing(true);
+        // Load custom prompt if available
+        const ocrPrompt = PromptRegistry.getPrompt('OCR').template;
         
         for (const fileEntry of pendingFiles) {
             try {
@@ -115,7 +118,7 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 let text = "";
                 if (fileEntry.file.type.startsWith('image/')) {
                     const base64 = await fileToBase64(fileEntry.file);
-                    text = await generateOcrContent("Transcribe text.", base64, fileEntry.file.type);
+                    text = await generateOcrContent(ocrPrompt, base64, fileEntry.file.type);
                 } else if (fileEntry.file.type === 'application/pdf') {
                      text = "[PDF Content extracted via OCR would go here - System limitation]"; 
                 } else {
@@ -125,8 +128,9 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 if (text && matrixRef.current) {
                     const target = fileTargetRef.current[fileEntry.id];
                     if (target) {
-                        const header = `[File: ${fileEntry.file.name}]`;
-                        matrixRef.current.insertEvidence(target.clauseId, target.rowId, `${header}\n${text}`);
+                        // Insert distinct tag that can be stripped later
+                        const header = `\n\n[[SOURCE_FILE: ${fileEntry.file.name}]]\n`;
+                        matrixRef.current.insertEvidence(target.clauseId, target.rowId, `${header}${text}`);
                         
                         // AUTO-REMOVE SUCCESSFUL FILE
                         setUploadedFiles(prev => prev.filter(f => f.id !== fileEntry.id));

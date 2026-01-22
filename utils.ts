@@ -160,38 +160,27 @@ export async function runWithConcurrency<T>(
     concurrency: number = 3
 ): Promise<T[]> {
     const results: T[] = [];
-    const executing: Promise<any>[] = [];
-
-    for (const item of items) {
-        const p = fn(item).then(res => results.push(res));
-        executing.push(p);
-
-        if (executing.length >= concurrency) {
-            await Promise.race(executing);
-            // Remove finished promises
-            /* Note: A proper implementation tracks indices, but for this simple use case
-               we just wait for race. However, to strictly maintain pool size we need to remove
-               the promise that finished. */
-             // Simple hack: wait for one, but in JS Promise.race doesn't return the promise object easily to remove.
-             // Better implementation:
-        }
-    }
-    
-    // Actually, a simpler robust pool:
     const queue = [...items];
-    const finalResults: T[] = [];
     
     const worker = async () => {
         while (queue.length > 0) {
             const item = queue.shift();
             if (item) {
                 const res = await fn(item);
-                finalResults.push(res);
+                results.push(res);
             }
         }
     };
 
     const workers = Array(Math.min(items.length, concurrency)).fill(null).map(() => worker());
     await Promise.all(workers);
-    return finalResults;
+    return results;
+}
+
+// --- NEW: Strip Metadata Tags from Text ---
+// Use this to remove internal tags like [[SOURCE_FILE: ...]] before exporting or reporting
+export const stripMetadataTags = (text: string) => {
+    if (!text) return "";
+    // Removes [[SOURCE_FILE: ...]] and the newline after it to keep text flow clean
+    return text.replace(/\[\[SOURCE_FILE:.*?\]\][\r\n]*/g, "");
 }

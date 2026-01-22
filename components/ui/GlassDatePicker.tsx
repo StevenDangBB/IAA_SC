@@ -49,8 +49,12 @@ export const GlassDatePicker: React.FC<GlassDatePickerProps> = ({
         days.push(new Date(year, month, i));
     }
 
+    // FIXED: Use Local Time formatting to prevent Timezone/UTC off-by-one errors
     const formatDate = (date: Date) => {
-        return date.toISOString().split('T')[0];
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     };
 
     const toggleDate = (dateStr: string, mode: 'add' | 'remove' | 'toggle') => {
@@ -93,6 +97,9 @@ export const GlassDatePicker: React.FC<GlassDatePickerProps> = ({
     const changeMonth = (offset: number) => {
         setCurrentDate(new Date(year, month + offset, 1));
     };
+
+    // Helper to check if today (using local time string comparison)
+    const todayStr = formatDate(new Date());
 
     return (
         <div 
@@ -143,7 +150,7 @@ export const GlassDatePicker: React.FC<GlassDatePickerProps> = ({
                             
                             const dateStr = formatDate(date);
                             const isSelected = selectedDates.includes(dateStr);
-                            const isToday = formatDate(new Date()) === dateStr;
+                            const isToday = todayStr === dateStr;
 
                             return (
                                 <button

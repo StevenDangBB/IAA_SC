@@ -249,7 +249,8 @@ export const generateAuditSchedule = async (
             id: 'lead_auto',
             name: leadAuditorInfo.name,
             role: 'Lead Auditor',
-            competencyCodes: leadAuditorInfo.code || "All",
+            // FIXED: Do NOT default to "All". Default to empty to force specific competency checks.
+            competencyCodes: leadAuditorInfo.code || "", 
             manDays: 1,
             isRemote: false,
             availability: "Full Time"
@@ -260,7 +261,7 @@ export const generateAuditSchedule = async (
     const sitesCompact = sites.map(s => `ID:${s.id}|${s.name}|${s.isMain ? 'HQ' : 'Site'}`).join("\n");
     
     const teamCompact = finalTeam.map(m => 
-        `User:${m.name}|Role:${m.role}|Code:${m.competencyCodes}|Mode:${m.isRemote?'Remote':'OnSite'}`
+        `User:${m.name}|Role:${m.role}|Codes:[${m.competencyCodes}]|Mode:${m.isRemote?'Remote':'OnSite'}`
     ).join("\n");
 
     // --- CRITICAL FIX: PRE-CALCULATE VALID AUDITORS PER PROCESS ---
@@ -273,8 +274,10 @@ export const generateAuditSchedule = async (
         const validAuditors = finalTeam.filter(auditor => {
             if (!reqCode) return true; // Process has no code req => All are valid
             const audCodes = (auditor.competencyCodes || "").split(',').map(s => s.trim());
+            // Strict check: Must match the code or have "All" (Wildcard). 
+            // Since we removed "All" from Lead default, Lead won't match technical codes unless specified.
             return audCodes.includes("All") || audCodes.includes(reqCode);
-        }).map(a => a.name);
+        }).map(a => `${a.name} [${a.role}]`); // INCLUDE ROLE FOR AI CONTEXT
 
         const validAuditorStr = validAuditors.length > 0 ? validAuditors.join(", ") : "NONE_QUALIFIED";
 
@@ -286,7 +289,6 @@ export const generateAuditSchedule = async (
     const template = PromptRegistry.getPrompt('SCHEDULING');
     
     // Inject the stricter rule into the template dynamically if not already present
-    // Note: Ideally update the promptRegistry, but this ensures it works immediately with current prompt state
     let baseTemplate = template.template;
     if (!baseTemplate.includes("VALID_AUDITORS")) {
         baseTemplate += `\n\n5. **COMPETENCY ENFORCEMENT**: For each process, you MUST ONLY assign an auditor listed in the [VALID_AUDITORS] field. If valid list is 'NONE_QUALIFIED', mark activity as 'UNSTAFFED'.`;

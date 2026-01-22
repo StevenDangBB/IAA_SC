@@ -4,7 +4,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { generateExecutiveSummary, formatFindingReportSection } from '../services/geminiService';
-import { processSourceFile } from '../utils';
+import { processSourceFile, stripMetadataTags } from '../utils'; // Import strip function
 import { AnalysisResult } from '../types';
 
 export const useReportGenerator = (exportLanguage: string) => {
@@ -51,8 +51,13 @@ export const useReportGenerator = (exportLanguage: string) => {
             return;
         }
 
-        // FILTER: Only include selected findings
-        const activeFindings = analysisResult.filter(f => selectedFindings[f.clauseId]);
+        // FILTER & CLEAN: Only include selected findings and STRIP metadata
+        const activeFindings = analysisResult
+            .filter(f => selectedFindings[f.clauseId])
+            .map(f => ({
+                ...f,
+                evidence: stripMetadataTags(f.evidence) // Clean the evidence
+            }));
 
         if (activeFindings.length === 0) {
             showToast("No findings selected. Please select at least one finding.");
@@ -141,7 +146,7 @@ export const useReportGenerator = (exportLanguage: string) => {
                     setReportLoadingMessage(`Formatting ${pName} - ${currentClause}...`);
                     setGenerationLogs(prev => [...prev, `Processing ${pName} / ${currentClause}...`]);
 
-                    // Real Processing Call
+                    // Real Processing Call - finding is already cleaned
                     const sectionText = await formatFindingReportSection(finding, exportLanguage as 'en'|'vi', apiKey, model);
                     
                     // CLEAN UP MARKDOWN CHARS from specific finding section

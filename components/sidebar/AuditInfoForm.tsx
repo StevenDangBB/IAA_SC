@@ -25,7 +25,7 @@ const IconTextArea = ({ icon, iconColor, placeholder, value, onChange, className
             value={value}
             onChange={onChange}
             rows={rows}
-            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] resize-y min-h-[44px]"
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-900 dark:text-white placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] resize-y min-h-[44px]"
         />
     </div>
 );
@@ -48,7 +48,9 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
         processes, activeProcessId, setActiveProcessId,
         addProcess, renameProcess, deleteProcess,
         auditTypeOptions,
-        auditSites, setAuditSites 
+        auditSites, setAuditSites,
+        auditTeam, // Needed for Team WD calculation
+        auditPlanConfig // Needed for Lead Auditor WD calculation
     } = useAudit();
 
     const { showToast } = useUI();
@@ -69,6 +71,23 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
     const sourceIcon = hasSource ? "BookOpen" : "Book";
     
     const is27001 = useMemo(() => standardKey && standards[standardKey]?.name.includes("27001"), [standardKey, standards]);
+    
+    // Calculate Total Man Days
+    // UPDATED LOGIC: 
+    // 1. Sum of 'auditTeam' manDays (Resources defined in Planning)
+    // 2. PLUS Lead Auditor WD. Lead Auditor WD = 1 * Number of Audit Dates (from Logistics).
+    // Only applied if Lead Auditor name is entered.
+    const totalManDays = useMemo(() => {
+        const teamWD = auditTeam.reduce((acc, m) => acc + (m.manDays || 0), 0);
+        
+        const hasLeadAuditor = !!auditInfo.auditor && auditInfo.auditor.trim() !== "";
+        const auditDaysCount = auditPlanConfig?.auditDates ? auditPlanConfig.auditDates.length : 0;
+        
+        // Lead Auditor Contribution: 1 (base) * Days
+        const leadAuditorWD = hasLeadAuditor ? (1 * auditDaysCount) : 0;
+
+        return teamWD + leadAuditorWD;
+    }, [auditTeam, auditInfo.auditor, auditPlanConfig]);
     
     let sourceColor = "text-gray-300 dark:text-slate-600"; 
     let sourceTooltip = "Please select an ISO Standard first to enable document upload.";
@@ -242,20 +261,29 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     )}
                 </div>
                 
-                <div className="mt-2">
-                    <LabelRequired text="Audit Type" />
-                    <IconSelect 
-                        icon="FileEdit" 
-                        iconColor={auditFieldIconColor} 
-                        value={auditInfo.type} 
-                        onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} 
-                        options={Object.keys(auditTypeOptions).map(key => ({ value: key, label: key }))} 
-                        defaultText="Select Audit Type" 
-                    />
+                {/* AUDIT TYPE & TOTAL WD ROW */}
+                <div className="flex gap-2 mt-2">
+                    <div className="flex-1">
+                        <LabelRequired text="Audit Type" />
+                        <IconSelect 
+                            icon="FileEdit" 
+                            iconColor={auditFieldIconColor} 
+                            value={auditInfo.type} 
+                            onChange={(e: any) => setAuditInfo({...auditInfo, type: e.target.value})} 
+                            options={Object.keys(auditTypeOptions).map(key => ({ value: key, label: key }))} 
+                            defaultText="Select Type" 
+                        />
+                    </div>
+                    <div className="w-[80px]">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Total WD</label>
+                        <div className="h-11 bg-slate-100 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl flex items-center justify-center text-xs font-mono font-bold text-slate-700 dark:text-white shadow-inner" title="Team WD + Lead Auditor WD (1 * Days)">
+                            {totalManDays}
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="h-px bg-gray-200 dark:bg-slate-700/50"></div>
+            {/* REMOVED DIVIDER */}
 
             {/* SECTION 2: ENTITY & CONTEXT */}
             <div className="space-y-3">
@@ -281,7 +309,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                             title="Total Sites (Auto-Syncs with Logistics)"
                             value={auditSites.length || ""} // Use array length as source of truth for display reactivity
                             onChange={handleTotalSitesChange}
-                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-900 dark:text-white placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                     </div>
 
@@ -296,7 +324,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                             title="Total Employees (All Sites)"
                             value={auditInfo.totalEmployees || ""}
                             onChange={(e) => setAuditInfo({...auditInfo, totalEmployees: parseInt(e.target.value) || 0})}
-                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-normal text-slate-700 dark:text-slate-300 placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full pl-7 pr-1 h-11 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-900 dark:text-white placeholder-gray-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm hover:border-indigo-200 dark:hover:border-slate-600 hover:shadow-md dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                     </div>
                 </div>
@@ -353,7 +381,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                                     placeholder="Enter Process/Department..."
                                     onChange={(e) => setInputValue(e.target.value)}
                                     onKeyDown={handleAddKeyDown}
-                                    className="w-full pl-10 pr-3 h-11 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 placeholder-indigo-300 dark:placeholder-slate-600 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
+                                    className="w-full pl-10 pr-3 h-11 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder-indigo-300 dark:placeholder-slate-600 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
                                     autoComplete="off"
                                 />
                             </div>
@@ -379,7 +407,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                                             onKeyDown={handleAddKeyDown}
                                             onBlur={handleInputBlur}
                                             placeholder="Type Name & Enter to Add..."
-                                            className="bg-transparent border-none outline-none text-xs font-bold text-slate-800 dark:text-white placeholder-slate-400 w-full"
+                                            className="bg-transparent border-none outline-none text-xs font-medium text-slate-900 dark:text-white placeholder-slate-400 w-full"
                                             onClick={(e) => e.stopPropagation()}
                                             autoComplete="off"
                                         />
@@ -424,7 +452,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                             </div>
 
                             <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isProcessMenuOpen ? 'max-h-[300px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
-                                <div className="p-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl shadow-xl space-y-1">
+                                <div className="p-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-xl space-y-1">
                                     <div ref={listRef} className="max-h-[200px] overflow-y-auto custom-scrollbar px-1 space-y-1 pb-1 pt-1 scroll-smooth">
                                         {displayProcesses.map(p => {
                                             const isActive = activeProcessId === p.id;
@@ -493,7 +521,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                 </div>
             </div>
 
-            <div className="h-px bg-gray-200 dark:bg-slate-700/50"></div>
+            {/* REMOVED DIVIDER */}
 
             {/* SECTION 3: PERSONNEL */}
             <div className="space-y-2">

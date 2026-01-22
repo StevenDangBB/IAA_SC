@@ -34,7 +34,7 @@ export const ProcessHeader: React.FC<ProcessHeaderProps> = React.memo(({
                 <select 
                     value={activeProcessId || ""} 
                     onChange={(e) => setActiveProcessId(e.target.value)}
-                    className="w-full bg-transparent appearance-none pl-7 pr-6 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+                    className="w-full bg-transparent appearance-none pl-7 pr-6 py-2 text-xs font-bold text-slate-900 dark:text-white outline-none cursor-pointer"
                     title="Switch active process context"
                 >
                     {processes.map(p => (
@@ -62,7 +62,7 @@ export const ProcessHeader: React.FC<ProcessHeaderProps> = React.memo(({
                     </span>
                 ))}
                 <input 
-                    className="bg-transparent border-b border-dashed border-gray-300 dark:border-slate-700 text-xs py-0.5 px-1 outline-none focus:border-indigo-500 min-w-[100px] dark:text-slate-300 placeholder-slate-400 focus:placeholder-indigo-300 transition-all" 
+                    className="bg-transparent border-b border-dashed border-gray-300 dark:border-slate-700 text-xs py-0.5 px-1 outline-none focus:border-indigo-500 min-w-[100px] font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:placeholder-indigo-300 transition-all" 
                     placeholder="+ Name & Enter" 
                     value={newInterviewee}
                     onChange={e => setNewInterviewee(e.target.value)}

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, memo, useCallback, useEffect } from 'react';
-import { Icon, GlassDatePicker } from '../UI';
+import { Icon, GlassDatePicker, Modal } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
 import { Clause, AuditMember, AuditSite } from '../../types';
 import { useUI } from '../../contexts/UIContext';
@@ -124,6 +124,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     
     // Logistics Input State
+    const [activeSection, setActiveSection] = useState<'none' | 'logistics' | 'sites' | 'team'>('logistics'); // Accordion State
+    
     const [newSite, setNewSite] = useState<AuditSite>({ id: "", name: "", address: "", scope: "", isMain: false, employeeCount: 0 });
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     const [newMember, setNewMember] = useState<Partial<AuditMember>>({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
@@ -134,13 +136,16 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
+    // Auditor Reassignment State
+    const [reassignTarget, setReassignTarget] = useState<{ rowIndex: number, currentName: string } | null>(null);
+
     // AI Generation State
     const [isGenerating, setIsGenerating] = useState(false);
     const [genProgress, setGenProgress] = useState(0);
     const [genLogs, setGenLogs] = useState<string[]>([]);
 
     // Schedule Grid Configuration
-    const [agendaColumns, setAgendaColumns] = useState(['timeSlot', 'siteName', 'processName', 'activity', 'auditorName', 'clauseRefs']);
+    const [agendaColumns, setAgendaColumns] = useState(['siteName', 'auditorName', 'timeSlot', 'processName', 'activity', 'clauseRefs']);
     const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
     const COLUMN_LABELS: Record<string, string> = {
@@ -164,6 +169,10 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
     // --- HELPER METHODS ---
     const addLog = (msg: string) => setGenLogs(prev => [...prev, msg]);
+
+    const toggleSection = (sec: typeof activeSection) => {
+        setActiveSection(prev => prev === sec ? 'none' : sec);
+    };
 
     // --- DRAG & DROP HANDLERS ---
     const handleDragStart = (e: React.DragEvent, colId: string) => {
@@ -224,11 +233,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                     const nextKey = `${nextIdx}_${colIdx}`;
                     
                     let parentMatch = true;
-                    if (colName === 'auditorName' || colName === 'processName') {
-                        const valSiteA = data[rowIdx]['siteName'];
-                        const valSiteB = data[nextIdx]['siteName'];
-                        if (valSiteA !== valSiteB) parentMatch = false;
-                    } else if (colIdx > 0) {
+                    // Strict hierarchy check: For 'auditorName' to span, 'siteName' must match if it comes before
+                    if (colIdx > 0) {
                         for (let p = 0; p < colIdx; p++) {
                             if (data[rowIdx][columns[p]] !== data[nextIdx][columns[p]]) {
                                 parentMatch = false;
@@ -247,6 +253,25 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             }
         }
         return rowSpans;
+    };
+
+    // --- AUDITOR ASSIGNMENT ---
+    const handleReassignAuditor = (member: AuditMember) => {
+        if (!reassignTarget) return;
+        
+        setAuditSchedule(prev => {
+            const newSchedule = [...prev];
+            return newSchedule; 
+        });
+    };
+    
+    // Corrected Handler using Item Reference
+    const updateScheduleItem = (itemIndex: number, field: string, value: any) => {
+        setAuditSchedule(prev => {
+            const copy = [...prev];
+            copy[itemIndex] = { ...copy[itemIndex], [field]: value };
+            return copy;
+        });
     };
 
     // --- MATRIX LOGIC ---
@@ -443,6 +468,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const handleEditMember = (m: AuditMember) => {
         setEditingMemberId(m.id);
         setNewMember({ ...m });
+        setActiveSection('team'); // Auto open
     };
 
     // --- DATE & SCHEDULE LOGIC ---
@@ -568,7 +594,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                             </div>
                             <input 
                                 ref={searchInputRef}
-                                className="w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
+                                className="w-full pl-10 pr-8 py-2.5 bg-white dark:bg-slate-950 border border-indigo-100 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-800 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm"
                                 placeholder="Filter clauses..."
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
@@ -690,285 +716,294 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 {/* VIEW 2: RESOURCES & SCHEDULE */}
                 {activeTab === 'resources' && (
                     <div className="flex-1 flex overflow-hidden relative">
-                        {/* LEFT: INPUTS */}
-                        <div className="w-[380px] min-w-[320px] border-r border-gray-100 dark:border-slate-800 bg-orange-50/50 dark:bg-orange-950/20 flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4">
+                        {/* LEFT: INPUTS (Accordion Style) */}
+                        <div className="w-[380px] min-w-[320px] border-r border-gray-100 dark:border-slate-800 bg-orange-50/50 dark:bg-orange-950/20 flex flex-col p-4 overflow-y-auto custom-scrollbar gap-3 h-full">
                             
-                            {/* Card: Logistics */}
-                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <Icon name="Session7_Compass" size={14}/> Logistics
-                                </h4>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Audit Dates (Multiple)</label>
-                                        
-                                        {/* Smart Calendar Trigger */}
-                                        <button 
-                                            onClick={() => setIsCalendarOpen(true)}
-                                            className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl shadow-glow transition-all active:scale-95 flex items-center justify-center gap-2 mb-2 group"
-                                        >
-                                            <Icon name="Calendar" size={18} className="group-hover:-rotate-12 transition-transform duration-500"/>
-                                            <span className="font-bold text-sm">Plan Audit Dates</span>
-                                        </button>
-
-                                        {/* Date Chips */}
-                                        <div className="flex flex-wrap gap-2 min-h-[30px]">
-                                            {safeAuditDates.length === 0 && <span className="text-[10px] text-slate-400 italic">No dates selected.</span>}
-                                            {safeAuditDates.map((date, idx) => (
-                                                <span key={idx} className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm animate-in zoom-in-95">
-                                                    <span className="text-orange-500 font-bold">D{idx+1}:</span> {date}
-                                                    <button onClick={() => handleRemoveDate(date)} className="text-slate-400 hover:text-red-500 ml-1"><Icon name="X" size={10}/></button>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Work Start</label>
-                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.startTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, startTime: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Work End</label>
-                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.endTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, endTime: e.target.value})} />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 border-t border-dashed border-gray-200 dark:border-slate-700 pt-2">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Lunch Start</label>
-                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.lunchStartTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchStartTime: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Lunch End</label>
-                                            <input type="time" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500" value={auditPlanConfig.lunchEndTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchEndTime: e.target.value})} />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Card: Sites */}
-                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                        <Icon name="MapPin" size={14}/> Sites
+                            {/* 1. LOGISTICS ACCORDION */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm shrink-0">
+                                <div 
+                                    className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                                    onClick={() => toggleSection('logistics')}
+                                >
+                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="Session7_Compass" size={14}/> Logistics
                                     </h4>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${unallocatedEmployees === 0 && totalEmployees > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                        Allocated: {allocatedEmployees} / {totalEmployees}
-                                    </span>
+                                    <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform ${activeSection === 'logistics' ? 'rotate-180' : ''}`}/>
                                 </div>
                                 
-                                {totalEmployees > 0 && (
-                                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mb-3 overflow-hidden">
-                                        <div 
-                                            className={`h-full transition-all duration-500 ${allocatedEmployees > totalEmployees ? 'bg-red-500' : allocatedEmployees === totalEmployees ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                                            style={{ width: `${Math.min(100, (allocatedEmployees / totalEmployees) * 100)}%` }}
-                                        ></div>
+                                {activeSection !== 'logistics' && (
+                                    <div className="px-3 pb-3 pt-0 text-[10px] text-slate-500">
+                                        {safeAuditDates.length} Days • {auditPlanConfig.startTime} - {auditPlanConfig.endTime}
                                     </div>
                                 )}
 
-                                {/* LIST AT TOP */}
-                                <div className="space-y-1 mb-3">
-                                    {auditSites.map(s => (
-                                        <div key={s.id} className="flex flex-col bg-slate-50 dark:bg-slate-800 rounded-lg border border-transparent hover:border-orange-200 dark:hover:border-orange-800 p-2 text-xs group animate-in slide-in-from-top-1 fade-in">
-                                            {editingSiteId === s.id && tempSite ? (
-                                                <div className="flex flex-col gap-2">
-                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.name} onChange={e => setTempSite({...tempSite, name: e.target.value})} placeholder="Site Name" />
-                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.address} onChange={e => setTempSite({...tempSite, address: e.target.value})} placeholder="Address" />
-                                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" value={tempSite.scope} onChange={e => setTempSite({...tempSite, scope: e.target.value})} placeholder="Scope" />
-                                                    
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 flex items-center gap-2">
-                                                            <Icon name="Users" size={12} className="text-slate-400"/>
-                                                            <input 
-                                                                type="number"
-                                                                min="0"
-                                                                placeholder="Employees"
-                                                                className="bg-transparent w-full text-xs font-bold text-slate-900 dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                                                                value={tempSite.employeeCount || ""} 
-                                                                onChange={e => setTempSite({...tempSite, employeeCount: parseInt(e.target.value) || 0})}
-                                                            />
-                                                            <span className="text-[9px] text-slate-400 whitespace-nowrap">Auto-Syncs Total</span>
-                                                        </div>
-                                                        <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 h-full">
-                                                            <input type="checkbox" checked={tempSite.isMain} onChange={e => setTempSite({...tempSite, isMain: e.target.checked})} className="accent-orange-500" />
-                                                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">HQ</span>
-                                                        </label>
-                                                    </div>
+                                {activeSection === 'logistics' && (
+                                    <div className="p-3 pt-0 space-y-3 animate-accordion-down mt-2 h-auto">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Audit Dates</label>
+                                            <button 
+                                                onClick={() => setIsCalendarOpen(true)}
+                                                className="w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 mb-2 group"
+                                            >
+                                                <Icon name="Calendar" size={16} className="group-hover:-rotate-12 transition-transform duration-500"/>
+                                                <span className="font-bold text-xs">Manage Dates ({safeAuditDates.length})</span>
+                                            </button>
+                                            <div className="flex flex-wrap gap-2">
+                                                {safeAuditDates.map((date, idx) => (
+                                                    <span key={idx} className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-gray-200 dark:border-slate-700 text-[9px] font-mono text-slate-700 dark:text-slate-300">
+                                                        {date}
+                                                        <button onClick={(e) => { e.stopPropagation(); handleRemoveDate(date); }} className="text-slate-400 hover:text-red-500 ml-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600"><Icon name="X" size={10}/></button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Start</label>
+                                                <input type="time" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs outline-none focus:border-orange-500 text-slate-900 dark:text-white font-bold dark:[color-scheme:dark]" value={auditPlanConfig.startTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, startTime: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase">End</label>
+                                                <input type="time" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs outline-none focus:border-orange-500 text-slate-900 dark:text-white font-bold dark:[color-scheme:dark]" value={auditPlanConfig.endTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, endTime: e.target.value})} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Lunch Start</label>
+                                                <input type="time" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs outline-none focus:border-orange-500 text-slate-900 dark:text-white font-bold dark:[color-scheme:dark]" value={auditPlanConfig.lunchStartTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchStartTime: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase">Lunch End</label>
+                                                <input type="time" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs outline-none focus:border-orange-500 text-slate-900 dark:text-white font-bold dark:[color-scheme:dark]" value={auditPlanConfig.lunchEndTime} onChange={e => setAuditPlanConfig({...auditPlanConfig, lunchEndTime: e.target.value})} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
-                                                    <div className="flex gap-2">
-                                                        <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-1.5 font-bold text-xs shadow-sm transition-colors">Save Changes</button>
-                                                        <button onClick={handleCancelEditSite} className="flex-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg py-1.5 text-xs font-bold transition-colors">Cancel</button>
+                            {/* 2. SITES ACCORDION */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm shrink-0">
+                                <div 
+                                    className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                                    onClick={() => toggleSection('sites')}
+                                >
+                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="MapPin" size={14}/> Sites ({auditSites.length})
+                                    </h4>
+                                    <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform ${activeSection === 'sites' ? 'rotate-180' : ''}`}/>
+                                </div>
+
+                                {activeSection !== 'sites' && (
+                                    <div className="px-3 pb-3 pt-0 text-[10px] text-slate-500 truncate">
+                                        {auditSites.map(s => s.name).join(", ") || "No sites added"}
+                                    </div>
+                                )}
+
+                                {activeSection === 'sites' && (
+                                    <div className="p-3 pt-0 space-y-3 animate-accordion-down mt-2 h-auto">
+                                        {/* List with Padding to fix border clipping */}
+                                        <div className="space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar p-1">
+                                            {auditSites.map(s => {
+                                                const isEditing = editingSiteId === s.id;
+                                                return (
+                                                    <div 
+                                                        key={s.id} 
+                                                        className={`flex justify-between items-center p-2 rounded-lg group border cursor-pointer transition-all ${isEditing ? 'bg-slate-50 dark:bg-slate-800 border-orange-500 ring-1 ring-orange-500/20' : 'bg-slate-50 dark:bg-slate-800 border-transparent hover:border-orange-200 dark:hover:border-orange-800'}`}
+                                                        onClick={() => handleStartEditSite(s)}
+                                                    >
+                                                        <div>
+                                                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{s.name} {s.isMain && <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded">HQ</span>}</div>
+                                                            <div className="text-[9px] text-slate-500 flex gap-1">
+                                                                <span>{s.employeeCount || 0} Staff</span>
+                                                                {s.address && <span className="truncate max-w-[120px] opacity-70">• {s.address}</span>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                                            <button onClick={(e) => { e.stopPropagation(); setAuditSites(prev => prev.filter(x => x.id !== s.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                                        </div>
                                                     </div>
+                                                );
+                                            })}
+                                        </div>
+                                        
+                                        {/* Edit/Add Form */}
+                                        <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 space-y-2">
+                                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Site Name" value={editingSiteId ? tempSite?.name : newSite.name} onChange={e => editingSiteId ? setTempSite({...tempSite!, name: e.target.value}) : setNewSite({...newSite, name: e.target.value})} />
+                                            
+                                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Address" value={editingSiteId ? tempSite?.address : newSite.address} onChange={e => editingSiteId ? setTempSite({...tempSite!, address: e.target.value}) : setNewSite({...newSite, address: e.target.value})} />
+                                            
+                                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Scope (Optional)" value={editingSiteId ? tempSite?.scope : newSite.scope} onChange={e => editingSiteId ? setTempSite({...tempSite!, scope: e.target.value}) : setNewSite({...newSite, scope: e.target.value})} />
+
+                                            <div className="flex gap-2">
+                                                <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" placeholder="Staff Count" value={editingSiteId ? tempSite?.employeeCount : newSite.employeeCount || ""} onChange={e => editingSiteId ? setTempSite({...tempSite!, employeeCount: parseInt(e.target.value)}) : setNewSite({...newSite, employeeCount: parseInt(e.target.value)})} />
+                                                <label className="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+                                                    <input type="checkbox" checked={editingSiteId ? tempSite?.isMain : newSite.isMain} onChange={e => editingSiteId ? setTempSite({...tempSite!, isMain: e.target.checked}) : setNewSite({...newSite, isMain: e.target.checked})} className="accent-orange-500"/>
+                                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">HQ Site</span>
+                                                </label>
+                                            </div>
+                                            
+                                            {editingSiteId ? (
+                                                <div className="flex gap-2">
+                                                    <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 text-white rounded py-1 text-xs font-bold">Save</button>
+                                                    <button onClick={handleCancelEditSite} className="flex-1 bg-slate-200 text-slate-600 rounded py-1 text-xs font-bold">Cancel</button>
                                                 </div>
                                             ) : (
-                                                <div className="flex justify-between items-start cursor-pointer" onClick={() => handleStartEditSite(s)} title="Click to Edit">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-slate-800 dark:text-slate-200">{s.name} {s.isMain && <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded ml-1">HQ</span>}</span>
-                                                        <span className="text-[9px] text-slate-500 truncate max-w-[150px]">{s.address}</span>
-                                                        <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1 mt-0.5"><Icon name="Users" size={10}/> {s.employeeCount || 0} Staff</span>
-                                                    </div>
-                                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
-                                                        <button onClick={(e) => { e.stopPropagation(); setAuditSites(prev => prev.filter(x => x.id !== s.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
-                                                    </div>
-                                                </div>
+                                                <button onClick={handleAddSite} className="w-full bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 rounded py-1 text-xs font-bold flex items-center justify-center gap-1"><Icon name="Plus" size={12}/> Add Site</button>
                                             )}
                                         </div>
-                                    ))}
-                                </div>
-
-                                {/* SEPARATOR */}
-                                <div className="border-t border-dashed border-gray-200 dark:border-slate-700 my-3 relative">
-                                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 bg-white dark:bg-slate-900 px-2 text-[9px] text-slate-400 uppercase tracking-wider">Add New</div>
-                                </div>
-
-                                {/* INPUTS AT BOTTOM */}
-                                <div className="flex flex-col gap-2">
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Site Name (e.g. Factory A)" value={newSite.name} onChange={e => setNewSite({...newSite, name: e.target.value})} />
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Address / Location" value={newSite.address} onChange={e => setNewSite({...newSite, address: e.target.value})} />
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Scope (e.g. Manufacturing)" value={newSite.scope} onChange={e => setNewSite({...newSite, scope: e.target.value})} />
-                                    
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 flex items-center gap-2">
-                                            <Icon name="Users" size={12} className="text-slate-400"/>
-                                            <input 
-                                                type="number" 
-                                                min="0"
-                                                className="bg-transparent w-full text-xs font-bold text-slate-900 dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                                                placeholder="Employees" 
-                                                value={newSite.employeeCount || ""} 
-                                                onChange={e => setNewSite({...newSite, employeeCount: parseInt(e.target.value) || 0})}
-                                            />
-                                            <span className="text-[9px] text-slate-400 whitespace-nowrap">Auto-Syncs Total</span>
-                                        </div>
-                                        <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 h-full">
-                                            <input type="checkbox" checked={newSite.isMain} onChange={e => setNewSite({...newSite, isMain: e.target.checked})} className="accent-orange-500" />
-                                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">HQ</span>
-                                        </label>
                                     </div>
-
-                                    <button onClick={handleAddSite} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors text-xs font-bold flex items-center justify-center gap-2"><Icon name="Plus" size={14}/> Add Site</button>
-                                </div>
+                                )}
                             </div>
 
-                            {/* Card: Team */}
-                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <Icon name="Users" size={14}/> Audit Team
-                                </h4>
+                            {/* 3. TEAM ACCORDION */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm shrink-0">
+                                <div 
+                                    className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                                    onClick={() => toggleSection('team')}
+                                >
+                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="Users" size={14}/> Audit Team ({auditTeam.length})
+                                    </h4>
+                                    <Icon name="ChevronDown" size={12} className={`text-slate-400 transition-transform ${activeSection === 'team' ? 'rotate-180' : ''}`}/>
+                                </div>
 
-                                {/* LIST AT TOP */}
-                                <div className="space-y-1 mb-3">
-                                    {auditTeam.map(m => (
-                                        <div key={m.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-800 rounded-lg group border border-transparent hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer animate-in slide-in-from-top-1 fade-in" onClick={() => handleEditMember(m)} title="Click to Edit">
-                                            <div className="flex-1">
-                                                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
-                                                    {m.name}
-                                                    {m.competencyCodes && (
-                                                        <span className="text-[9px] bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800 font-mono" title="Competency Code">
-                                                            {m.competencyCodes}
-                                                        </span>
-                                                    )}
-                                                    {m.isRemote && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">REMOTE</span>}
+                                {activeSection !== 'team' && (
+                                    <div className="px-3 pb-3 pt-0 text-[10px] text-slate-500 truncate">
+                                        {auditTeam.map(m => m.name).join(", ") || "No members added"}
+                                    </div>
+                                )}
+
+                                {activeSection === 'team' && (
+                                    <div className="p-3 pt-0 space-y-2 animate-accordion-down mt-2 h-auto">
+                                        {/* List with Padding to fix border clipping */}
+                                        <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar mb-3 p-1">
+                                            {auditTeam.map(m => {
+                                                const isEditing = editingMemberId === m.id;
+                                                return (
+                                                    <div 
+                                                        key={m.id} 
+                                                        className={`flex justify-between items-start p-3 bg-slate-50 dark:bg-slate-800 rounded-lg group border cursor-pointer transition-all ${isEditing ? 'border-orange-500 ring-1 ring-orange-500/20 z-10' : 'border-transparent hover:border-orange-200 dark:hover:border-orange-800'}`} 
+                                                        onClick={() => handleEditMember(m)}
+                                                    >
+                                                        <div>
+                                                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                                                {m.name}
+                                                                {m.isRemote && <span className="bg-purple-100 text-purple-600 px-1 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">Remote</span>}
+                                                            </div>
+                                                            <div className="text-[9px] text-slate-500 flex gap-1 mt-0.5">
+                                                                <span>{m.role === 'Lead Auditor' ? 'Obs' : m.role}</span>
+                                                                <span className="font-mono text-slate-400">• {m.manDays || 0} WD</span>
+                                                                {m.competencyCodes && <span className="font-mono text-teal-600 bg-teal-50 px-1 rounded">[{m.competencyCodes}]</span>}
+                                                            </div>
+                                                            {m.availability && (
+                                                                <div className="text-[9px] text-slate-400 italic mt-1 leading-snug border-l-2 border-slate-200 dark:border-slate-700 pl-1.5">
+                                                                    {m.availability}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button onClick={(e) => { e.stopPropagation(); setAuditTeam(prev => prev.filter(x => x.id !== m.id)); }} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="X" size={12}/></button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Inputs */}
+                                        <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 space-y-2 mt-4">
+                                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
+                                            <div className="flex gap-2 items-center">
+                                                <select 
+                                                    className="flex-[2] bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium outline-none text-slate-900 dark:text-white" 
+                                                    value={newMember.role} 
+                                                    onChange={e => setNewMember({...newMember, role: e.target.value as any})}
+                                                >
+                                                    <option className="bg-white dark:bg-slate-950" value="Auditor">Auditor</option>
+                                                    <option className="bg-white dark:bg-slate-950" value="Lead Auditor">Obs</option>
+                                                    <option className="bg-white dark:bg-slate-950" value="Technical Expert">Technical Expert</option>
+                                                </select>
+                                                <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center min-w-0" placeholder="Code" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
+                                                <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays} onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value) || 0})} />
+                                            </div>
+                                            
+                                            {/* REMOTE TOGGLE SWITCH (Modern Segmented) */}
+                                            <div className="flex items-center justify-between px-1 py-2">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                                                    Audit Mode
+                                                </span>
+                                                <div 
+                                                    className="relative flex bg-slate-200 dark:bg-slate-800 rounded-lg p-1 cursor-pointer w-[140px] h-8 shadow-inner select-none"
+                                                    onClick={() => setNewMember({...newMember, isRemote: !newMember.isRemote})}
+                                                >
+                                                    {/* Sliding Background */}
+                                                    <div 
+                                                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white dark:bg-slate-600 rounded-md shadow-sm transition-all duration-500 ease-spring ${newMember.isRemote ? 'left-[calc(50%+2px)]' : 'left-1'}`}
+                                                    />
+                                                    
+                                                    {/* Onsite Segment */}
+                                                    <div className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 transition-colors duration-300 ${!newMember.isRemote ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-500'}`}>
+                                                        <Icon name="MapPin" size={10} className={`transition-opacity duration-300 ${!newMember.isRemote ? "opacity-100" : "opacity-50"}`}/>
+                                                        <span className="text-[10px] font-black uppercase tracking-wider">Onsite</span>
+                                                    </div>
+                                                    
+                                                    {/* Online Segment */}
+                                                    <div className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 transition-colors duration-300 ${newMember.isRemote ? 'text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-500'}`}>
+                                                        <Icon name="Globe" size={10} className={`transition-opacity duration-300 ${newMember.isRemote ? "opacity-100" : "opacity-50"}`}/>
+                                                        <span className="text-[10px] font-black uppercase tracking-wider">Online</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-[9px] text-slate-500">{m.role} • {m.manDays}d</div>
-                                                {m.availability && <div className="text-[9px] text-orange-600 dark:text-orange-400 italic mt-0.5">{m.availability}</div>}
                                             </div>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button className="text-slate-400 hover:text-indigo-500"><Icon name="FileEdit" size={12}/></button>
-                                                <button onClick={(e) => { e.stopPropagation(); setAuditTeam(prev => prev.filter(x => x.id !== m.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
-                                            </div>
+
+                                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Availability / Notes" value={newMember.availability} onChange={e => setNewMember({...newMember, availability: e.target.value})} />
+                                            
+                                            <button onClick={handleSaveMember} className="w-full bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 rounded py-1 text-xs font-bold flex items-center justify-center gap-1">
+                                                {editingMemberId ? "Update Member" : <><Icon name="Plus" size={12}/> Add Member</>}
+                                            </button>
+                                            {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:""}); }} className="w-full text-[9px] text-slate-400 underline">Cancel Edit</button>}
                                         </div>
-                                    ))}
-                                </div>
-
-                                {/* SEPARATOR */}
-                                <div className="border-t border-dashed border-gray-200 dark:border-slate-700 my-3 relative">
-                                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 bg-white dark:bg-slate-900 px-2 text-[9px] text-slate-400 uppercase tracking-wider">Add New</div>
-                                </div>
-
-                                {/* INPUTS AT BOTTOM */}
-                                <div className="space-y-2 mb-2">
-                                    <input className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="Member Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
-                                    
-                                    <div className="flex gap-2">
-                                        <select className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-bold text-slate-900 dark:text-white outline-none" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as any})}>
-                                            <option value="Auditor">Auditor</option>
-                                            <option value="Lead Auditor">Lead Auditor</option>
-                                            <option value="Technical Expert">Tech Expert</option>
-                                        </select>
-                                        <input className="w-24 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" placeholder="CODE" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
                                     </div>
-                                    
-                                    {/* Availability / Constraints */}
-                                    <input 
-                                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-400 dark:placeholder-slate-500" 
-                                        placeholder="Constraints (e.g., 09:00-11:00 Online Only)" 
-                                        value={newMember.availability} 
-                                        onChange={e => setNewMember({...newMember, availability: e.target.value})} 
-                                    />
-
-                                    <div className="flex gap-2 items-center">
-                                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 flex-1">
-                                            <input 
-                                                type="number" 
-                                                className="w-full bg-transparent text-xs font-bold text-center outline-none text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                                                value={newMember.manDays} 
-                                                onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value)})} 
-                                                step="0.5" 
-                                                min="0.5" 
-                                            />
-                                            <span className="text-[9px] text-slate-500 uppercase">Days</span>
-                                        </div>
-                                        <button 
-                                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg border flex items-center justify-center gap-1 transition-all ${newMember.isRemote ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700'}`}
-                                            onClick={() => setNewMember({...newMember, isRemote: !newMember.isRemote})}
-                                        >
-                                            <Icon name={newMember.isRemote ? "Globe" : "MapPin"} size={12}/>
-                                            {newMember.isRemote ? "Remote" : "On-Site"}
-                                        </button>
-                                    </div>
-                                    
-                                    <button onClick={handleSaveMember} className="w-full py-2 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg text-xs font-bold hover:bg-orange-200 transition-colors">
-                                        {editingMemberId ? "Update Member" : "Add Member"}
-                                    </button>
-                                    {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:""}); }} className="w-full text-[10px] text-slate-400 underline">Cancel Edit</button>}
-                                </div>
+                                )}
                             </div>
 
-                            {/* Card: Process Mapping */}
-                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 shadow-sm">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <Icon name="Tag" size={14}/> Process Mapping
-                                </h4>
-                                <div className="space-y-3">
+                            {/* 4. PROCESS MAPPING (ALWAYS EXPANDED) */}
+                            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm flex flex-col shrink-0">
+                                <div className="flex justify-between items-center p-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/30">
+                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Icon name="Tag" size={14}/> Process Mapping
+                                    </h4>
+                                </div>
+
+                                <div className="p-3 pt-2 space-y-2">
                                     {processes.map(p => (
-                                        <div key={p.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700">
-                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate flex-1" title={p.name}>{p.name}</span>
+                                        <div key={p.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700 text-xs">
+                                            <div className="font-bold text-slate-800 dark:text-slate-200 mb-1">{p.name}</div>
+                                            <div className="flex gap-2">
                                                 <input 
-                                                    className="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded p-1 text-[9px] font-mono text-center outline-none focus:ring-1 focus:ring-orange-500 text-slate-800 dark:text-white" 
+                                                    className="w-16 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-mono font-bold text-center outline-none text-slate-900 dark:text-orange-400 focus:ring-1 focus:ring-orange-500 placeholder-slate-300 dark:placeholder-slate-600"
                                                     placeholder="CODE"
                                                     value={p.competencyCode || ""}
                                                     onChange={(e) => updateProcessCode(p.id, e.target.value)}
                                                 />
+                                                <select 
+                                                    className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-orange-500"
+                                                    value={p.siteIds?.[0] || ""}
+                                                    onChange={(e) => updateProcessSites(p.id, e.target.value ? [e.target.value] : [])}
+                                                >
+                                                    <option value="">All Sites</option>
+                                                    {auditSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                </select>
                                             </div>
-                                            <select 
-                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded p-1 text-[10px] text-slate-600 dark:text-slate-300 outline-none"
-                                                value={p.siteIds?.[0] || ""}
-                                                onChange={(e) => updateProcessSites(p.id, e.target.value ? [e.target.value] : [])}
-                                            >
-                                                <option value="">All Sites (Default)</option>
-                                                {auditSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                            </select>
                                         </div>
                                     ))}
+                                    {processes.length === 0 && (
+                                        <div className="text-center py-4 text-slate-400 text-xs italic">
+                                            No processes defined.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            <button onClick={handleGenerateSchedule} disabled={isGenerating} className={`w-full py-3 rounded-xl font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${!isGenerating ? "btn-shrimp text-white hover:shadow-indigo-500/40" : "bg-gray-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"}`}>
+                            <button onClick={handleGenerateSchedule} disabled={isGenerating} className={`w-full py-3 rounded-xl font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 mt-auto flex-shrink-0 ${!isGenerating ? "btn-shrimp text-white hover:shadow-indigo-500/40" : "bg-gray-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"}`}>
                                 {isGenerating ? <Icon name="Loader" className="animate-spin" size={14}/> : <Icon name="Wand2" size={14}/>}
-                                {isGenerating ? "AI Planning..." : "SCHEDULING"}
+                                {isGenerating ? "AI Planning..." : "GENERATE SCHEDULE"}
                             </button>
 
                         </div>
@@ -1069,6 +1104,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                 {daySchedule.map((item: any, idx: number) => (
                                                                     <tr key={idx} className="hover:bg-orange-50/30 dark:hover:bg-slate-800/30 transition-colors">
                                                                         {agendaColumns.map((col, colIdx) => {
+                                                                            // Calculate real index in original flattened array for update
+                                                                            const realIndex = auditSchedule.indexOf(item); 
                                                                             const span = rowSpans[`${idx}_${colIdx}`];
                                                                             if (span === 0) return null; // Hidden cell due to merge
 
@@ -1080,12 +1117,22 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                                 >
                                                                                     {col === 'timeSlot' && <span className="font-mono font-bold text-slate-600 dark:text-slate-400">{item.timeSlot}</span>}
                                                                                     {col === 'siteName' && <span className="text-slate-500">{item.siteName}</span>}
+                                                                                    
+                                                                                    {/* INTERACTIVE AUDITOR CELL */}
                                                                                     {col === 'auditorName' && (
-                                                                                        <span className="font-medium text-slate-700 dark:text-slate-300">
-                                                                                            {item.auditorName}
-                                                                                            {item.isRemote && <span className="ml-2 text-[9px] bg-purple-100 text-purple-600 px-1 rounded border border-purple-200">REMOTE</span>}
-                                                                                        </span>
+                                                                                        <div 
+                                                                                            className="group/auditor cursor-pointer flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-700"
+                                                                                            onClick={() => setReassignTarget({ rowIndex: realIndex, currentName: item.auditorName })}
+                                                                                            title="Click to reassign auditor"
+                                                                                        >
+                                                                                            <span className="font-medium text-slate-700 dark:text-slate-300 group-hover/auditor:text-indigo-600 dark:group-hover/auditor:text-indigo-400">
+                                                                                                {item.auditorName}
+                                                                                            </span>
+                                                                                            {item.isRemote && <span className="text-[8px] bg-purple-100 text-purple-600 px-1 rounded">R</span>}
+                                                                                            <Icon name="Users" size={12} className="opacity-0 group-hover/auditor:opacity-100 text-indigo-400 transition-opacity"/>
+                                                                                        </div>
                                                                                     )}
+                                                                                    
                                                                                     {col === 'processName' && (
                                                                                         <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
                                                                                             <Icon name="Session11_GridAdd" size={12}/> 
@@ -1146,6 +1193,43 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 selectedDates={safeAuditDates}
                 onChange={handleUpdateDates}
             />
+
+            {/* Auditor Reassignment Modal */}
+            <Modal 
+                isOpen={!!reassignTarget} 
+                title="Select Auditor for this Activity" 
+                onClose={() => setReassignTarget(null)}
+            >
+                <div className="space-y-3">
+                    <p className="text-xs text-slate-500">
+                        Current: <span className="font-bold text-slate-800 dark:text-white">{reassignTarget?.currentName}</span>
+                    </p>
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar border rounded-xl dark:border-slate-800">
+                        {auditTeam.map(member => (
+                            <div 
+                                key={member.id}
+                                className={`p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 border-b border-gray-100 dark:border-slate-800 last:border-0 ${reassignTarget?.currentName === member.name ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
+                                onClick={() => {
+                                    if (reassignTarget) {
+                                        updateScheduleItem(reassignTarget.rowIndex, 'auditorName', member.name);
+                                        updateScheduleItem(reassignTarget.rowIndex, 'isRemote', member.isRemote);
+                                        setReassignTarget(null);
+                                    }
+                                }}
+                            >
+                                <div className="flex-1">
+                                    <div className="font-bold text-sm text-slate-800 dark:text-slate-200">{member.name}</div>
+                                    <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2">
+                                        <span className="bg-slate-100 dark:bg-slate-700 px-1.5 rounded">{member.role}</span>
+                                        {member.competencyCodes && <span className="font-mono text-teal-600 dark:text-teal-400">[{member.competencyCodes}]</span>}
+                                    </div>
+                                </div>
+                                {reassignTarget?.currentName === member.name && <Icon name="CheckThick" className="text-emerald-500" size={16}/>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

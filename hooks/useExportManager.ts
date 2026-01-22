@@ -4,7 +4,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { translateChunk } from '../services/geminiService';
-import { cleanFileName as utilsCleanFileName } from '../utils'; // Use utils version
+import { cleanFileName as utilsCleanFileName, stripMetadataTags } from '../utils'; // Import strip function
 import { ExportState } from '../components/modals/ExportProgressModal';
 
 export const useExportManager = () => {
@@ -32,24 +32,27 @@ export const useExportManager = () => {
         
         if (type === 'evidence') {
             content = `EVIDENCE DUMP\nDate: ${new Date().toLocaleString()}\n\n`;
-            content += `--- GENERAL EVIDENCE ---\n${evidence}\n\n`;
+            // CLEAN Metadata
+            content += `--- GENERAL EVIDENCE ---\n${stripMetadataTags(evidence)}\n\n`;
             content += `--- MATRIX EVIDENCE ---\n`;
             Object.keys(matrixData).forEach(k => {
                 const rows = matrixData[k];
                 rows.forEach(r => {
                     if (r.status === 'supplied') {
-                        content += `[Clause ${k}] ${r.requirement}\nEVIDENCE: ${r.evidenceInput}\n---\n`;
+                        // CLEAN Metadata from rows
+                        content += `[Clause ${k}] ${r.requirement}\nEVIDENCE: ${stripMetadataTags(r.evidenceInput)}\n---\n`;
                     }
                 });
             });
         } else if (type === 'notes') {
             if (!analysisResult) return showToast("No findings.");
             content = analysisResult.map(f => 
-                `[${f.clauseId}] ${f.status}\nObservation: ${f.reason}\nEvidence: ${f.evidence}\n`
+                // CLEAN Metadata from finding evidence
+                `[${f.clauseId}] ${f.status}\nObservation: ${f.reason}\nEvidence: ${stripMetadataTags(f.evidence)}\n`
             ).join("\n----------------------------------------\n\n");
         } else if (type === 'report') {
             if (!finalReportText) return showToast("No report text.");
-            content = finalReportText;
+            content = finalReportText; // Report is already cleaned during generation
         } else if (type === 'schedule') {
             if (!auditSchedule || auditSchedule.length === 0) return showToast("No schedule generated.");
             
