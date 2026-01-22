@@ -153,13 +153,17 @@ export const generateAnalysis = async (
     if (usePrivacyShield) {
         safeEvidence = PrivacyService.redact(safeEvidence);
     }
-    if (safeEvidence.length > 30000) safeEvidence = safeEvidence.substring(0, 30000) + "...[TRUNCATED]";
+    
+    // OPTIMIZATION: Truncate massively to avoid token overflow, but keep end which often has conclusion
+    if (safeEvidence.length > 25000) {
+        safeEvidence = safeEvidence.substring(0, 15000) + "\n...[TRUNCATED]...\n" + safeEvidence.substring(safeEvidence.length - 10000);
+    }
 
     // RAG Retrieval
     const ragQuery = `${clause.code} ${clause.title} ${clause.description}`;
     const ragKey = apiKey || getApiKey() || ""; 
     const vectorContext = await VectorStore.search(ragQuery, ragKey);
-    const safeRag = vectorContext.length > 5000 ? vectorContext.substring(0, 5000) : vectorContext;
+    const safeRag = vectorContext.length > 4000 ? vectorContext.substring(0, 4000) : vectorContext;
 
     const template = PromptRegistry.getPrompt('ANALYSIS');
     const finalPrompt = PromptRegistry.hydrate(template.template, {
@@ -249,7 +253,6 @@ export const generateAuditSchedule = async (
             id: 'lead_auto',
             name: leadAuditorInfo.name,
             role: 'Lead Auditor',
-            // FIXED: Do NOT default to "All". Default to empty to force specific competency checks.
             competencyCodes: leadAuditorInfo.code || "", 
             manDays: 1,
             isRemote: false,
@@ -257,41 +260,36 @@ export const generateAuditSchedule = async (
         });
     }
 
-    // --- OPTIMIZATION: COMPACT DATA FORMATTING ---
-    const sitesCompact = sites.map(s => `ID:${s.id}|${s.name}|${s.isMain ? 'HQ' : 'Site'}`).join("\n");
+    // --- OPTIMIZATION: COMPACT CSV-STYLE DATA FORMATTING ---
+    // Drastically reduces tokens compared to JSON or verbose keys
     
+    // Schema: ID,Name,Type(HQ/Site)
+    const sitesCompact = sites.map(s => `${s.id},${s.name},${s.isMain?'HQ':'Site'}`).join("\n");
+    
+    // Schema: Name,Role,Codes,IsRemote
     const teamCompact = finalTeam.map(m => 
-        `User:${m.name}|Role:${m.role}|Codes:[${m.competencyCodes}]|Mode:${m.isRemote?'Remote':'OnSite'}`
+        `${m.name},${m.role},${m.competencyCodes||'ALL'},${m.isRemote?'R':'O'}`
     ).join("\n");
 
-    // --- CRITICAL FIX: PRE-CALCULATE VALID AUDITORS PER PROCESS ---
+    // Schema: Name,RequiredCode,Sites
     const processReqs = processes.map(p => {
-        const siteConstraint = p.siteIds && p.siteIds.length > 0 ? `|Sites:${p.siteIds.join(',')}` : "";
-        const clauseList = Object.keys(p.matrixData).join(", ");
-        
-        // Match Making Logic
-        const reqCode = p.competencyCode ? p.competencyCode.trim() : "";
-        const validAuditors = finalTeam.filter(auditor => {
-            if (!reqCode) return true; // Process has no code req => All are valid
-            const audCodes = (auditor.competencyCodes || "").split(',').map(s => s.trim());
-            // Strict check: Must match the code or have "All" (Wildcard). 
-            // Since we removed "All" from Lead default, Lead won't match technical codes unless specified.
-            return audCodes.includes("All") || audCodes.includes(reqCode);
-        }).map(a => `${a.name} [${a.role}]`); // INCLUDE ROLE FOR AI CONTEXT
-
-        const validAuditorStr = validAuditors.length > 0 ? validAuditors.join(", ") : "NONE_QUALIFIED";
-
-        return `Process:${p.name}|ReqCode:${reqCode || "None"}${siteConstraint}\n[${clauseList}]\n[VALID_AUDITORS: ${validAuditorStr}]`;
-    }).join("\n\n");
+        const siteConstraint = p.siteIds && p.siteIds.length > 0 ? p.siteIds.join(';') : "ALL";
+        // Only send clause count to save space, not full list (AI infers duration from count)
+        const clauseCount = Object.keys(p.matrixData).length; 
+        return `${p.name},${p.competencyCode || "NONE"},${siteConstraint},${clauseCount}Clauses`;
+    }).join("\n");
 
     const datesList = config.auditDates.join(", ");
 
     const template = PromptRegistry.getPrompt('SCHEDULING');
     
-    // Inject the stricter rule into the template dynamically if not already present
-    let baseTemplate = template.template;
+    // Optimize Template for CSV input
+    let baseTemplate = template.template.replace('{{SITES_COMPACT}}', `[ID,Name,Type]\n${sitesCompact}`)
+                                        .replace('{{TEAM_COMPACT}}', `[Name,Role,Codes,Remote]\n${teamCompact}`)
+                                        .replace('{{PROCESS_REQUIREMENTS}}', `[Name,ReqCode,SiteIDs,Workload]\n${processReqs}`);
+
     if (!baseTemplate.includes("VALID_AUDITORS")) {
-        baseTemplate += `\n\n5. **COMPETENCY ENFORCEMENT**: For each process, you MUST ONLY assign an auditor listed in the [VALID_AUDITORS] field. If valid list is 'NONE_QUALIFIED', mark activity as 'UNSTAFFED'.`;
+        baseTemplate += `\n\nRULES:\n1. Match Process.ReqCode to Auditor.Codes.\n2. Balance workload across ${datesList}.\n3. Output JSON.`;
     }
 
     const prompt = PromptRegistry.hydrate(baseTemplate, {
@@ -300,9 +298,9 @@ export const generateAuditSchedule = async (
         LUNCH_START: config.lunchStartTime,
         LUNCH_END: config.lunchEndTime,
         DATES: datesList,
-        SITES_COMPACT: sitesCompact,
-        TEAM_COMPACT: teamCompact,
-        PROCESS_REQUIREMENTS: processReqs
+        SITES_COMPACT: "", // Handled above via replacement
+        TEAM_COMPACT: "", // Handled above
+        PROCESS_REQUIREMENTS: "" // Handled above
     });
 
     const configGen: any = {
@@ -364,6 +362,45 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
         );
     } catch (e) {
         return "Executive Summary unavailable.";
+    }
+};
+
+// --- NEW: BATCH PROCESS REPORTING ---
+export const generateProcessBatchReport = async (
+    data: {
+        processName: string,
+        auditor: string,
+        interviewees: string,
+        company: string,
+        standardName: string,
+        language: string,
+        findings: AnalysisResult[]
+    },
+    apiKey?: string,
+    model?: string
+): Promise<string> => {
+    const ai = getAiClient(apiKey);
+    if (!ai) throw new Error("API Key missing");
+
+    const template = PromptRegistry.getPrompt('REPORT');
+    const prompt = PromptRegistry.hydrate(template.template, {
+        PROCESS_NAME: data.processName,
+        AUDITOR: data.auditor,
+        INTERVIEWEES: data.interviewees,
+        COMPANY: data.company,
+        STANDARD_NAME: data.standardName,
+        LANGUAGE: data.language,
+        FINDINGS_JSON: JSON.stringify(data.findings)
+    });
+
+    try {
+        return await executeWithModelCascade(
+            model || "gemini-2.0-flash", // Use fast model for formatting
+            `Batch Report: ${data.processName}`,
+            (m) => ai.models.generateContent({ model: m, contents: prompt })
+        );
+    } catch (e) {
+        return `[Error formatting process: ${data.processName}]`;
     }
 };
 

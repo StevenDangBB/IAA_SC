@@ -20,6 +20,8 @@ interface EvidenceMatrixProps {
     uploadedFiles?: UploadedFile[];
     onRemoveFile?: (fileId: string) => void;
     onLookup?: (clause: Clause) => void;
+    onOcrProcess?: () => void;
+    isProcessing?: boolean;
 }
 
 // --- MEMOIZED ROW COMPONENT ---
@@ -27,8 +29,22 @@ interface EvidenceMatrixProps {
 const MatrixRowItem = React.memo(({ 
     row, clauseId, clauseCode, 
     isActive, isDone, 
-    onActivate, onChange, onPaste 
+    onActivate, onRowChange, onPaste 
 }: any) => {
+    
+    // Internal handler to pass ID back
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onRowChange(clauseId, row.id, e.target.value);
+    };
+
+    const handleClear = () => {
+        onRowChange(clauseId, row.id, "");
+    };
+
+    const handlePasteWrapper = (e: React.ClipboardEvent) => {
+        onPaste(e, clauseId, row.id);
+    };
+
     return (
         <div 
             className={`flex flex-col h-full animate-in fade-in zoom-in-95 duration-200 ${isActive ? 'block' : 'hidden'}`}
@@ -38,7 +54,6 @@ const MatrixRowItem = React.memo(({
                 <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
                         <span className="text-xs font-black text-white bg-gradient-to-r from-indigo-500 to-purple-500 px-2 py-0.5 rounded shadow-sm">{clauseCode}</span>
-                        {/* Title handling passed from parent or looked up could improveperf but minor */}
                     </div>
                 </div>
                 <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border-l-4 border-indigo-400 dark:border-indigo-600 shadow-sm">
@@ -54,8 +69,8 @@ const MatrixRowItem = React.memo(({
                     className="w-full h-full p-6 text-base text-slate-900 dark:text-white bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
                     placeholder="Type verified evidence here... (Drag & Drop files supported)"
                     value={row.evidenceInput}
-                    onChange={(e) => onChange(clauseId, row.id, e.target.value)}
-                    onPaste={(e) => onPaste(e, clauseId, row.id)}
+                    onChange={handleChange}
+                    onPaste={handlePasteWrapper}
                     autoFocus
                 />
                 
@@ -67,7 +82,7 @@ const MatrixRowItem = React.memo(({
                         </span>
                     )}
                     <button 
-                        onClick={() => onChange(clauseId, row.id, "")}
+                        onClick={handleClear}
                         className="p-2 bg-white dark:bg-slate-800 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors shadow-sm border border-gray-200 dark:border-slate-700"
                         title="Clear Text"
                     >
@@ -86,13 +101,14 @@ const MatrixRowItem = React.memo(({
 
 // --- MAIN COMPONENT ---
 export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixProps>(({
-    standard, selectedClauses, matrixData, setMatrixData, onPasteFiles, uploadedFiles = [], onRemoveFile, onLookup
+    standard, selectedClauses, matrixData, setMatrixData, onPasteFiles, uploadedFiles = [], onRemoveFile, onLookup,
+    onOcrProcess, isProcessing
 }, ref) => {
     
     // Tracking active row
     const [activeRow, setActiveRow] = useState<{ clauseId: string, rowId: string } | null>(null);
-    const textAreaRef = useRef<HTMLTextAreaElement>(null);
-
+    const [isChecklistCopied, setIsChecklistCopied] = useState(false);
+    
     // Optimized utility hook
     const { getClauseById } = useStandardUtils(standard);
 
@@ -153,6 +169,7 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
     }, [setMatrixData]);
 
     // OPTIMIZED: Direct state update for typing to avoid lag
+    // This function MUST be stable to avoid re-rendering children
     const handleInputChange = useCallback((clauseId: string, rowId: string, value: string) => {
         setMatrixData(prev => {
             const currentRows = prev[clauseId];
@@ -268,11 +285,16 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                                     const c = getClauseById(cid);
                                     return c ? `[${c.code}] ${c.title}` : null;
                                 }).filter(Boolean).join('\n');
-                                if(list) copyToClipboard(list); 
+                                if(list) {
+                                    copyToClipboard(list);
+                                    setIsChecklistCopied(true);
+                                    setTimeout(() => setIsChecklistCopied(false), 2000);
+                                }
                             }}
-                            className="text-[10px] text-indigo-500 hover:text-indigo-600 font-bold flex items-center gap-1 transition-colors"
+                            className={`text-[10px] font-bold flex items-center gap-1 transition-all duration-300 ${isChecklistCopied ? 'text-emerald-500 scale-105' : 'text-indigo-500 hover:text-indigo-600'}`}
                         >
-                            <Icon name="Copy" size={10}/> Copy All
+                            <Icon name={isChecklistCopied ? "CheckThick" : "Copy"} size={10}/> 
+                            {isChecklistCopied ? "Copied" : "Copy All"}
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-4">
@@ -326,71 +348,41 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                 <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 min-w-0 relative">
                     {activeData ? (
                         <div className="flex flex-col h-full animate-in fade-in zoom-in-95 duration-200">
-                            {/* Requirement Context Header */}
-                            <div className="p-5 border-b border-gray-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
-                                <div className="flex items-center justify-between gap-3 mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-xs font-black text-white bg-gradient-to-r from-indigo-500 to-purple-500 px-2 py-0.5 rounded shadow-sm">{activeData.clause.code}</span>
-                                        <span className="text-sm font-bold text-slate-800 dark:text-white tracking-tight">{activeData.clause.title}</span>
-                                    </div>
-                                    <button 
-                                        onClick={() => onLookup && onLookup(activeData.clause)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 transition-all shadow-sm active:scale-95"
-                                    >
-                                        <Icon name="BookOpen" size={14}/>
-                                        Ref
-                                    </button>
-                                </div>
-                                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border-l-4 border-indigo-400 dark:border-indigo-600 shadow-sm">
-                                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-                                        {activeData.row.requirement}
-                                    </p>
-                                </div>
-                            </div>
+                            {/* MatrixRowItem handles the editor rendering and logic efficiently */}
+                            <MatrixRowItem 
+                                key={activeData.row.id} // Important: re-mount on row change
+                                row={activeData.row}
+                                clauseId={activeData.clause.id}
+                                clauseCode={activeData.clause.code}
+                                isActive={true}
+                                isDone={activeData.row.status === 'supplied'}
+                                onRowChange={handleInputChange} // Pass stable callback
+                                onPaste={handlePaste}
+                            />
 
-                            {/* FILES GRID */}
+                            {/* FILES GRID - Always at bottom if present */}
                             {uploadedFiles.length > 0 && (
-                                <div className="px-6 pt-4 pb-2 bg-slate-50/30 dark:bg-black/10">
-                                    <div className="flex flex-wrap gap-3">
+                                <div className="px-6 pt-4 pb-2 bg-slate-50/30 dark:bg-black/10 border-t border-gray-100 dark:border-slate-800">
+                                    <div className="flex flex-wrap gap-3 items-center">
                                         {uploadedFiles.map(renderFilePreview)}
+                                        
+                                        {/* PROCESS BUTTON IN MATRIX */}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onOcrProcess && onOcrProcess(); }}
+                                            disabled={isProcessing}
+                                            className="group relative w-20 h-20 flex flex-col items-center justify-center gap-1 rounded-xl btn-shrimp text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-indigo-500/40"
+                                            title="Process OCR for these files"
+                                        >
+                                            {isProcessing ? (
+                                                <Icon name="Loader" size={24} className="animate-spin text-white"/>
+                                            ) : (
+                                                <Icon name="ScanText" size={24} className="group-hover:scale-110 transition-transform text-white"/>
+                                            )}
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-white">OCR Process</span>
+                                        </button>
                                     </div>
                                 </div>
                             )}
-
-                            {/* Large Editor Area */}
-                            <div className="flex-1 relative group">
-                                <textarea
-                                    ref={textAreaRef}
-                                    className="w-full h-full p-6 text-base text-slate-900 dark:text-white bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
-                                    placeholder="Type verified evidence here... (Drag & Drop files supported)"
-                                    value={activeData.row.evidenceInput}
-                                    onChange={(e) => handleInputChange(activeData.clause.id, activeData.row.id, e.target.value)}
-                                    onPaste={(e) => handlePaste(e, activeData.clause.id, activeData.row.id)}
-                                    autoFocus
-                                />
-                                
-                                {/* Floating Actions */}
-                                <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    {activeData.row.status === 'supplied' && (
-                                        <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800">
-                                            <Icon name="CheckThick" size={12}/> Saved
-                                        </span>
-                                    )}
-                                    <button 
-                                        onClick={() => handleInputChange(activeData.clause.id, activeData.row.id, "")}
-                                        className="p-2 bg-white dark:bg-slate-800 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors shadow-sm border border-gray-200 dark:border-slate-700"
-                                        title="Clear Text"
-                                    >
-                                        <Icon name="Trash2" size={16}/>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            {/* Footer Info */}
-                            <div className="px-6 py-2 border-t border-gray-100 dark:border-slate-800 text-[10px] text-slate-400 flex justify-between bg-gray-50/80 dark:bg-slate-950/80 backdrop-blur-sm">
-                                <span className="font-mono">Ln {activeData.row.evidenceInput.split('\n').length}, Col {activeData.row.evidenceInput.length}</span>
-                                <span>{uploadedFiles.length} Attachment(s)</span>
-                            </div>
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600">

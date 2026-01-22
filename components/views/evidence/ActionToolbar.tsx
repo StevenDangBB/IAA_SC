@@ -1,48 +1,53 @@
 
 import React from 'react';
 import { Icon, SparkleLoader } from '../../UI';
-import { UploadedFile } from '../../../types';
+import { AuditProcess } from '../../../types';
 
 interface ActionToolbarProps {
-    uploadedFiles: UploadedFile[];
-    onOcrProcess: () => void;
-    isOcrLoading: boolean;
-    isProcessing: boolean;
     toggleListening: () => void;
     isListening: boolean;
     triggerFileUpload: () => void;
     onAnalyze: () => void;
     isReadyForAnalysis: boolean;
     isAnalyzeLoading: boolean;
+    // Process Props
+    processes: AuditProcess[];
+    activeProcessId: string | null;
+    setActiveProcessId: (id: string) => void;
 }
 
 export const ActionToolbar: React.FC<ActionToolbarProps> = ({
-    uploadedFiles, onOcrProcess, isOcrLoading, isProcessing,
     toggleListening, isListening, triggerFileUpload,
-    onAnalyze, isReadyForAnalysis, isAnalyzeLoading
+    onAnalyze, isReadyForAnalysis, isAnalyzeLoading,
+    processes, activeProcessId, setActiveProcessId
 }) => {
     return (
-        <div className="flex-shrink-0 flex items-end gap-3 min-h-[52px]">
-            {/* File Queue */}
-            {uploadedFiles.length > 0 && (
-                <div className="flex-1 flex gap-2 overflow-x-auto custom-scrollbar bg-gray-50 dark:bg-slate-900 p-1.5 rounded-xl border border-gray-200 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-2">
-                    {uploadedFiles.map((fileEntry) => (
-                        <div key={fileEntry.id} className="relative group w-10 h-10 flex-shrink-0 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-100 dark:border-slate-700 flex items-center justify-center overflow-hidden transition-transform hover:scale-105">
-                            <Icon name="FileText" size={16} className="text-indigo-500"/>
-                            {fileEntry.status === 'processing' && <div className="absolute inset-0 bg-white/50 flex items-center justify-center"><Icon name="Loader" size={14} className="animate-spin text-indigo-600"/></div>}
-                            {fileEntry.status === 'success' && <div className="absolute top-0 right-0 w-2 h-2 bg-emerald-500 rounded-full animate-ping-once"></div>}
-                        </div>
-                    ))}
-                    <button 
-                        onClick={onOcrProcess} 
-                        disabled={(isOcrLoading || isProcessing)} 
-                        className="px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold shadow-md transition-all active:scale-95 disabled:opacity-50"
-                    >
-                        Process {uploadedFiles.filter(f => f.status === 'pending').length}
-                    </button>
+        <div className="flex-shrink-0 flex items-center gap-3 min-h-[52px]">
+            
+            {/* 1. PROCESS SELECTOR */}
+            <div className="relative group min-w-[180px] max-w-[240px]">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500 pointer-events-none">
+                    <Icon name="Session11_GridAdd" size={16}/>
                 </div>
-            )}
+                <select 
+                    value={activeProcessId || ""} 
+                    onChange={(e) => setActiveProcessId(e.target.value)}
+                    className="w-full h-[48px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl pl-9 pr-8 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer appearance-none shadow-sm hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    title="Switch active process"
+                >
+                    {processes.length === 0 && <option value="">No Processes</option>}
+                    {processes.map(p => (
+                        <option key={p.id} value={p.id}>
+                            {p.name}
+                        </option>
+                    ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <Icon name="ChevronDown" size={12}/>
+                </div>
+            </div>
 
+            {/* 2. RIGHT ACTIONS */}
             <div className="flex gap-2 ml-auto">
                 <button
                     onClick={toggleListening}

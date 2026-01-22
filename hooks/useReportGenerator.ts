@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
-import { generateExecutiveSummary, formatFindingReportSection } from '../services/geminiService';
+import { generateExecutiveSummary, generateProcessBatchReport } from '../services/geminiService';
 import { processSourceFile, stripMetadataTags } from '../utils'; // Import strip function
 import { AnalysisResult } from '../types';
 
@@ -108,9 +108,9 @@ export const useReportGenerator = (exportLanguage: string) => {
             }
 
             setGenerationLogs(prev => [...prev, "Executive Summary: Completed"]);
-            setProgressPercent(10);
+            setProgressPercent(20);
 
-            // 2. DETAILED FINDINGS (GROUPED BY PROCESS)
+            // 2. BATCH PROCESS REPORTING
             finalSections.push(`DETAILED FINDINGS`);
 
             // Group findings by Process Name
@@ -124,51 +124,47 @@ export const useReportGenerator = (exportLanguage: string) => {
             // Iterate through groups
             const processNames = Object.keys(findingsByProcess).sort();
             let processedCount = 0;
-            const totalFindings = activeFindings.length;
+            const totalProcesses = processNames.length;
 
             for (const pName of processNames) {
                 const processFindings = findingsByProcess[pName];
-                
-                // Add Process Header with Interviewees
-                const auditorName = auditInfo.auditor || "[Auditor Name]";
                 
                 // Find corresponding process object to get specific interviewees
                 const representativeFinding = processFindings[0];
                 const processObj = processes.find(p => p.id === representativeFinding.processId);
                 const processInterviewees = processObj?.interviewees?.join(", ") || "N/A";
+                const auditorName = auditInfo.auditor || "[Auditor Name]";
 
-                // PLAIN TEXT HEADER
-                finalSections.push(`PROCESS: ${pName}\nExecution performed by: ${auditorName}\nAuditees (Interviewed): ${processInterviewees}\n`);
-                
-                // Process findings within this group
-                for (const finding of processFindings) {
-                    const currentClause = `Clause ${finding.clauseId}`;
-                    setReportLoadingMessage(`Formatting ${pName} - ${currentClause}...`);
-                    setGenerationLogs(prev => [...prev, `Processing ${pName} / ${currentClause}...`]);
+                setReportLoadingMessage(`Processing Section: ${pName}...`);
+                setGenerationLogs(prev => [...prev, `Batch Processing ${pName} (${processFindings.length} findings)...`]);
 
-                    // Real Processing Call - finding is already cleaned
-                    const sectionText = await formatFindingReportSection(finding, exportLanguage as 'en'|'vi', apiKey, model);
-                    
-                    // CLEAN UP MARKDOWN CHARS from specific finding section
-                    const cleanSection = sectionText.replace(/[#*`]/g, '');
-                    finalSections.push(cleanSection);
+                // BATCH CALL: Send all findings for this process at once
+                // This saves massive tokens by sending the System Prompt only once per process
+                const sectionText = await generateProcessBatchReport({
+                    processName: pName,
+                    auditor: auditorName,
+                    interviewees: processInterviewees,
+                    company: auditInfo.company,
+                    standardName: standardName,
+                    language: exportLanguage,
+                    findings: processFindings
+                }, apiKey, model);
 
-                    processedCount++;
-                    const percent = 10 + Math.round((processedCount / totalFindings) * 90);
-                    setProgressPercent(percent);
-
-                    // Rate limit buffer
-                    if (processedCount % 3 === 0) await new Promise(r => setTimeout(r, 200));
-                }
-                
-                // Add separator between processes
+                // Clean Markdown
+                const cleanSection = sectionText.replace(/[#*`]/g, '');
+                finalSections.push(cleanSection);
                 finalSections.push("----------------------------------------"); 
+
+                processedCount++;
+                const percent = 20 + Math.round((processedCount / totalProcesses) * 80);
+                setProgressPercent(percent);
+
+                // Rate limit buffer
+                await new Promise(r => setTimeout(r, 500));
             }
 
             // 3. FINALIZE
             setReportLoadingMessage("Finalizing document...");
-            setGenerationLogs(prev => [...prev, "Stitching report sections..."]);
-            
             const fullReport = finalSections.join("\n\n");
             
             if (reportTemplate) {

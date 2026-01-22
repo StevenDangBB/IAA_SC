@@ -8,7 +8,6 @@ import { generateOcrContent } from '../../services/geminiService';
 import { PromptRegistry } from '../../services/promptRegistry';
 import { useAudit } from '../../contexts/AuditContext';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
-import { ProcessHeader } from './evidence/ProcessHeader';
 import { ActionToolbar } from './evidence/ActionToolbar';
 import { useReferenceLookup } from '../../hooks/useReferenceLookup'; 
 import { TABS_CONFIG } from '../../constants';
@@ -156,16 +155,9 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
     }, [processNewFiles]);
 
     return (
-        <div className="h-full flex flex-col gap-2 md:gap-3 animate-fade-in-up relative p-1">
+        <div className="h-full flex flex-col gap-2 animate-fade-in-up relative p-1">
             
-            <ProcessHeader 
-                processes={processes}
-                activeProcessId={activeProcessId}
-                activeProcess={activeProcess}
-                setActiveProcessId={(id) => setActiveProcessId(id)}
-                addInterviewee={addInterviewee}
-                removeInterviewee={removeInterviewee}
-            />
+            {/* Removed ProcessHeader - Logic moved to ActionToolbar */}
 
             <div className="flex-1 flex flex-col gap-2 min-h-0 relative">
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf,text/plain" multiple onChange={(e) => e.target.files && processNewFiles(Array.from(e.target.files))} />
@@ -198,6 +190,8 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                                     uploadedFiles={uploadedFiles}
                                     onRemoveFile={handleRemoveFile}
                                     onLookup={handleLookup} // Connect Lookup
+                                    onOcrProcess={handleMatrixOcrProcess} // Pass OCR handler
+                                    isProcessing={isMatrixProcessing} // Pass processing state
                                 />
                             </div>
                         ) : (
@@ -225,16 +219,16 @@ export const EvidenceView: React.FC<EvidenceViewProps> = ({
                 {/* Left Side: Input Tools */}
                 <div className="flex-1 min-w-0">
                     <ActionToolbar 
-                        uploadedFiles={uploadedFiles}
-                        onOcrProcess={handleMatrixOcrProcess}
-                        isOcrLoading={isOcrLoading}
-                        isProcessing={isMatrixProcessing}
                         toggleListening={toggleListening}
                         isListening={isListening}
                         triggerFileUpload={() => fileInputRef.current?.click()}
                         onAnalyze={onAnalyze}
                         isReadyForAnalysis={isReadyForAnalysis}
                         isAnalyzeLoading={isAnalyzeLoading}
+                        // Process Control Props
+                        processes={processes}
+                        activeProcessId={activeProcessId}
+                        setActiveProcessId={setActiveProcessId}
                     />
                 </div>
 
