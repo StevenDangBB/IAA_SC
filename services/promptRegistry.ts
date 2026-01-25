@@ -72,11 +72,11 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
     SCHEDULING: {
         id: 'smart_scheduler_v2',
         label: 'Smart Scheduler',
-        description: 'Optimized logic for audit agenda.',
+        description: 'Optimized logic for audit agenda with grouping.',
         isSystemDefault: true,
         template: `
-        ROLE: ISO Scheduler.
-        TASK: Map clauses to time slots.
+        ROLE: Expert ISO Lead Auditor & Scheduler.
+        TASK: Create a professional audit agenda based on the inputs.
         
         PARAMS:
         Time: {{START_TIME}}-{{END_TIME}} | Lunch: {{LUNCH_START}}-{{LUNCH_END}}
@@ -84,27 +84,37 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         
         INPUTS:
         Sites: {{SITES_COMPACT}}
-        Team: {{TEAM_COMPACT}}
-        Reqs:
+        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, Availability)
+        Process Requirements (Name, Code, Site, Clauses):
         {{PROCESS_REQUIREMENTS}}
 
-        RULES:
-        1. Cover ALL clauses in Reqs.
-        2. Group by Process.
-        3. Assign ONLY valid auditors from [VALID_AUDITORS].
-        4. Output JSON Array.
+        CRITICAL MANDATORY RULES (FAILURE TO FOLLOW = ERROR):
+        1. **RESOURCE UTILIZATION**: You MUST schedule ALL auditors listed in 'Team'. Do NOT leave any auditor idle if there is work. If multiple auditors are available, parallelize the sessions (different auditors auditing different processes at the same time).
+        2. **LEAD AUDITOR**: The Lead Auditor must attend Opening (first activity) and Closing (last activity).
+        3. **GROUPING**: Group related clauses into logical activities.
+           - DO NOT list: "4.1 Context", "4.2 Interested Parties", "4.3 Scope" as 3 separate rows.
+           - DO LIST: Activity="Context & Leadership", ClauseRefs=["4.1", "4.2", "4.3", "5.1"]
+        4. **COVERAGE**: Every clause listed in 'Process Requirements' must appear in the 'clauseRefs' of at least one activity.
+        5. **OPENING/CLOSING**:
+           - Day 1, Start Time: "Opening Meeting" (All Team)
+           - Last Day, End Time: "Closing Meeting" (All Team)
+           - End of each day (except last): "Interim Briefing" (All Team)
+        6. **ACTIVITY NAMING (CRITICAL)**: 
+           - The 'activity' field MUST be descriptive and explicitly reference the clause topic to help the Auditee prepare.
+           - BAD: "Production", "HR", "Sales"
+           - GOOD: "Production: Control of Production & Preservations (8.5)", "HR: Competence, Awareness & Training Records (7.2, 7.3)", "Sales: Contract Review & Customer Satisfaction (8.2, 9.1)"
 
-        JSON SCHEMA:
+        JSON OUTPUT SCHEMA:
         [
           {
             "day": 1,
             "date": "YYYY-MM-DD",
             "timeSlot": "HH:MM-HH:MM",
-            "activity": "Audit [Process]",
-            "siteName": "Site",
-            "auditorName": "Name",
-            "processName": "Process",
-            "clauseRefs": ["4.1"],
+            "activity": "Activity Name (Must be descriptive, e.g., 'HR: Training & Competency Check')",
+            "siteName": "Site Name",
+            "auditorName": "Name", // Specific auditor assigned
+            "processName": "Process Name",
+            "clauseRefs": ["4.1", "4.2", ...], // ALL clauses covered in this slot
             "isRemote": false
           }
         ]

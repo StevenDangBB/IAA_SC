@@ -59,13 +59,15 @@ export const useExportManager = () => {
             // IF DOCX: GENERATE HTML TABLE STRUCTURE
             if (format === 'docx') {
                 const columns = extraData?.columns || ['timeSlot', 'siteName', 'processName', 'activity', 'auditorName', 'clauseRefs'];
+                const customHeader = extraData?.customHeader || ""; // Support custom header from AI
+
                 const COLUMN_LABELS: Record<string, string> = {
                     timeSlot: "Time", siteName: "Site", auditorName: "Auditor",
                     clauseRefs: "Clauses", activity: "Activity", processName: "Process / Auditee"
                 };
 
                 content = `
-                    <h2 style="color:#2e74b5; font-family:Arial;">AUDIT PLAN / SCHEDULE</h2>
+                    <h2 style="color:#2e74b5; font-family:Arial;">${customHeader || "AUDIT PLAN / SCHEDULE"}</h2>
                     <p><strong>Company:</strong> ${auditInfo.company}<br/>
                     <strong>Standard:</strong> ${standards[standardKey]?.name}<br/>
                     <strong>Date Exported:</strong> ${new Date().toLocaleDateString()}</p>
@@ -91,7 +93,7 @@ export const useExportManager = () => {
                     // Header
                     content += `<tr style="background-color:#f3f4f6;">`;
                     columns.forEach((col: string) => {
-                        content += `<th style="padding: 8px; border: 1px solid #ccc; text-align: left;">${COLUMN_LABELS[col]}</th>`;
+                        content += `<th style="padding: 8px; border: 1px solid #ccc; text-align: left;">${COLUMN_LABELS[col] || col}</th>`;
                     });
                     content += `</tr>`;
 

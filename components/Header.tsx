@@ -20,23 +20,43 @@ export const Header: React.FC = () => {
     const isPrivacyActive = useMemo(() => Object.values(privacySettings).some(val => val === true), [privacySettings]);
 
     // --- SHARED STYLES ---
-    // Added h-7 for fixed height synchronization across all badges
     const badgeBaseClass = "flex items-center justify-center gap-2 px-3 h-7 rounded-full border shadow-sm backdrop-blur-md transition-all duration-300";
     const textBaseClass = "text-[10px] font-black uppercase tracking-widest leading-none pt-px";
 
     // --- HELPER: GET MODEL NAME ---
     const activeModelName = useMemo(() => {
         if (!activeKeyProfile) return "OFFLINE";
-        const m = (activeKeyProfile.activeModel || "").toLowerCase();
         
-        if (m.includes("3-pro")) return "PRO 3.0";
-        if (m.includes("3-flash")) return "FLASH 3.0";
-        if (m.includes("lite")) return "LITE 2.0";
-        if (m.includes("2.0-flash")) return "FLASH 2.0";
-        if (m.includes("1.5-pro")) return "PRO 1.5";
-        if (m.includes("1.5-flash")) return "FLASH 1.5";
+        // Robust Fallback: If model is missing on key profile, assume 3.0 Pro (Standard)
+        const rawModel = activeKeyProfile.activeModel || "gemini-3-pro-preview";
+        const m = rawModel.toLowerCase();
         
-        return "GEMINI";
+        // --- SERIES 3 ---
+        if (m.includes("gemini-3")) {
+            if (m.includes("flash")) return "3.0 FLASH";
+            return "3.0 PRO";
+        }
+
+        // --- SERIES 2.0 ---
+        if (m.includes("gemini-2.0") || m.includes("gemini-2")) {
+            if (m.includes("lite")) return "2.0 LITE";
+            if (m.includes("flash")) return "2.0 FLASH";
+            if (m.includes("pro")) return "2.0 PRO";
+            if (m.includes("exp")) return "2.0 EXP";
+        }
+
+        // --- SERIES 1.5 ---
+        if (m.includes("gemini-1.5")) {
+            if (m.includes("flash")) return "1.5 FLASH";
+            if (m.includes("pro")) return "1.5 PRO";
+        }
+        
+        // --- GENERIC FALLBACKS ---
+        if (m.includes("flash")) return "FLASH AI";
+        if (m.includes("pro")) return "PRO AI";
+        if (m.includes("ultra")) return "ULTRA AI";
+        
+        return "GEMINI AI";
     }, [activeKeyProfile]);
 
     // --- AI STATUS CONFIG ---
@@ -52,7 +72,7 @@ export const Header: React.FC = () => {
             status: "online",
             dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse",
             borderColor: "border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400",
-            tooltip: `AI Ready: ${activeModelName}`
+            tooltip: `AI Ready: ${activeKeyProfile.activeModel || 'Default Model'}`
         };
         
         if (activeKeyProfile.status === 'quota_exceeded') return {
@@ -68,7 +88,7 @@ export const Header: React.FC = () => {
             borderColor: "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
             tooltip: "Connection Error: Check API Key"
         };
-    }, [activeKeyProfile, activeModelName]);
+    }, [activeKeyProfile]);
 
     // --- PRIVACY BADGE STYLE ---
     const privacyBadgeStyle = useMemo(() => {

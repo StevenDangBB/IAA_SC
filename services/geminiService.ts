@@ -248,49 +248,37 @@ export const generateAuditSchedule = async (
     if (!ai) throw new Error("API Key missing");
 
     let finalTeam = [...team];
-    if (leadAuditorInfo?.name && !finalTeam.find(m => m.name === leadAuditorInfo.name)) {
-        finalTeam.push({
-            id: 'lead_auto',
-            name: leadAuditorInfo.name,
-            role: 'Lead Auditor',
-            competencyCodes: leadAuditorInfo.code || "", 
-            manDays: 1,
-            isRemote: false,
-            availability: "Full Time"
-        });
-    }
-
-    // --- OPTIMIZATION: COMPACT CSV-STYLE DATA FORMATTING ---
-    // Drastically reduces tokens compared to JSON or verbose keys
     
-    // Schema: ID,Name,Type(HQ/Site)
+    // --- LOGIC 3: COMPACT CSV DATA ---
     const sitesCompact = sites.map(s => `${s.id},${s.name},${s.isMain?'HQ':'Site'}`).join("\n");
     
-    // Schema: Name,Role,Codes,IsRemote
-    const teamCompact = finalTeam.map(m => 
-        `${m.name},${m.role},${m.competencyCodes||'ALL'},${m.isRemote?'R':'O'}`
-    ).join("\n");
+    const teamCompact = finalTeam.map(m => {
+        let availStr = "";
+        if (m.availabilityMatrix && Object.keys(m.availabilityMatrix).length > 0) {
+            const schedule = Object.entries(m.availabilityMatrix)
+                .map(([date, data]) => `${date}:${data.mode}:${data.allocation}`)
+                .join("|");
+            availStr = `[${schedule}]`;
+        } else {
+            availStr = m.isRemote ? 'REMOTE_ALL' : 'ONSITE_ALL';
+        }
+        return `${m.name},${m.role},${m.competencyCodes||'ALL'},${availStr}`;
+    }).join("\n");
 
-    // Schema: Name,RequiredCode,Sites
     const processReqs = processes.map(p => {
         const siteConstraint = p.siteIds && p.siteIds.length > 0 ? p.siteIds.join(';') : "ALL";
-        // Only send clause count to save space, not full list (AI infers duration from count)
-        const clauseCount = Object.keys(p.matrixData).length; 
-        return `${p.name},${p.competencyCode || "NONE"},${siteConstraint},${clauseCount}Clauses`;
+        // Important: Extract clauses from matrix data to pass to AI
+        const clauses = Object.keys(p.matrixData).join(";");
+        return `${p.name},${p.competencyCode || "NONE"},${siteConstraint},[${clauses}]`;
     }).join("\n");
 
     const datesList = config.auditDates.join(", ");
 
     const template = PromptRegistry.getPrompt('SCHEDULING');
     
-    // Optimize Template for CSV input
     let baseTemplate = template.template.replace('{{SITES_COMPACT}}', `[ID,Name,Type]\n${sitesCompact}`)
-                                        .replace('{{TEAM_COMPACT}}', `[Name,Role,Codes,Remote]\n${teamCompact}`)
-                                        .replace('{{PROCESS_REQUIREMENTS}}', `[Name,ReqCode,SiteIDs,Workload]\n${processReqs}`);
-
-    if (!baseTemplate.includes("VALID_AUDITORS")) {
-        baseTemplate += `\n\nRULES:\n1. Match Process.ReqCode to Auditor.Codes.\n2. Balance workload across ${datesList}.\n3. Output JSON.`;
-    }
+                                        .replace('{{TEAM_COMPACT}}', `[Name,Role,Codes,Availability]\n${teamCompact}`)
+                                        .replace('{{PROCESS_REQUIREMENTS}}', `[Name,ReqCode,SiteIDs,Clauses]\n${processReqs}`);
 
     const prompt = PromptRegistry.hydrate(baseTemplate, {
         START_TIME: config.startTime,
@@ -298,9 +286,9 @@ export const generateAuditSchedule = async (
         LUNCH_START: config.lunchStartTime,
         LUNCH_END: config.lunchEndTime,
         DATES: datesList,
-        SITES_COMPACT: "", // Handled above via replacement
-        TEAM_COMPACT: "", // Handled above
-        PROCESS_REQUIREMENTS: "" // Handled above
+        SITES_COMPACT: "", 
+        TEAM_COMPACT: "", 
+        PROCESS_REQUIREMENTS: "" 
     });
 
     const configGen: any = {
@@ -365,7 +353,6 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     }
 };
 
-// --- NEW: BATCH PROCESS REPORTING ---
 export const generateProcessBatchReport = async (
     data: {
         processName: string,
@@ -395,7 +382,7 @@ export const generateProcessBatchReport = async (
 
     try {
         return await executeWithModelCascade(
-            model || "gemini-2.0-flash", // Use fast model for formatting
+            model || "gemini-2.0-flash", 
             `Batch Report: ${data.processName}`,
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
@@ -404,15 +391,13 @@ export const generateProcessBatchReport = async (
     }
 };
 
-// --- MISSING FUNCTIONS RESTORED ---
-
 export const generateOcrContent = async (prompt: string, base64Image: string, mimeType: string, apiKey?: string): Promise<string> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
     try {
         const result = await ai.models.generateContent({
-            model: DEFAULT_VISION_MODEL, // gemini-2.5-flash-image
+            model: DEFAULT_VISION_MODEL, 
             contents: {
                 parts: [
                     { inlineData: { mimeType, data: base64Image } },
@@ -436,12 +421,12 @@ export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiK
 
     try {
         return await executeWithModelCascade(
-            "gemini-2.0-flash", // Fast model for translation
+            "gemini-2.0-flash", 
             "Translate",
             (m) => ai.models.generateContent({ model: m, contents: prompt })
         );
     } catch (e) {
-        return text; // Fallback to original
+        return text; 
     }
 };
 
@@ -488,7 +473,6 @@ export const formatFindingReportSection = async (finding: AnalysisResult, lang: 
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
-    // We pass the full finding context
     const prompt = `
     Format this single ISO Audit Finding into a finalized report section in strictly ${lang === 'vi' ? 'Vietnamese' : 'English'}.
     Output PLAIN TEXT. No Markdown.

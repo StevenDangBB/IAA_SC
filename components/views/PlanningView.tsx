@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, memo, useCallback, useEffect } from 'react';
 import { Icon, GlassDatePicker, Modal } from '../UI';
 import { useAudit } from '../../contexts/AuditContext';
@@ -128,7 +127,15 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     
     const [newSite, setNewSite] = useState<AuditSite>({ id: "", name: "", address: "", scope: "", isMain: false, employeeCount: 0 });
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-    const [newMember, setNewMember] = useState<Partial<AuditMember>>({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
+    const [newMember, setNewMember] = useState<Partial<AuditMember>>({ 
+        name: "", 
+        role: "Auditor", 
+        competencyCodes: "", 
+        manDays: 1, 
+        isRemote: false, 
+        availability: "",
+        availabilityMatrix: {} // NEW: Init
+    });
     const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
     const [tempSite, setTempSite] = useState<AuditSite | null>(null);
     
@@ -144,7 +151,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const [genProgress, setGenProgress] = useState(0);
     const [genLogs, setGenLogs] = useState<string[]>([]);
 
-    // Schedule Grid Configuration
+    // Schedule Grid Configuration (CUSTOM MAPPING)
     const [agendaColumns, setAgendaColumns] = useState(['siteName', 'auditorName', 'timeSlot', 'processName', 'activity', 'clauseRefs']);
     const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
@@ -458,17 +465,40 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 competencyCodes: newMember.competencyCodes?.trim() || "",
                 manDays: newMember.manDays || 1,
                 isRemote: newMember.isRemote || false,
-                availability: newMember.availability || ""
+                availability: newMember.availability || "",
+                availabilityMatrix: newMember.availabilityMatrix || {}
             };
             setAuditTeam([...auditTeam, member]);
         }
-        setNewMember({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "" });
+        setNewMember({ name: "", role: "Auditor", competencyCodes: "", manDays: 1, isRemote: false, availability: "", availabilityMatrix: {} });
     };
 
     const handleEditMember = (m: AuditMember) => {
         setEditingMemberId(m.id);
         setNewMember({ ...m });
         setActiveSection('team'); // Auto open
+    };
+
+    // --- HYBRID AVAILABILITY LOGIC WITH AUTO-ACCUMULATION ---
+    const handleUpdateMatrix = (date: string, field: 'mode' | 'allocation', value: any) => {
+        setNewMember(prev => {
+            const currentMatrix = prev.availabilityMatrix || {};
+            const currentEntry = currentMatrix[date] || { mode: 'onsite', allocation: 1.0 }; // Default
+            
+            const newMatrix = {
+                ...currentMatrix,
+                [date]: { ...currentEntry, [field]: value }
+            };
+
+            // AUTO-ACCUMULATE LOGIC: Sum all allocations
+            const totalAllocation = Object.values(newMatrix).reduce((acc, val: any) => acc + (val.allocation || 0), 0);
+
+            return {
+                ...prev,
+                availabilityMatrix: newMatrix,
+                manDays: totalAllocation // Update Total WD automatically
+            };
+        });
     };
 
     // --- DATE & SCHEDULE LOGIC ---
@@ -485,7 +515,12 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const handleGenerateSchedule = async () => {
         const key = getActiveKey();
         if (!key) { showToast("API Key Required."); return; }
-        if (auditTeam.length === 0) { showToast("Please add at least one auditor."); return; }
+        
+        if (auditTeam.length === 0) { 
+            showToast("Please add at least one auditor."); 
+            return; 
+        }
+        
         if (processes.length === 0) { showToast("No processes found to schedule."); return; }
         
         const safeDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
@@ -502,14 +537,29 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             setTimeout(() => { setGenProgress(60); addLog("Optimizing time slots & balancing workload..."); }, 3500);
             setTimeout(() => { setGenProgress(80); addLog("Finalizing Agenda Structure..."); }, 5000);
 
+            // SITE FALLBACK LOGIC: If sites list is empty, use Company info as the "Main Site"
+            const effectiveSites = auditSites.length > 0 
+                ? auditSites 
+                : [{ 
+                    id: 'default_main_site', 
+                    name: auditInfo.company || 'Main Organization Site', 
+                    address: auditInfo.address || '', 
+                    isMain: true, 
+                    scope: 'Whole Organization',
+                    employeeCount: auditInfo.totalEmployees 
+                  }];
+
+            if (auditSites.length === 0) {
+                addLog("Note: No specific sites added. Using Organization Context as single audit location.");
+            }
+
             const resultJson = await generateAuditSchedule(
-                auditSites,
+                effectiveSites,
                 auditTeam,
                 processes,
                 auditPlanConfig,
                 key.key,
-                key.activeModel,
-                { name: auditInfo.auditor, code: auditInfo.leadAuditorCode }
+                key.activeModel
             );
             
             const schedule = cleanAndParseJSON(resultJson);
@@ -623,7 +673,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                         </div>
                     ) : (
                         <div className="flex-1 overflow-auto custom-scrollbar relative">
-                            {/* ... Matrix Table Code ... */}
                             <table className="w-full text-left border-collapse">
                                 <thead className={`${themeConfig.bgSoft.replace('50', '50/80')} dark:bg-slate-950 sticky top-0 z-30 shadow-sm backdrop-blur-sm transition-colors duration-500 ease-fluid`}>
                                     <tr>
@@ -801,7 +850,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                                 {activeSection === 'sites' && (
                                     <div className="p-3 pt-0 space-y-3 animate-accordion-down mt-2 h-auto">
-                                        {/* List with Padding to fix border clipping */}
                                         <div className="space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar p-1">
                                             {auditSites.map(s => {
                                                 const isEditing = editingSiteId === s.id;
@@ -826,14 +874,10 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             })}
                                         </div>
                                         
-                                        {/* Edit/Add Form */}
                                         <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 space-y-2">
                                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Site Name" value={editingSiteId ? tempSite?.name : newSite.name} onChange={e => editingSiteId ? setTempSite({...tempSite!, name: e.target.value}) : setNewSite({...newSite, name: e.target.value})} />
-                                            
                                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Address" value={editingSiteId ? tempSite?.address : newSite.address} onChange={e => editingSiteId ? setTempSite({...tempSite!, address: e.target.value}) : setNewSite({...newSite, address: e.target.value})} />
-                                            
                                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Scope (Optional)" value={editingSiteId ? tempSite?.scope : newSite.scope} onChange={e => editingSiteId ? setTempSite({...tempSite!, scope: e.target.value}) : setNewSite({...newSite, scope: e.target.value})} />
-
                                             <div className="flex gap-2">
                                                 <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" placeholder="Staff Count" value={editingSiteId ? tempSite?.employeeCount : newSite.employeeCount || ""} onChange={e => editingSiteId ? setTempSite({...tempSite!, employeeCount: parseInt(e.target.value)}) : setNewSite({...newSite, employeeCount: parseInt(e.target.value)})} />
                                                 <label className="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
@@ -841,7 +885,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                     <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">HQ Site</span>
                                                 </label>
                                             </div>
-                                            
                                             {editingSiteId ? (
                                                 <div className="flex gap-2">
                                                     <button onClick={handleSaveSite} className="flex-1 bg-emerald-500 text-white rounded py-1 text-xs font-bold">Save</button>
@@ -875,7 +918,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                                 {activeSection === 'team' && (
                                     <div className="p-3 pt-0 space-y-2 animate-accordion-down mt-2 h-auto">
-                                        {/* List with Padding to fix border clipping */}
                                         <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar mb-3 p-1">
                                             {auditTeam.map(m => {
                                                 const isEditing = editingMemberId === m.id;
@@ -888,10 +930,11 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                         <div>
                                                             <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                                                                 {m.name}
+                                                                {m.role === 'Lead Auditor' && <Icon name="Award" size={12} className="text-amber-500" />}
                                                                 {m.isRemote && <span className="bg-purple-100 text-purple-600 px-1 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">Remote</span>}
                                                             </div>
                                                             <div className="text-[9px] text-slate-500 flex gap-1 mt-0.5">
-                                                                <span>{m.role === 'Lead Auditor' ? 'Obs' : m.role}</span>
+                                                                <span>{m.role}</span>
                                                                 <span className="font-mono text-slate-400">• {m.manDays || 0} WD</span>
                                                                 {m.competencyCodes && <span className="font-mono text-teal-600 bg-teal-50 px-1 rounded">[{m.competencyCodes}]</span>}
                                                             </div>
@@ -907,7 +950,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             })}
                                         </div>
 
-                                        {/* Inputs */}
                                         <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 space-y-2 mt-4">
                                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
                                             <div className="flex gap-2 items-center">
@@ -917,53 +959,67 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                     onChange={e => setNewMember({...newMember, role: e.target.value as any})}
                                                 >
                                                     <option className="bg-white dark:bg-slate-950" value="Auditor">Auditor</option>
-                                                    <option className="bg-white dark:bg-slate-950" value="Lead Auditor">Obs</option>
+                                                    <option className="bg-white dark:bg-slate-950" value="Lead Auditor">Lead Auditor</option>
                                                     <option className="bg-white dark:bg-slate-950" value="Technical Expert">Technical Expert</option>
+                                                    <option className="bg-white dark:bg-slate-950" value="Observer">Observer</option>
                                                 </select>
                                                 <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center min-w-0" placeholder="Code" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
-                                                <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays} onChange={e => setNewMember({...newMember, manDays: parseFloat(e.target.value) || 0})} />
+                                                <input className="flex-1 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 outline-none text-center cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays?.toFixed(2)} readOnly title="Auto-calculated from allocation below" />
                                             </div>
                                             
-                                            {/* REMOTE TOGGLE SWITCH (Modern Segmented) */}
-                                            <div className="flex items-center justify-between px-1 py-2">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                                                    Audit Mode
-                                                </span>
-                                                <div 
-                                                    className="relative flex bg-slate-200 dark:bg-slate-800 rounded-lg p-1 cursor-pointer w-[140px] h-8 shadow-inner select-none"
-                                                    onClick={() => setNewMember({...newMember, isRemote: !newMember.isRemote})}
-                                                >
-                                                    {/* Sliding Background */}
-                                                    <div 
-                                                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white dark:bg-slate-600 rounded-md shadow-sm transition-all duration-500 ease-spring ${newMember.isRemote ? 'left-[calc(50%+2px)]' : 'left-1'}`}
-                                                    />
-                                                    
-                                                    {/* Onsite Segment */}
-                                                    <div className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 transition-colors duration-300 ${!newMember.isRemote ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-500'}`}>
-                                                        <Icon name="MapPin" size={10} className={`transition-opacity duration-300 ${!newMember.isRemote ? "opacity-100" : "opacity-50"}`}/>
-                                                        <span className="text-[10px] font-black uppercase tracking-wider">Onsite</span>
-                                                    </div>
-                                                    
-                                                    {/* Online Segment */}
-                                                    <div className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 transition-colors duration-300 ${newMember.isRemote ? 'text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-500'}`}>
-                                                        <Icon name="Globe" size={10} className={`transition-opacity duration-300 ${newMember.isRemote ? "opacity-100" : "opacity-50"}`}/>
-                                                        <span className="text-[10px] font-black uppercase tracking-wider">Online</span>
+                                            {/* NEW: HYBRID MATRIX UI */}
+                                            {safeAuditDates.length > 0 && (
+                                                <div className="bg-white dark:bg-slate-950 p-2 rounded-lg border border-gray-200 dark:border-slate-700">
+                                                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Availability & Mode Per Day</label>
+                                                    <div className="space-y-1">
+                                                        {safeAuditDates.map(date => {
+                                                            const current = newMember.availabilityMatrix?.[date] || { mode: newMember.isRemote ? 'remote' : 'onsite', allocation: 1.0 };
+                                                            const isRemote = current.mode === 'remote';
+                                                            
+                                                            return (
+                                                                <div key={date} className="flex items-center gap-2 text-[10px]">
+                                                                    <span className="w-16 font-mono text-slate-600 dark:text-slate-400">{date}</span>
+                                                                    
+                                                                    {/* Toggle Mode */}
+                                                                    <div 
+                                                                        className={`flex-1 flex rounded border cursor-pointer select-none overflow-hidden ${isRemote ? 'border-purple-200 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}
+                                                                        onClick={() => handleUpdateMatrix(date, 'mode', isRemote ? 'onsite' : 'remote')}
+                                                                    >
+                                                                        <div className={`flex-1 text-center py-0.5 ${!isRemote ? 'bg-indigo-500 text-white font-bold' : 'text-slate-400'}`}>Onsite</div>
+                                                                        <div className={`flex-1 text-center py-0.5 ${isRemote ? 'bg-purple-500 text-white font-bold' : 'text-slate-400'}`}>Remote</div>
+                                                                    </div>
+
+                                                                    {/* Allocation Input */}
+                                                                    <input 
+                                                                        type="number"
+                                                                        className="w-10 text-center border rounded p-0.5 outline-none text-slate-800 dark:text-white bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        placeholder="1.0"
+                                                                        step="0.1"
+                                                                        max="1.0"
+                                                                        min="0.1"
+                                                                        value={current.allocation}
+                                                                        onChange={(e) => handleUpdateMatrix(date, 'allocation', parseFloat(e.target.value) || 0)}
+                                                                        title="Allocation (e.g. 0.5 = Half Day)"
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
-                                            </div>
+                                            )}
 
                                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Availability / Notes" value={newMember.availability} onChange={e => setNewMember({...newMember, availability: e.target.value})} />
                                             
                                             <button onClick={handleSaveMember} className="w-full bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 rounded py-1 text-xs font-bold flex items-center justify-center gap-1">
                                                 {editingMemberId ? "Update Member" : <><Icon name="Plus" size={12}/> Add Member</>}
                                             </button>
-                                            {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:""}); }} className="w-full text-[9px] text-slate-400 underline">Cancel Edit</button>}
+                                            {editingMemberId && <button onClick={() => { setEditingMemberId(null); setNewMember({name:"", role:"Auditor", competencyCodes:"", manDays:1, isRemote:false, availability:"", availabilityMatrix: {} }); }} className="w-full text-[9px] text-slate-400 underline">Cancel Edit</button>}
                                         </div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* 4. PROCESS MAPPING (ALWAYS EXPANDED) */}
+                            {/* 4. PROCESS MAPPING (FIXED LAYOUT) */}
                             <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm flex flex-col shrink-0">
                                 <div className="flex justify-between items-center p-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/30">
                                     <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
@@ -974,16 +1030,20 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 <div className="p-3 pt-2 space-y-2">
                                     {processes.map(p => (
                                         <div key={p.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700 text-xs">
-                                            <div className="font-bold text-slate-800 dark:text-slate-200 mb-1">{p.name}</div>
-                                            <div className="flex gap-2">
+                                            <div className="font-bold text-slate-800 dark:text-slate-200 mb-1 flex items-center gap-2">
+                                                <span className="truncate flex-1">{p.name}</span>
+                                                <span className="text-[9px] font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">{Object.keys(p.matrixData).length} Clauses</span>
+                                            </div>
+                                            {/* GRID LAYOUT FIX */}
+                                            <div className="grid grid-cols-[60px_1fr] gap-2">
                                                 <input 
-                                                    className="w-16 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-mono font-bold text-center outline-none text-slate-900 dark:text-orange-400 focus:ring-1 focus:ring-orange-500 placeholder-slate-300 dark:placeholder-slate-600"
+                                                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-mono font-bold text-center outline-none text-slate-900 dark:text-orange-400 focus:ring-1 focus:ring-orange-500 placeholder-slate-300 dark:placeholder-slate-600"
                                                     placeholder="CODE"
                                                     value={p.competencyCode || ""}
                                                     onChange={(e) => updateProcessCode(p.id, e.target.value)}
                                                 />
                                                 <select 
-                                                    className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-orange-500"
+                                                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded p-1 text-[9px] font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-orange-500"
                                                     value={p.siteIds?.[0] || ""}
                                                     onChange={(e) => updateProcessSites(p.id, e.target.value ? [e.target.value] : [])}
                                                 >
@@ -1010,9 +1070,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                         {/* RIGHT: SCHEDULE TABLE & GENERATION OVERLAY */}
                         <div className="flex-1 bg-white dark:bg-slate-900 relative flex flex-col overflow-hidden">
-                            {/* ... Content on the right side (AI logs, Table) remains unchanged ... */}
-                            
-                            {/* --- AI GENERATION OVERLAY --- */}
+                            {/* ... Content on the right side (AI logs, Table) ... */}
                             {isGenerating && (
                                 <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300 rounded-2xl border border-white/20 dark:border-slate-800">
                                     <div className="w-full max-w-lg space-y-6">
@@ -1026,15 +1084,10 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             <p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-1">{genProgress}% Complete</p>
                                         </div>
 
-                                        {/* Progress Bar */}
                                         <div className="w-full h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                                            <div 
-                                                className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 ease-out" 
-                                                style={{ width: `${genProgress}%` }}
-                                            ></div>
+                                            <div className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 ease-out" style={{ width: `${genProgress}%` }}></div>
                                         </div>
 
-                                        {/* Logs Console */}
                                         <div className="w-full h-40 bg-black/5 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-slate-800 p-4 font-mono text-xs overflow-y-auto custom-scrollbar shadow-inner">
                                             {genLogs.map((log, idx) => (
                                                 <div key={idx} className="mb-1 text-slate-600 dark:text-slate-400 flex gap-2">
@@ -1058,15 +1111,14 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 ) : (
                                     <div className="space-y-8 pb-16">
                                         <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                                <Icon name="Session7_Compass" className="text-orange-500"/> Audit Agenda
-                                            </h3>
-                                            <span className="text-[10px] text-slate-400 italic">
-                                                Drag column headers to sort & group data
-                                            </span>
+                                            <div className="flex items-center gap-4">
+                                                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                                    <Icon name="Session7_Compass" className="text-orange-500"/> Audit Agenda
+                                                </h3>
+                                            </div>
+                                            <span className="text-[10px] text-slate-400 italic">Drag column headers to sort & group data</span>
                                         </div>
                                         
-                                        {/* Group by Day */}
                                         {[...new Set(auditSchedule.map(s => s.day))].sort().map(day => {
                                             const dayItems = auditSchedule.filter(s => s.day === day);
                                             const dateLabel = dayItems[0]?.date || `Day ${day}`;
@@ -1094,7 +1146,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                         >
                                                                             <div className="flex items-center gap-1">
                                                                                 <Icon name="Grid" size={10} className="opacity-50"/>
-                                                                                {COLUMN_LABELS[col]}
+                                                                                {COLUMN_LABELS[col] || col}
                                                                             </div>
                                                                         </th>
                                                                     ))}
@@ -1104,53 +1156,28 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                 {daySchedule.map((item: any, idx: number) => (
                                                                     <tr key={idx} className="hover:bg-orange-50/30 dark:hover:bg-slate-800/30 transition-colors">
                                                                         {agendaColumns.map((col, colIdx) => {
-                                                                            // Calculate real index in original flattened array for update
                                                                             const realIndex = auditSchedule.indexOf(item); 
                                                                             const span = rowSpans[`${idx}_${colIdx}`];
-                                                                            if (span === 0) return null; // Hidden cell due to merge
+                                                                            if (span === 0) return null;
 
                                                                             return (
-                                                                                <td 
-                                                                                    key={col} 
-                                                                                    rowSpan={span}
-                                                                                    className="p-3 border-r border-gray-100 dark:border-slate-800 align-top bg-white dark:bg-slate-900"
-                                                                                >
+                                                                                <td key={col} rowSpan={span} className="p-3 border-r border-gray-100 dark:border-slate-800 align-top bg-white dark:bg-slate-900">
                                                                                     {col === 'timeSlot' && <span className="font-mono font-bold text-slate-600 dark:text-slate-400">{item.timeSlot}</span>}
                                                                                     {col === 'siteName' && <span className="text-slate-500">{item.siteName}</span>}
-                                                                                    
-                                                                                    {/* INTERACTIVE AUDITOR CELL */}
                                                                                     {col === 'auditorName' && (
-                                                                                        <div 
-                                                                                            className="group/auditor cursor-pointer flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-700"
-                                                                                            onClick={() => setReassignTarget({ rowIndex: realIndex, currentName: item.auditorName })}
-                                                                                            title="Click to reassign auditor"
-                                                                                        >
-                                                                                            <span className="font-medium text-slate-700 dark:text-slate-300 group-hover/auditor:text-indigo-600 dark:group-hover/auditor:text-indigo-400">
-                                                                                                {item.auditorName}
-                                                                                            </span>
+                                                                                        <div className="group/auditor cursor-pointer flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-700" onClick={() => setReassignTarget({ rowIndex: realIndex, currentName: item.auditorName })} title="Click to reassign auditor">
+                                                                                            <span className="font-medium text-slate-700 dark:text-slate-300 group-hover/auditor:text-indigo-600 dark:group-hover/auditor:text-indigo-400">{item.auditorName}</span>
                                                                                             {item.isRemote && <span className="text-[8px] bg-purple-100 text-purple-600 px-1 rounded">R</span>}
                                                                                             <Icon name="Users" size={12} className="opacity-0 group-hover/auditor:opacity-100 text-indigo-400 transition-opacity"/>
                                                                                         </div>
                                                                                     )}
-                                                                                    
                                                                                     {col === 'processName' && (
-                                                                                        <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                                                                                            <Icon name="Session11_GridAdd" size={12}/> 
-                                                                                            {item.processName || "General"}
-                                                                                        </div>
+                                                                                        <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1"><Icon name="Session11_GridAdd" size={12}/> {item.processName || "General"}</div>
                                                                                     )}
-                                                                                    {col === 'activity' && (
-                                                                                        <div className="font-bold text-slate-800 dark:text-slate-200">
-                                                                                            {item.activity}
-                                                                                        </div>
-                                                                                    )}
+                                                                                    {col === 'activity' && <div className="font-bold text-slate-800 dark:text-slate-200">{item.activity}</div>}
                                                                                     {col === 'clauseRefs' && (
                                                                                         item.clauseRefs && item.clauseRefs.length > 0 ? (
-                                                                                            <div className="flex flex-wrap gap-1">
-                                                                                                {item.clauseRefs.map((c: string) => (
-                                                                                                    <span key={c} className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-600 dark:text-slate-400">{c}</span>
-                                                                                                ))}
-                                                                                            </div>
+                                                                                            <div className="flex flex-wrap gap-1">{item.clauseRefs.map((c: string) => <span key={c} className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-600 dark:text-slate-400">{c}</span>)}</div>
                                                                                         ) : <span className="text-slate-300 text-[10px]">-</span>
                                                                                     )}
                                                                                 </td>
@@ -1168,7 +1195,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                 )}
                             </div>
 
-                            {/* EXPORT TOOLBAR - FIXED AT BOTTOM */}
+                            {/* EXPORT TOOLBAR */}
                             {auditSchedule.length > 0 && (
                                 <div className="flex-none p-4 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 flex justify-end gap-2 shadow-inner">
                                     <button onClick={() => onExport && onExport('schedule', exportLanguage, 'docx', { columns: agendaColumns })} className="px-4 h-[40px] bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 shadow-lg whitespace-nowrap">
@@ -1187,42 +1214,22 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             </div>
 
             {/* Smart Calendar Modal */}
-            <GlassDatePicker 
-                isOpen={isCalendarOpen} 
-                onClose={() => setIsCalendarOpen(false)}
-                selectedDates={safeAuditDates}
-                onChange={handleUpdateDates}
-            />
+            <GlassDatePicker isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} selectedDates={safeAuditDates} onChange={handleUpdateDates} />
 
             {/* Auditor Reassignment Modal */}
-            <Modal 
-                isOpen={!!reassignTarget} 
-                title="Select Auditor for this Activity" 
-                onClose={() => setReassignTarget(null)}
-            >
+            <Modal isOpen={!!reassignTarget} title="Select Auditor for this Activity" onClose={() => setReassignTarget(null)}>
                 <div className="space-y-3">
-                    <p className="text-xs text-slate-500">
-                        Current: <span className="font-bold text-slate-800 dark:text-white">{reassignTarget?.currentName}</span>
-                    </p>
+                    <p className="text-xs text-slate-500">Current: <span className="font-bold text-slate-800 dark:text-white">{reassignTarget?.currentName}</span></p>
                     <div className="max-h-[300px] overflow-y-auto custom-scrollbar border rounded-xl dark:border-slate-800">
                         {auditTeam.map(member => (
                             <div 
                                 key={member.id}
                                 className={`p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 border-b border-gray-100 dark:border-slate-800 last:border-0 ${reassignTarget?.currentName === member.name ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
-                                onClick={() => {
-                                    if (reassignTarget) {
-                                        updateScheduleItem(reassignTarget.rowIndex, 'auditorName', member.name);
-                                        updateScheduleItem(reassignTarget.rowIndex, 'isRemote', member.isRemote);
-                                        setReassignTarget(null);
-                                    }
-                                }}
+                                onClick={() => { if (reassignTarget) { updateScheduleItem(reassignTarget.rowIndex, 'auditorName', member.name); updateScheduleItem(reassignTarget.rowIndex, 'isRemote', member.isRemote); setReassignTarget(null); } }}
                             >
                                 <div className="flex-1">
                                     <div className="font-bold text-sm text-slate-800 dark:text-slate-200">{member.name}</div>
-                                    <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2">
-                                        <span className="bg-slate-100 dark:bg-slate-700 px-1.5 rounded">{member.role}</span>
-                                        {member.competencyCodes && <span className="font-mono text-teal-600 dark:text-teal-400">[{member.competencyCodes}]</span>}
-                                    </div>
+                                    <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2"><span className="bg-slate-100 dark:bg-slate-700 px-1.5 rounded">{member.role}</span>{member.competencyCodes && <span className="font-mono text-teal-600 dark:text-teal-400">[{member.competencyCodes}]</span>}</div>
                                 </div>
                                 {reassignTarget?.currentName === member.name && <Icon name="CheckThick" className="text-emerald-500" size={16}/>}
                             </div>
