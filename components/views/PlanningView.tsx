@@ -22,6 +22,104 @@ interface PlanningViewProps {
     onExport?: (type: 'schedule', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
 }
 
+// --- INTERNAL COMPONENT: RESCHEDULE MODAL ---
+const RescheduleModal = ({ 
+    isOpen, 
+    onClose, 
+    targetItem, 
+    availableDates, 
+    onSave 
+}: { 
+    isOpen: boolean, 
+    onClose: () => void, 
+    targetItem: any, 
+    availableDates: string[], 
+    onSave: (date: string, start: string, end: string) => void 
+}) => {
+    const [date, setDate] = useState("");
+    const [start, setStart] = useState("");
+    const [end, setEnd] = useState("");
+
+    useEffect(() => {
+        if (isOpen && targetItem) {
+            setDate(targetItem.date || availableDates[0]);
+            // Parse "08:30 - 10:00" to "08:30" and "10:00"
+            const parts = targetItem.timeSlot ? targetItem.timeSlot.split('-') : [];
+            setStart(parts[0]?.trim() || "08:30");
+            setEnd(parts[1]?.trim() || "09:30");
+        }
+    }, [isOpen, targetItem, availableDates]);
+
+    const handleSave = () => {
+        if (start && end && date) {
+            onSave(date, start, end);
+            onClose();
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Modal isOpen={isOpen} title="Reschedule Activity" onClose={onClose}>
+            <div className="space-y-4">
+                <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800">
+                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider block mb-1">Target Activity</span>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{targetItem?.activity}</p>
+                    <div className="flex gap-2 mt-1">
+                        <span className="text-[9px] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-700/50 text-slate-500">{targetItem?.siteName}</span>
+                        <span className="text-[9px] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-700/50 text-slate-500">{targetItem?.processName}</span>
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Audit Date</label>
+                        <select 
+                            value={date} 
+                            onChange={e => setDate(e.target.value)}
+                            className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium outline-none focus:border-indigo-500"
+                        >
+                            {availableDates.map(d => (
+                                <option key={d} value={d}>{d}</option>
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Start Time</label>
+                            <input 
+                                type="time" 
+                                value={start} 
+                                onChange={e => setStart(e.target.value)}
+                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">End Time</label>
+                            <input 
+                                type="time" 
+                                value={end} 
+                                onChange={e => setEnd(e.target.value)}
+                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="pt-2">
+                    <button 
+                        onClick={handleSave} 
+                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
+                    >
+                        Update Schedule
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 // --- HELPER: Get all descendant IDs ---
 const getFlatClauseIds = (clause: Clause): string[] => {
     let ids = [clause.id];
@@ -128,8 +226,9 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const [exportLanguage, setExportLanguage] = useState<'en' | 'vi'>('en');
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-    // Auditor Reassignment State
+    // Assignments State
     const [reassignTarget, setReassignTarget] = useState<{ rowIndex: number, currentName: string } | null>(null);
+    const [rescheduleTarget, setRescheduleTarget] = useState<{ rowIndex: number, item: any } | null>(null);
 
     // AI Generation State
     const [isGenerating, setIsGenerating] = useState(false);
@@ -152,6 +251,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
     const currentStandard = standards[standardKey];
     const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
+    const safeAuditDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
 
     // --- EFFECTS ---
     useEffect(() => {
@@ -244,23 +344,36 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         return rowSpans;
     };
 
-    // --- AUDITOR ASSIGNMENT ---
-    const handleReassignAuditor = (member: AuditMember) => {
-        if (!reassignTarget) return;
-        
-        setAuditSchedule(prev => {
-            const newSchedule = [...prev];
-            return newSchedule; 
-        });
-    };
+    // --- SCHEDULE MODIFICATIONS ---
     
-    // Corrected Handler using Item Reference
+    // 1. Reassign Auditor
     const updateScheduleItem = (itemIndex: number, field: string, value: any) => {
         setAuditSchedule(prev => {
             const copy = [...prev];
             copy[itemIndex] = { ...copy[itemIndex], [field]: value };
             return copy;
         });
+    };
+
+    // 2. Reschedule Activity
+    const handleSaveReschedule = (newDate: string, newStart: string, newEnd: string) => {
+        if (!rescheduleTarget) return;
+        
+        // Find new Day Number based on array index (1-based for ISO convention in app)
+        const dayIndex = safeAuditDates.indexOf(newDate);
+        const dayNumber = dayIndex >= 0 ? dayIndex + 1 : 1; 
+
+        setAuditSchedule(prev => {
+            const copy = [...prev];
+            copy[rescheduleTarget.rowIndex] = {
+                ...copy[rescheduleTarget.rowIndex],
+                date: newDate,
+                day: dayNumber,
+                timeSlot: `${newStart} - ${newEnd}`
+            };
+            return copy;
+        });
+        setRescheduleTarget(null);
     };
 
     // --- MATRIX LOGIC ---
@@ -496,8 +609,6 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             </button>
         </div>
     );
-
-    const safeAuditDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
 
     return (
         <div className="h-full flex flex-col animate-fade-in-up gap-4 relative">
@@ -777,7 +888,16 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
                                                                             return (
                                                                                 <td key={col} rowSpan={span} className="p-3 border-r border-gray-100 dark:border-slate-800 align-top bg-white dark:bg-slate-900">
-                                                                                    {col === 'timeSlot' && <span className="font-mono font-bold text-slate-600 dark:text-slate-400">{item.timeSlot}</span>}
+                                                                                    {col === 'timeSlot' && (
+                                                                                        <div 
+                                                                                            className="group/time cursor-pointer flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-700" 
+                                                                                            onClick={() => setRescheduleTarget({ rowIndex: realIndex, item })} 
+                                                                                            title="Click to Reschedule Activity"
+                                                                                        >
+                                                                                            <span className="font-mono font-bold text-slate-600 dark:text-slate-400 group-hover/time:text-orange-600 dark:group-hover/time:text-orange-400">{item.timeSlot}</span>
+                                                                                            <Icon name="Calendar" size={12} className="opacity-0 group-hover/time:opacity-100 text-orange-400 transition-opacity"/>
+                                                                                        </div>
+                                                                                    )}
                                                                                     {col === 'siteName' && <span className="text-slate-500">{item.siteName}</span>}
                                                                                     {col === 'auditorName' && (
                                                                                         <div className="group/auditor cursor-pointer flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-700" onClick={() => setReassignTarget({ rowIndex: realIndex, currentName: item.auditorName })} title="Click to reassign auditor">
@@ -873,6 +993,15 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Reschedule Modal */}
+            <RescheduleModal 
+                isOpen={!!rescheduleTarget} 
+                onClose={() => setRescheduleTarget(null)} 
+                targetItem={rescheduleTarget?.item}
+                availableDates={safeAuditDates}
+                onSave={handleSaveReschedule}
+            />
         </div>
     );
 };
