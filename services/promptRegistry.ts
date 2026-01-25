@@ -79,31 +79,43 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         TASK: Create a professional audit agenda based on the inputs.
         
         PARAMS:
+        Standard Day: 8 Hours Work.
         Time: {{START_TIME}}-{{END_TIME}} | Lunch: {{LUNCH_START}}-{{LUNCH_END}}
         Dates: {{DATES}}
         
         INPUTS:
         Sites: {{SITES_COMPACT}}
-        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, Availability)
+        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, [Date:Mode:Allocation])
         Process Requirements (Name, Code, Site, Clauses):
         {{PROCESS_REQUIREMENTS}}
 
         CRITICAL MANDATORY RULES (FAILURE TO FOLLOW = ERROR):
-        1. **RESOURCE UTILIZATION**: You MUST schedule ALL auditors listed in 'Team'. Do NOT leave any auditor idle if there is work. If multiple auditors are available, parallelize the sessions (different auditors auditing different processes at the same time).
+        1. **RESOURCE UTILIZATION**: You MUST schedule ALL auditors listed in 'Team'. Do NOT leave any auditor idle if there is work. If multiple auditors are available, parallelize the sessions.
         2. **LEAD AUDITOR**: The Lead Auditor must attend Opening (first activity) and Closing (last activity).
-        3. **GROUPING**: Group related clauses into logical activities.
-           - DO NOT list: "4.1 Context", "4.2 Interested Parties", "4.3 Scope" as 3 separate rows.
-           - DO LIST: Activity="Context & Leadership", ClauseRefs=["4.1", "4.2", "4.3", "5.1"]
+        3. **GROUPING**: Group related clauses into logical activities (e.g., "Context & Leadership" for 4.1, 4.2, 5.1).
         4. **COVERAGE**: Every clause listed in 'Process Requirements' must appear in the 'clauseRefs' of at least one activity.
         5. **MANDATORY EVENTS**:
            - Day 1, Start Time: "Opening Meeting" (All Team)
-           - Last Day, End Time: "Closing Meeting" (All Team)
            - End of each day (except last): "Interim Briefing" (All Team)
            - **DAILY**: "Lunch Break" must be scheduled exactly at {{LUNCH_START}} - {{LUNCH_END}} for ALL auditors.
-        6. **ACTIVITY NAMING (CRITICAL)**: 
-           - The 'activity' field MUST be descriptive and explicitly reference the clause topic to help the Auditee prepare.
-           - BAD: "Production", "HR", "Sales"
-           - GOOD: "Production: Control of Production & Preservations (8.5)", "HR: Competence, Awareness & Training Records (7.2, 7.3)", "Sales: Contract Review & Customer Satisfaction (8.2, 9.1)"
+        
+        6. **DYNAMIC END TIME & CLOSING MEETING (CRITICAL)**:
+           - Check the 'Allocation' in Team Availability (e.g., 0.75). 1.0 = 8 Hours.
+           - If Allocation < 1.0, calculate the Finish Time based on an 8-hour workday.
+           - **FORMULA**: 
+             (a) Morning Session = LunchStart - StartTime (e.g., 12:00 - 08:30 = 3.5h).
+             (b) Total Work Hours = Allocation * 8.0 (e.g., 0.75 * 8 = 6h).
+             (c) Remaining Hours = Total Work Hours - Morning Session.
+             (d) Finish Time = LunchEnd + Remaining Hours.
+           - **EXAMPLE (0.75 WD)**: 
+             Start 08:30. Morning 3.5h. Total 6h. Remaining 2.5h. 
+             Finish Time = 13:00 + 2.5h = 15:30.
+           - **CLOSING MEETING**: Must be scheduled immediately BEFORE this calculated Finish Time on the Last Day. 
+             (e.g., if Finish Time is 15:30, Closing Meeting is 15:00-15:30).
+
+        7. **ACTIVITY NAMING**: 
+           - Descriptive names only. 
+           - GOOD: "Production: Control of Production (8.5)", "HR: Training Records (7.2)".
 
         JSON OUTPUT SCHEMA:
         [
@@ -111,11 +123,11 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
             "day": 1,
             "date": "YYYY-MM-DD",
             "timeSlot": "HH:MM-HH:MM",
-            "activity": "Activity Name (Must be descriptive, e.g., 'HR: Training & Competency Check')",
+            "activity": "Activity Name",
             "siteName": "Site Name",
             "auditorName": "Name", // Specific auditor assigned
             "processName": "Process Name",
-            "clauseRefs": ["4.1", "4.2", ...], // ALL clauses covered in this slot
+            "clauseRefs": ["4.1", "4.2"], 
             "isRemote": false
           }
         ]
