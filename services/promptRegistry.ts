@@ -95,10 +95,11 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
            - DO NOT list: "4.1 Context", "4.2 Interested Parties", "4.3 Scope" as 3 separate rows.
            - DO LIST: Activity="Context & Leadership", ClauseRefs=["4.1", "4.2", "4.3", "5.1"]
         4. **COVERAGE**: Every clause listed in 'Process Requirements' must appear in the 'clauseRefs' of at least one activity.
-        5. **OPENING/CLOSING**:
+        5. **MANDATORY EVENTS**:
            - Day 1, Start Time: "Opening Meeting" (All Team)
            - Last Day, End Time: "Closing Meeting" (All Team)
            - End of each day (except last): "Interim Briefing" (All Team)
+           - **DAILY**: "Lunch Break" must be scheduled exactly at {{LUNCH_START}} - {{LUNCH_END}} for ALL auditors.
         6. **ACTIVITY NAMING (CRITICAL)**: 
            - The 'activity' field MUST be descriptive and explicitly reference the clause topic to help the Auditee prepare.
            - BAD: "Production", "HR", "Sales"
