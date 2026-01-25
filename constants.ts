@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.2.0-OPTIMIZED"; 
-export const BUILD_TIMESTAMP = "2026-03-08 09:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.3.0-REFACTORED"; 
+export const BUILD_TIMESTAMP = "2026-03-08 12:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -109,6 +109,15 @@ export const STANDARDS_DATA: StandardsData = {
 };
 
 export const RELEASE_NOTES = [
+    {
+        version: "4.3.0-REFACTORED",
+        date: "2026-03-08",
+        features: [
+            "ARCHITECTURAL: Decomposed Planning View into sub-components for better maintainability.",
+            "PERFORMANCE: Optimized Context API with useCallback to reduce re-renders.",
+            "UX: Cleaned up UI interactions for WD allocation and Site management."
+        ]
+    },
     {
         version: "4.2.0-OPTIMIZED",
         date: "2026-03-08",

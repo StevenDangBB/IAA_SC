@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { StandardsData, AuditInfo, AuditProcess, Standard, MatrixRow, EvidenceTag, AnalysisResult, PrivacySettings, AuditSite, AuditMember, AuditPlanConfig, AuditScheduleItem } from '../types';
 import { DEFAULT_AUDIT_INFO, DEFAULT_PLAN_CONFIG, STANDARDS_DATA, INITIAL_EVIDENCE, AUDIT_TYPES as DEFAULT_AUDIT_TYPES } from '../constants';
 import { KnowledgeStore } from '../services/knowledgeStore';
@@ -36,7 +36,7 @@ interface AuditContextType {
     addProcess: (name: string) => void;
     renameProcess: (id: string, name: string) => void;
     updateProcessCode: (id: string, code: string) => void;
-    updateProcessSites: (id: string, siteIds: string[]) => void; // New
+    updateProcessSites: (id: string, siteIds: string[]) => void; 
     deleteProcess: (id: string) => void;
     batchUpdateProcessClauses: (updates: { processId: string, clauses: string[] }[]) => void;
     toggleProcessClause: (processId: string, clauseId: string) => void; 
@@ -188,7 +188,6 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }, [evidence, matrixData, evidenceTags, loadedProcessId]);
 
     // --- NEW: INTELLIGENT SYNC (Sites & Staff) ---
-    // Mirrors the logic: Total must reflect reality of Planning allocations.
     useEffect(() => {
         const allocatedEmployees = auditSites.reduce((sum, s) => sum + (s.employeeCount || 0), 0);
         
@@ -196,14 +195,11 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             let next = { ...prev };
             let hasChange = false;
 
-            // 1. Sync Total Sites Count (Strict Equality)
             if (prev.totalSites !== auditSites.length) {
                 next.totalSites = auditSites.length;
                 hasChange = true;
             }
 
-            // 2. Sync Total Staff (Floor Constraint: Cap cannot be less than allocated)
-            // Allows user to set buffer in Sidebar, but auto-expands if Planning needs more.
             const currentCap = prev.totalEmployees || 0;
             if (allocatedEmployees > currentCap) {
                 next.totalEmployees = allocatedEmployees;
@@ -214,48 +210,47 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         });
     }, [auditSites, auditInfo.totalEmployees, auditInfo.totalSites]);
 
-    // --- ACTIONS ---
-    const addCustomStandard = (key: string, std: Standard) => {
+    // --- ACTIONS (OPTIMIZED WITH USECALLBACK) ---
+    const addCustomStandard = useCallback((key: string, std: Standard) => {
         setCustomStandards(prev => ({ ...prev, [key]: std }));
-    };
+    }, []);
 
-    const updateStandard = (std: Standard) => {
+    const updateStandard = useCallback((std: Standard) => {
         setCustomStandards(prev => ({ ...prev, [standardKey]: std }));
-    };
+    }, [standardKey]);
 
-    const resetStandard = (key: string) => {
+    const resetStandard = useCallback((key: string) => {
         setCustomStandards(prev => {
             const next = { ...prev };
             delete next[key];
             return next;
         });
         if (standardKey === key) setStandardKey("");
-    };
+    }, [standardKey]);
 
-    // AUDIT TYPE MANAGEMENT
-    const addAuditType = (type: string, objective: string) => {
+    const addAuditType = useCallback((type: string, objective: string) => {
         setAuditTypeOptions(prev => {
             const next = { ...prev, [type]: objective };
             localStorage.setItem("iso_audit_types_config", JSON.stringify(next));
             return next;
         });
-    };
+    }, []);
 
-    const deleteAuditType = (type: string) => {
+    const deleteAuditType = useCallback((type: string) => {
         setAuditTypeOptions(prev => {
             const next = { ...prev };
             delete next[type];
             localStorage.setItem("iso_audit_types_config", JSON.stringify(next));
             return next;
         });
-    };
+    }, []);
 
-    const resetAuditTypes = () => {
+    const resetAuditTypes = useCallback(() => {
         setAuditTypeOptions(DEFAULT_AUDIT_TYPES);
         localStorage.removeItem("iso_audit_types_config");
-    };
+    }, []);
 
-    const addProcess = (name: string) => {
+    const addProcess = useCallback((name: string) => {
         const newId = `proc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const newProcess = { 
             id: newId, 
@@ -269,21 +264,21 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         };
         setProcesses(prev => [...prev, newProcess]);
         setActiveProcessId(newId);
-    };
+    }, []);
 
-    const renameProcess = (id: string, name: string) => {
+    const renameProcess = useCallback((id: string, name: string) => {
         setProcesses(prev => prev.map(p => p.id === id ? { ...p, name } : p));
-    };
+    }, []);
 
-    const updateProcessCode = (id: string, code: string) => {
+    const updateProcessCode = useCallback((id: string, code: string) => {
         setProcesses(prev => prev.map(p => p.id === id ? { ...p, competencyCode: code } : p));
-    };
+    }, []);
 
-    const updateProcessSites = (id: string, siteIds: string[]) => {
+    const updateProcessSites = useCallback((id: string, siteIds: string[]) => {
         setProcesses(prev => prev.map(p => p.id === id ? { ...p, siteIds } : p));
-    };
+    }, []);
 
-    const deleteProcess = (idToDelete: string) => {
+    const deleteProcess = useCallback((idToDelete: string) => {
         if (activeProcessId === idToDelete) {
             setProcesses(prev => {
                 const remaining = prev.filter(p => p.id !== idToDelete);
@@ -294,9 +289,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         } else {
             setProcesses(prev => prev.filter(p => p.id !== idToDelete));
         }
-    };
+    }, [activeProcessId]);
 
-    const findClauseInStandard = (cid: string, standard: Standard | undefined): any => {
+    const findClauseInStandard = useCallback((cid: string, standard: Standard | undefined): any => {
         if (!standard) return null;
         const allClauses = standard.groups.flatMap(g => g.clauses);
         const findRecursive = (id: string, list: any[]): any => {
@@ -310,9 +305,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             return null;
         };
         return findRecursive(cid, allClauses);
-    };
+    }, []);
 
-    const batchUpdateProcessClauses = (updates: { processId: string, clauses: string[] }[]) => {
+    const batchUpdateProcessClauses = useCallback((updates: { processId: string, clauses: string[] }[]) => {
         setProcesses(prev => prev.map(p => {
             const update = updates.find(u => u.processId === p.id);
             if (update) {
@@ -351,9 +346,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
                  return next;
              });
         }
-    };
+    }, [standards, standardKey, loadedProcessId, findClauseInStandard]);
 
-    const toggleProcessClause = (processId: string, clauseId: string) => {
+    const toggleProcessClause = useCallback((processId: string, clauseId: string) => {
         setProcesses(prev => prev.map(p => {
             if (p.id !== processId) return p;
             const newMatrixData = { ...p.matrixData };
@@ -392,9 +387,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 return next;
             });
         }
-    };
+    }, [standards, standardKey, loadedProcessId, findClauseInStandard]);
 
-    const addInterviewee = (name: string) => {
+    const addInterviewee = useCallback((name: string) => {
         setProcesses(prev => prev.map(p => {
             if (p.id === activeProcessId) {
                 if (!p.interviewees.includes(name)) {
@@ -403,22 +398,22 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
             }
             return p;
         }));
-    };
+    }, [activeProcessId]);
 
-    const removeInterviewee = (name: string) => {
+    const removeInterviewee = useCallback((name: string) => {
         setProcesses(prev => prev.map(p => {
             if (p.id === activeProcessId) {
                 return { ...p, interviewees: p.interviewees.filter(i => i !== name) };
             }
             return p;
         }));
-    };
+    }, [activeProcessId]);
 
-    const addEvidenceTag = (tag: EvidenceTag) => {
+    const addEvidenceTag = useCallback((tag: EvidenceTag) => {
         setEvidenceTags(prev => [...prev, tag]);
-    };
+    }, []);
 
-    const loadKnowledgeForStandard = async (key: string) => {
+    const loadKnowledgeForStandard = useCallback(async (key: string) => {
         try {
             const doc = await KnowledgeStore.getDocument(key);
             if (doc) {
@@ -429,22 +424,22 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
                 setKnowledgeFileName(null);
             }
         } catch (e) { console.error(e); }
-    };
+    }, []);
 
-    const clearKnowledge = async () => {
+    const clearKnowledge = useCallback(async () => {
         setKnowledgeBase(null);
         setKnowledgeFileName(null);
         if (standardKey) {
             await KnowledgeStore.deleteStandardData(standardKey);
         }
-    };
+    }, [standardKey]);
 
-    const setKnowledgeData = (content: string, fileName: string) => {
+    const setKnowledgeData = useCallback((content: string, fileName: string) => {
         setKnowledgeBase(content);
         setKnowledgeFileName(fileName);
-    };
+    }, []);
 
-    const resetSession = () => {
+    const resetSession = useCallback(() => {
         setStandardKey("");
         setAuditInfo(DEFAULT_AUDIT_INFO);
         setProcesses([]);
@@ -465,9 +460,9 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setAuditTeam([]);
         setAuditSchedule([]);
         setAuditPlanConfig(DEFAULT_PLAN_CONFIG);
-    };
+    }, []);
 
-    const restoreSession = (data: any) => {
+    const restoreSession = useCallback((data: any) => {
         if (data.standardKey) setStandardKey(data.standardKey);
         if (data.auditInfo) setAuditInfo({ ...DEFAULT_AUDIT_INFO, ...data.auditInfo });
         if (data.selectedClauses) setSelectedClauses(data.selectedClauses);
@@ -504,7 +499,7 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         if (data.auditSchedule) setAuditSchedule(data.auditSchedule);
         
         if(data.standardKey) loadKnowledgeForStandard(data.standardKey);
-    };
+    }, [loadKnowledgeForStandard]);
 
     const contextValue = useMemo(() => ({
         standards, standardKey, setStandardKey, customStandards, addCustomStandard, updateStandard, resetStandard,
@@ -525,7 +520,14 @@ export const AuditProvider = ({ children }: React.PropsWithChildren<{}>) => {
         auditSites, auditTeam, auditPlanConfig, auditSchedule,
         evidence, matrixData, evidenceTags,
         selectedClauses, knowledgeBase, knowledgeFileName,
-        analysisResult, selectedFindings, finalReportText
+        analysisResult, selectedFindings, finalReportText,
+        // Added missing dependencies for useCallback
+        addCustomStandard, updateStandard, resetStandard,
+        addAuditType, deleteAuditType, resetAuditTypes,
+        addProcess, renameProcess, updateProcessCode, updateProcessSites, deleteProcess, batchUpdateProcessClauses, toggleProcessClause,
+        addInterviewee, removeInterviewee,
+        addEvidenceTag, loadKnowledgeForStandard, clearKnowledge, setKnowledgeData,
+        resetSession, restoreSession
     ]);
 
     return (
