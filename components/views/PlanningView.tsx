@@ -828,22 +828,46 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 )}
             </div>
 
-            {/* Auditor Reassignment Modal */}
+            {/* Auditor Reassignment Modal - ENHANCED */}
             <Modal isOpen={!!reassignTarget} title="Select Auditor for this Activity" onClose={() => setReassignTarget(null)}>
                 <div className="space-y-3">
-                    <p className="text-xs text-slate-500">Current: <span className="font-bold text-slate-800 dark:text-white">{reassignTarget?.currentName}</span></p>
-                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar border rounded-xl dark:border-slate-800">
+                    <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                        <span className="text-xs text-indigo-800 dark:text-indigo-300 font-bold uppercase tracking-wider">Current Assignment</span>
+                        <span className="font-black text-sm text-indigo-700 dark:text-indigo-200">{reassignTarget?.currentName}</span>
+                    </div>
+                    
+                    <div className="max-h-[400px] overflow-y-auto custom-scrollbar border border-gray-100 dark:border-slate-800 rounded-xl shadow-inner bg-white dark:bg-slate-900">
                         {auditTeam.map(member => (
                             <div 
                                 key={member.id}
-                                className={`p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 border-b border-gray-100 dark:border-slate-800 last:border-0 ${reassignTarget?.currentName === member.name ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
+                                className={`p-4 flex items-start gap-3 cursor-pointer transition-all border-b border-gray-100 dark:border-slate-800 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800/80 ${reassignTarget?.currentName === member.name ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
                                 onClick={() => { if (reassignTarget) { updateScheduleItem(reassignTarget.rowIndex, 'auditorName', member.name); updateScheduleItem(reassignTarget.rowIndex, 'isRemote', member.isRemote); setReassignTarget(null); } }}
                             >
-                                <div className="flex-1">
-                                    <div className="font-bold text-sm text-slate-800 dark:text-slate-200">{member.name}</div>
-                                    <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2"><span className="bg-slate-100 dark:bg-slate-700 px-1.5 rounded">{member.role}</span>{member.competencyCodes && <span className="font-mono text-teal-600 dark:text-teal-400">[{member.competencyCodes}]</span>}</div>
+                                <div className={`mt-1 w-3 h-3 rounded-full flex-shrink-0 ${reassignTarget?.currentName === member.name ? 'bg-emerald-500 shadow-sm' : 'border border-slate-300 dark:border-slate-600'}`}></div>
+                                
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <div className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate pr-2">{member.name}</div>
+                                        <div className="text-[10px] font-mono text-slate-400 shrink-0 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{member.manDays} WD</div>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-1 items-center mb-1.5">
+                                        <span className="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">{member.role}</span>
+                                        {member.competencyCodes && (
+                                            <span className="text-[9px] bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-100 dark:border-teal-800 px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-1" title="Technical Competency Codes">
+                                                <Icon name="Tag" size={8}/> {member.competencyCodes}
+                                            </span>
+                                        )}
+                                        {member.isRemote && <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">REMOTE</span>}
+                                    </div>
+
+                                    {member.availability && (
+                                        <div className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 rounded-lg border border-amber-100 dark:border-amber-800/50 italic flex items-start gap-1.5 leading-snug">
+                                            <Icon name="Info" size={10} className="mt-0.5 shrink-0 opacity-70"/>
+                                            {member.availability}
+                                        </div>
+                                    )}
                                 </div>
-                                {reassignTarget?.currentName === member.name && <Icon name="CheckThick" className="text-emerald-500" size={16}/>}
                             </div>
                         ))}
                     </div>
