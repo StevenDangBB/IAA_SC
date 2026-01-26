@@ -73,6 +73,46 @@ export const useExportManager = () => {
                     <strong>Date Exported:</strong> ${new Date().toLocaleDateString()}</p>
                 `;
 
+                // Calculate Merges (Row Spans) helper
+                const calculateExportRowSpans = (data: any[], cols: string[]) => {
+                    const rowSpans: Record<string, number> = {}; 
+                    for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+                        for (let colIdx = 0; colIdx < cols.length; colIdx++) {
+                            const key = `${rowIdx}_${colIdx}`;
+                            if (rowSpans[key] === 0) continue; 
+                            rowSpans[key] = 1;
+                        }
+                    }
+                    for (let colIdx = 0; colIdx < cols.length; colIdx++) {
+                        const colName = cols[colIdx];
+                        for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+                            const key = `${rowIdx}_${colIdx}`;
+                            if (rowSpans[key] === 0) continue; 
+                            const currentVal = data[rowIdx][colName];
+                            for (let nextIdx = rowIdx + 1; nextIdx < data.length; nextIdx++) {
+                                const nextVal = data[nextIdx][colName];
+                                const nextKey = `${nextIdx}_${colIdx}`;
+                                let parentMatch = true;
+                                if (colIdx > 0) {
+                                    for (let p = 0; p < colIdx; p++) {
+                                        if (data[rowIdx][cols[p]] !== data[nextIdx][cols[p]]) {
+                                            parentMatch = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (currentVal === nextVal && parentMatch) {
+                                    rowSpans[key]++;
+                                    rowSpans[nextKey] = 0; 
+                                } else {
+                                    break; 
+                                }
+                            }
+                        }
+                    }
+                    return rowSpans;
+                };
+
                 // Group by Day
                 const days = Array.from(new Set(auditSchedule.map(s => s.day))).sort();
                 
@@ -80,12 +120,19 @@ export const useExportManager = () => {
                     const dayItems = auditSchedule.filter(s => s.day === day);
                     const dateLabel = dayItems[0]?.date || `Day ${day}`;
                     
-                    // Sorting logic to match view (Basic Sort based on first col)
-                    const sortedItems = [...dayItems].sort((a,b) => {
-                       const valA = (a as any)[columns[0]] ?? "";
-                       const valB = (b as any)[columns[0]] ?? "";
-                       return String(valA).localeCompare(String(valB), undefined, { numeric: true });
+                    // CRITICAL: Sort exactly like UI view (priority by user-defined column order)
+                    const sortedItems = [...dayItems].sort((a, b) => {
+                        for (const col of columns) {
+                            const valA = (a as any)[col] ?? "";
+                            const valB = (b as any)[col] ?? "";
+                            if (valA === valB) continue;
+                            return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+                        }
+                        return 0;
                     });
+
+                    // Calculate spans based on SORTED data
+                    const rowSpans = calculateExportRowSpans(sortedItems, columns);
 
                     content += `<h3>--- DAY ${day}: ${dateLabel} ---</h3>`;
                     content += `<table border="1" style="border-collapse: collapse; width: 100%; border: 1px solid #ddd; font-family: Arial; font-size: 10pt;">`;
@@ -98,22 +145,31 @@ export const useExportManager = () => {
                     content += `</tr>`;
 
                     // Body
-                    sortedItems.forEach((item: any) => {
+                    sortedItems.forEach((item: any, idx: number) => {
                         content += `<tr>`;
-                        columns.forEach((col: string) => {
+                        columns.forEach((col: string, colIdx: number) => {
+                            const spanKey = `${idx}_${colIdx}`;
+                            const span = rowSpans[spanKey];
+                            
+                            // Skip rendering if spanned (0)
+                            if (span === 0) return;
+
                             let val = item[col];
                             if (col === 'clauseRefs' && Array.isArray(val)) val = val.join(", ");
                             if (col === 'auditorName' && item.isRemote) val += " (Remote)";
                             if (col === 'processName' && !val) val = "General";
                             if (!val) val = "-";
-                            content += `<td style="padding: 8px; border: 1px solid #ccc;">${val}</td>`;
+                            
+                            // Add rowspan attribute if span > 1
+                            const rowspanAttr = span > 1 ? ` rowspan="${span}"` : "";
+                            content += `<td style="padding: 8px; border: 1px solid #ccc;"${rowspanAttr}>${val}</td>`;
                         });
                         content += `</tr>`;
                     });
                     content += `</table><br/>`;
                 });
             } else {
-                // TXT Fallback
+                // TXT Fallback (unchanged)
                 content = `AUDIT PLAN / SCHEDULE\n`;
                 content += `Company: ${auditInfo.company}\nStandard: ${standards[standardKey]?.name}\n\n`;
                 const days = Array.from(new Set(auditSchedule.map(s => s.day))).sort();

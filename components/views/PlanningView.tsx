@@ -483,11 +483,11 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const calculateDailyWorkload = (day: number) => {
         const items = auditSchedule.filter(s => s.day === day);
         // Sum durations in minutes
-        let totalMinutes = 0;
-        // To avoid double counting separate auditors, we need to calculate per auditor then max?
-        // Actually for "Daily Load" usually implies the timeline density. 
-        // Let's calculate MAX auditor load for that day.
         
+        // Define Lunch Window in minutes
+        const lunchStart = timeToMinutes(auditPlanConfig.lunchStartTime);
+        const lunchEnd = timeToMinutes(auditPlanConfig.lunchEndTime);
+
         const auditors = [...new Set(items.map(i => i.auditorName))];
         let maxMinutes = 0;
 
@@ -495,7 +495,21 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             const auditorItems = items.filter(i => i.auditorName === auditor);
             const mins = auditorItems.reduce((acc, item) => {
                 const [s, e] = item.timeSlot.split('-');
-                return acc + (timeToMinutes(e) - timeToMinutes(s));
+                if (!s || !e) return acc;
+
+                const start = timeToMinutes(s.trim());
+                const end = timeToMinutes(e.trim());
+                let duration = end - start;
+
+                // Subtract Lunch Break overlap if any
+                const overlapStart = Math.max(start, lunchStart);
+                const overlapEnd = Math.min(end, lunchEnd);
+
+                if (overlapEnd > overlapStart) {
+                    duration -= (overlapEnd - overlapStart);
+                }
+
+                return acc + Math.max(0, duration);
             }, 0);
             if (mins > maxMinutes) maxMinutes = mins;
         });
