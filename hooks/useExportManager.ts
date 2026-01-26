@@ -82,9 +82,9 @@ export const useExportManager = () => {
                     
                     // Sorting logic to match view (Basic Sort based on first col)
                     const sortedItems = [...dayItems].sort((a,b) => {
-                       const valA = (a as any)[columns[0]] || "";
-                       const valB = (b as any)[columns[0]] || "";
-                       return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true });
+                       const valA = (a as any)[columns[0]] ?? "";
+                       const valB = (b as any)[columns[0]] ?? "";
+                       return String(valA).localeCompare(String(valB), undefined, { numeric: true });
                     });
 
                     content += `<h3>--- DAY ${day}: ${dateLabel} ---</h3>`;

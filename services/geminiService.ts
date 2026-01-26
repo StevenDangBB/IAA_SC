@@ -249,15 +249,17 @@ export const generateAuditSchedule = async (
 
     let finalTeam = [...team];
     
-    // --- LOGIC 3: COMPACT CSV DATA ---
+    // --- LOGIC 3: COMPACT CSV DATA (IMPROVED) ---
+    // Explicitly serializing date availability to force AI to recognize capacity
     const sitesCompact = sites.map(s => `${s.id},${s.name},${s.isMain?'HQ':'Site'}`).join("\n");
     
     const teamCompact = finalTeam.map(m => {
         let availStr = "";
         if (m.availabilityMatrix && Object.keys(m.availabilityMatrix).length > 0) {
+            // Updated serialization: "Date=2024-01-01|WD=1.0" to make it semantically explicit
             const schedule = Object.entries(m.availabilityMatrix)
-                .map(([date, data]) => `${date}:${data.mode}:${data.allocation}`)
-                .join("|");
+                .map(([date, data]) => `Date=${date}|WD=${data.allocation}`)
+                .join("; ");
             availStr = `[${schedule}]`;
         } else {
             availStr = m.isRemote ? 'REMOTE_ALL' : 'ONSITE_ALL';
@@ -267,7 +269,6 @@ export const generateAuditSchedule = async (
 
     const processReqs = processes.map(p => {
         const siteConstraint = p.siteIds && p.siteIds.length > 0 ? p.siteIds.join(';') : "ALL";
-        // Important: Extract clauses from matrix data to pass to AI
         const clauses = Object.keys(p.matrixData).join(";");
         return `${p.name},${p.competencyCode || "NONE"},${siteConstraint},[${clauses}]`;
     }).join("\n");

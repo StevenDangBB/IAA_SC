@@ -70,52 +70,50 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     SCHEDULING: {
-        id: 'smart_scheduler_v2',
-        label: 'Smart Scheduler',
-        description: 'Optimized logic for audit agenda with grouping.',
+        id: 'smart_scheduler_v3',
+        label: 'Smart Scheduler V3',
+        description: 'Strict Load Balancing & Availability Enforcement.',
         isSystemDefault: true,
         template: `
         ROLE: Expert ISO Lead Auditor & Scheduler.
-        TASK: Create a professional audit agenda based on the inputs.
+        TASK: Create a professional audit agenda.
         
         PARAMS:
-        Standard Day: 8 Hours Work.
+        Standard Day: 8 Hours Work (1.0 WD).
         Time: {{START_TIME}}-{{END_TIME}} | Lunch: {{LUNCH_START}}-{{LUNCH_END}}
         Dates: {{DATES}}
         
         INPUTS:
         Sites: {{SITES_COMPACT}}
-        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, [Date:Mode:Allocation])
-        Process Requirements (Name, Code, Site, Clauses):
+        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, AvailabilityMatrix)
+        Process Requirements:
         {{PROCESS_REQUIREMENTS}}
 
-        CRITICAL MANDATORY RULES (FAILURE TO FOLLOW = ERROR):
-        1. **RESOURCE UTILIZATION**: You MUST schedule ALL auditors listed in 'Team'. Do NOT leave any auditor idle if there is work. If multiple auditors are available, parallelize the sessions.
-        2. **LEAD AUDITOR**: The Lead Auditor must attend Opening (first activity) and Closing (last activity).
-        3. **GROUPING**: Group related clauses into logical activities (e.g., "Context & Leadership" for 4.1, 4.2, 5.1).
-        4. **COVERAGE**: Every clause listed in 'Process Requirements' must appear in the 'clauseRefs' of at least one activity.
-        5. **MANDATORY EVENTS**:
-           - Day 1, Start Time: "Opening Meeting" (All Team)
-           - End of each day (except last): "Interim Briefing" (All Team)
-           - **DAILY**: "Lunch Break" must be scheduled exactly at {{LUNCH_START}} - {{LUNCH_END}} for ALL auditors.
+        CRITICAL RULES (STRICT ENFORCEMENT):
         
-        6. **DYNAMIC END TIME & CLOSING MEETING (CRITICAL)**:
-           - Check the 'Allocation' in Team Availability (e.g., 0.75). 1.0 = 8 Hours.
-           - If Allocation < 1.0, calculate the Finish Time based on an 8-hour workday.
-           - **FORMULA**: 
-             (a) Morning Session = LunchStart - StartTime (e.g., 12:00 - 08:30 = 3.5h).
-             (b) Total Work Hours = Allocation * 8.0 (e.g., 0.75 * 8 = 6h).
-             (c) Remaining Hours = Total Work Hours - Morning Session.
-             (d) Finish Time = LunchEnd + Remaining Hours.
-           - **EXAMPLE (0.75 WD)**: 
-             Start 08:30. Morning 3.5h. Total 6h. Remaining 2.5h. 
-             Finish Time = 13:00 + 2.5h = 15:30.
-           - **CLOSING MEETING**: Must be scheduled immediately BEFORE this calculated Finish Time on the Last Day. 
-             (e.g., if Finish Time is 15:30, Closing Meeting is 15:00-15:30).
+        1. **MANDATORY RESOURCE USAGE**: 
+           - Look at the 'Availability' column for EACH auditor.
+           - If an auditor has 'Date=YYYY-MM-DD|WD=X' (where X > 0) for a specific date, you **MUST** assign activity to them on that date.
+           - **FAILURE CONDITION**: If an auditor has WD > 0 on a date but 0 tasks, re-distribute tasks immediately.
+        
+        2. **LOAD BALANCING**:
+           - Do NOT assign all tasks to the Lead Auditor.
+           - If multiple auditors are available on the same day, you must SPLIT the processes/clauses between them.
+           - Create parallel sessions (same time slot, different auditor, different process).
 
-        7. **ACTIVITY NAMING**: 
-           - Descriptive names only. 
-           - GOOD: "Production: Control of Production (8.5)", "HR: Training Records (7.2)".
+        3. **GROUPING & STRUCTURE**: 
+           - Group related clauses (e.g., "Context & Leadership" for 4.1, 4.2, 5.1).
+           - Every clause in 'Process Requirements' must be covered.
+
+        4. **EVENTS**:
+           - Day 1 Start: "Opening Meeting" (All Team).
+           - Daily: "Lunch Break" at {{LUNCH_START}} (All Team).
+           - Daily End: "Interim Briefing" (All Team, except last day).
+           - Last Day End: "Closing Meeting" (All Team).
+
+        5. **TIMING**:
+           - Calculate end times based on WD. 
+           - Example: 0.5 WD means finish around 12:00. 1.0 WD means finish at {{END_TIME}}.
 
         JSON OUTPUT SCHEMA:
         [
@@ -125,7 +123,7 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
             "timeSlot": "HH:MM-HH:MM",
             "activity": "Activity Name",
             "siteName": "Site Name",
-            "auditorName": "Name", // Specific auditor assigned
+            "auditorName": "Name", // Must match team list
             "processName": "Process Name",
             "clauseRefs": ["4.1", "4.2"], 
             "isRemote": false

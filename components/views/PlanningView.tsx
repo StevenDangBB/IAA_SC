@@ -22,6 +22,25 @@ interface PlanningViewProps {
     onExport?: (type: 'schedule', lang: 'en' | 'vi', format?: 'txt' | 'docx', extraData?: any) => void;
 }
 
+// --- TIME UTILITIES ---
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [h, m] = time.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+};
+
+const minutesToTime = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+const getDuration = (range: string) => {
+    const parts = range.split('-');
+    if (parts.length < 2) return 60; // Default 1h
+    return timeToMinutes(parts[1].trim()) - timeToMinutes(parts[0].trim());
+};
+
 // --- INTERNAL COMPONENT: RESCHEDULE MODAL ---
 const RescheduleModal = ({ 
     isOpen, 
@@ -34,25 +53,38 @@ const RescheduleModal = ({
     onClose: () => void, 
     targetItem: any, 
     availableDates: string[], 
-    onSave: (date: string, start: string, end: string) => void 
+    onSave: (date: string, start: string, end: string, autoBalance: boolean) => void 
 }) => {
     const [date, setDate] = useState("");
     const [start, setStart] = useState("");
     const [end, setEnd] = useState("");
+    const [autoBalance, setAutoBalance] = useState(true);
 
     useEffect(() => {
         if (isOpen && targetItem) {
             setDate(targetItem.date || availableDates[0]);
-            // Parse "08:30 - 10:00" to "08:30" and "10:00"
             const parts = targetItem.timeSlot ? targetItem.timeSlot.split('-') : [];
             setStart(parts[0]?.trim() || "08:30");
             setEnd(parts[1]?.trim() || "09:30");
         }
     }, [isOpen, targetItem, availableDates]);
 
+    // Auto update End time when Start changes (keeping duration)
+    const handleStartChange = (newStart: string) => {
+        const oldStartMins = timeToMinutes(start);
+        const oldEndMins = timeToMinutes(end);
+        const duration = oldEndMins - oldStartMins;
+        
+        setStart(newStart);
+        if (duration > 0) {
+            const newStartMins = timeToMinutes(newStart);
+            setEnd(minutesToTime(newStartMins + duration));
+        }
+    };
+
     const handleSave = () => {
         if (start && end && date) {
-            onSave(date, start, end);
+            onSave(date, start, end, autoBalance);
             onClose();
         }
     };
@@ -77,10 +109,10 @@ const RescheduleModal = ({
                         <select 
                             value={date} 
                             onChange={e => setDate(e.target.value)}
-                            className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium outline-none focus:border-indigo-500"
+                            className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         >
                             {availableDates.map(d => (
-                                <option key={d} value={d}>{d}</option>
+                                <option key={d} value={d} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950">{d}</option>
                             ))}
                         </select>
                     </div>
@@ -91,8 +123,8 @@ const RescheduleModal = ({
                             <input 
                                 type="time" 
                                 value={start} 
-                                onChange={e => setStart(e.target.value)}
-                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
+                                onChange={e => handleStartChange(e.target.value)}
+                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </div>
                         <div>
@@ -101,9 +133,24 @@ const RescheduleModal = ({
                                 type="time" 
                                 value={end} 
                                 onChange={e => setEnd(e.target.value)}
-                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
+                                className="w-full p-2 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </div>
+                    </div>
+
+                    <div className="pt-2">
+                        <label className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={autoBalance} 
+                                onChange={e => setAutoBalance(e.target.checked)} 
+                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <div>
+                                <span className="text-xs font-bold text-blue-700 dark:text-blue-300 block">Auto-Cascade Schedule</span>
+                                <span className="text-[10px] text-blue-600/70 dark:text-blue-400/70">Automatically shift overlapping tasks for this auditor down to avoid conflicts.</span>
+                            </div>
+                        </label>
                     </div>
                 </div>
 
@@ -112,7 +159,7 @@ const RescheduleModal = ({
                         onClick={handleSave} 
                         className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
                     >
-                        Update Schedule
+                        Confirm & Update Plan
                     </button>
                 </div>
             </div>
@@ -289,10 +336,11 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const getSortedSchedule = (daySchedule: any[]) => {
         return [...daySchedule].sort((a, b) => {
             for (const col of agendaColumns) {
-                const valA = a[col] || "";
-                const valB = b[col] || "";
+                const valA = a[col] ?? "";
+                const valB = b[col] ?? "";
                 if (valA === valB) continue; 
-                return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true, sensitivity: 'base' });
+                // Fix: Explicitly convert to String to avoid type errors if inferred as unknown/any
+                return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
             }
             return 0;
         });
@@ -355,25 +403,104 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         });
     };
 
-    // 2. Reschedule Activity
-    const handleSaveReschedule = (newDate: string, newStart: string, newEnd: string) => {
+    // 2. Reschedule Activity with Smart Cascade
+    const handleSaveReschedule = (newDate: string, newStart: string, newEnd: string, autoBalance: boolean) => {
         if (!rescheduleTarget) return;
         
-        // Find new Day Number based on array index (1-based for ISO convention in app)
+        const targetActivity = rescheduleTarget.item;
+        
+        // Find new Day Number based on array index
         const dayIndex = safeAuditDates.indexOf(newDate);
-        const dayNumber = dayIndex >= 0 ? dayIndex + 1 : 1; 
+        const newDayNumber = dayIndex >= 0 ? dayIndex + 1 : 1; 
 
         setAuditSchedule(prev => {
-            const copy = [...prev];
-            copy[rescheduleTarget.rowIndex] = {
-                ...copy[rescheduleTarget.rowIndex],
+            // Create a deep copy to manipulate
+            let schedule = [...prev];
+            const targetIndex = rescheduleTarget.rowIndex;
+            
+            // 1. Move target to new Date/Time
+            const updatedItem = {
+                ...schedule[targetIndex],
                 date: newDate,
-                day: dayNumber,
+                day: newDayNumber,
                 timeSlot: `${newStart} - ${newEnd}`
             };
-            return copy;
+            schedule[targetIndex] = updatedItem;
+
+            // 2. If AutoBalance is ON, we need to ripple move conflicting items
+            if (autoBalance) {
+                const targetStartMins = timeToMinutes(newStart);
+                const targetEndMins = timeToMinutes(newEnd);
+                const auditor = updatedItem.auditorName;
+
+                // Get items on the SAME DAY, SAME AUDITOR, excluding the one we just moved
+                // Sort them by time to process sequentially
+                const dayItems = schedule
+                    .map((item, idx) => ({ ...item, originalIndex: idx }))
+                    .filter(item => item.date === newDate && item.auditorName === auditor && item.originalIndex !== targetIndex)
+                    .sort((a, b) => timeToMinutes(a.timeSlot.split('-')[0]) - timeToMinutes(b.timeSlot.split('-')[0]));
+
+                let currentFloorMins = targetEndMins; // Anything starting before this needs to move
+
+                for (let i = 0; i < dayItems.length; i++) {
+                    const item = dayItems[i];
+                    const [s, e] = item.timeSlot.split('-').map(t => t.trim());
+                    const itemStartMins = timeToMinutes(s);
+                    const itemEndMins = timeToMinutes(e);
+                    const duration = itemEndMins - itemStartMins;
+
+                    // If this item starts BEFORE the current floor (overlap), push it
+                    // Or if it starts exactly at the same time as target start (total overlap)
+                    if (itemStartMins < currentFloorMins && itemEndMins > targetStartMins) {
+                        const newStartMins = currentFloorMins;
+                        const newEndMins = newStartMins + duration;
+                        
+                        schedule[item.originalIndex] = {
+                            ...schedule[item.originalIndex],
+                            timeSlot: `${minutesToTime(newStartMins)} - ${minutesToTime(newEndMins)}`
+                        };
+                        
+                        // Update floor for NEXT item in chain
+                        currentFloorMins = newEndMins;
+                    } else {
+                        // If there's a gap, we might reset the floor to this item's end if it's later
+                        // But strictly for cascade, we only care about pushing conflicts.
+                        // If no conflict, we update floor to this item's end to ensure sequential
+                        if (itemEndMins > currentFloorMins) {
+                            currentFloorMins = itemEndMins;
+                        }
+                    }
+                }
+            }
+
+            return schedule;
         });
         setRescheduleTarget(null);
+        showToast("Schedule updated & re-balanced.");
+    };
+
+    // --- WORKLOAD CALCULATOR ---
+    const calculateDailyWorkload = (day: number) => {
+        const items = auditSchedule.filter(s => s.day === day);
+        // Sum durations in minutes
+        let totalMinutes = 0;
+        // To avoid double counting separate auditors, we need to calculate per auditor then max?
+        // Actually for "Daily Load" usually implies the timeline density. 
+        // Let's calculate MAX auditor load for that day.
+        
+        const auditors = [...new Set(items.map(i => i.auditorName))];
+        let maxMinutes = 0;
+
+        auditors.forEach(auditor => {
+            const auditorItems = items.filter(i => i.auditorName === auditor);
+            const mins = auditorItems.reduce((acc, item) => {
+                const [s, e] = item.timeSlot.split('-');
+                return acc + (timeToMinutes(e) - timeToMinutes(s));
+            }, 0);
+            if (mins > maxMinutes) maxMinutes = mins;
+        });
+
+        return maxMinutes / 60; // Hours
     };
 
     // --- MATRIX LOGIC ---
@@ -575,7 +702,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
             if (Array.isArray(schedule) && schedule.length > 0) {
                 setGenProgress(100);
                 addLog("Success! Rendering Schedule...");
-                await new Promise(r => setTimeout(r, 800)); 
+                // Fix: Explicit void generic for Promise to satisfy TS strict checks
+                await new Promise<void>(r => setTimeout(r, 800)); 
                 setAuditSchedule(schedule);
                 showToast("Schedule Generated Successfully!");
             } else {
@@ -850,12 +978,31 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             const dateLabel = dayItems[0]?.date || `Day ${day}`;
                                             const daySchedule = getSortedSchedule(dayItems);
                                             const rowSpans = calculateRowSpans(daySchedule, agendaColumns);
+                                            
+                                            // --- WORKLOAD INDICATOR ---
+                                            const workload = calculateDailyWorkload(day);
+                                            const isOverloaded = workload > 8;
 
                                             return (
                                                 <div key={day} className="mb-8">
-                                                    <h4 className="text-sm font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-4 py-1.5 rounded-lg inline-block mb-4 shadow-sm border border-orange-100 dark:border-orange-800/50">
-                                                        Day {day}: {dateLabel}
-                                                    </h4>
+                                                    <div className="flex items-center gap-4 mb-4">
+                                                        <h4 className="text-sm font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-4 py-1.5 rounded-lg shadow-sm border border-orange-100 dark:border-orange-800/50">
+                                                            Day {day}: {dateLabel}
+                                                        </h4>
+                                                        
+                                                        {/* Visual Workload Bar */}
+                                                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-full border border-gray-100 dark:border-slate-700">
+                                                            <div className="w-20 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full transition-all duration-500 ${isOverloaded ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                                                    style={{ width: `${Math.min((workload/8)*100, 100)}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <span className={`text-[10px] font-mono font-bold ${isOverloaded ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                                {workload.toFixed(1)}/8h {isOverloaded && '(Overload)'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
                                                     
                                                     <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
                                                         <table className="w-full border-collapse text-left bg-white dark:bg-slate-900">
