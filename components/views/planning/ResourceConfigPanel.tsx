@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Icon, GlassDatePicker } from '../../UI';
 import { AuditSite, AuditMember, AuditPlanConfig, AuditProcess } from '../../../types';
@@ -117,7 +118,8 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                 [date]: { ...currentEntry, [field]: value }
             };
 
-            const totalAllocation = Object.values(newMatrix).reduce((acc: number, val: any) => acc + (val.allocation || 0), 0);
+            // Fix: Explicitly convert to number to avoid 'unknown' is not assignable to 'number' error in strict mode
+            const totalAllocation = (Object.values(newMatrix) as any[]).reduce((acc: number, val: any) => acc + (Number(val?.allocation) || 0), 0);
 
             return {
                 ...prev,

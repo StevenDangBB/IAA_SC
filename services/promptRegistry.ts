@@ -55,18 +55,19 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         {{FINDINGS_JSON}}
 
         OUTPUT FORMAT RULES:
-        1. Plain text only. No Markdown.
-        2. Start with:
+        1. Plain text only. STRICTLY NO MARKDOWN. Do NOT use **bold** or *italics* or # headers.
+        2. STRICTLY NO CONVERSATIONAL TEXT. Start directly with the content. Do not include "Here is the report" or similar.
+        3. Start with:
            PROCESS: {{PROCESS_NAME}}
            Execution performed by: {{AUDITOR}}
            Auditees: {{INTERVIEWEES}}
-        3. For each finding:
+        4. For each finding:
            CLAUSE: [Code] [Title]
            STATUS: [Status]
            OBSERVATION: [Reason in target lang]
            EVIDENCE: [Evidence text preserved exactly]
            ----------------------------------------
-        4. Do not summarize evidence. Keep line breaks.
+        5. Do not summarize evidence. Keep line breaks.
         `
     },
     SCHEDULING: {
@@ -101,9 +102,13 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
            - If multiple auditors are available on the same day, you must SPLIT the processes/clauses between them.
            - Create parallel sessions (same time slot, different auditor, different process).
 
-        3. **GROUPING & STRUCTURE**: 
-           - Group related clauses (e.g., "Context & Leadership" for 4.1, 4.2, 5.1).
-           - Every clause in 'Process Requirements' must be covered.
+        3. **DETAILED ACTIVITY DESCRIPTIONS (IMPORTANT)**:
+           - In the 'activity' field, DO NOT just write "Audit of [Process]".
+           - You MUST list the topics/clauses being covered in that session, grouping them logically.
+           - Format: "Topic Name / Tên Chủ đề (Clause IDs)"
+           - Use NEWLINES ("\n") to separate different topics within the same activity string.
+           - Example Output:
+             "Context of Organization / Bối cảnh (4.1, 4.2, 4.3)\nLeadership / Lãnh đạo (5.1, 5.2)\nRisk Management / Quản lý rủi ro (6.1)"
 
         4. **EVENTS**:
            - Day 1 Start: "Opening Meeting" (All Team).
@@ -121,7 +126,7 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
             "day": 1,
             "date": "YYYY-MM-DD",
             "timeSlot": "HH:MM-HH:MM",
-            "activity": "Activity Name",
+            "activity": "Context (4.1)\nLeadership (5.1)", // Detailed multi-line string
             "siteName": "Site Name",
             "auditorName": "Name", // Must match team list
             "processName": "Process Name",

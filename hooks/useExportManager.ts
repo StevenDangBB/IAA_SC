@@ -4,7 +4,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { translateChunk } from '../services/geminiService';
-import { cleanFileName as utilsCleanFileName, stripMetadataTags } from '../utils'; // Import strip function
+import { cleanFileName as utilsCleanFileName, stripMetadataTags, stripMarkdown } from '../utils'; // Import strip functions
 import { ExportState } from '../components/modals/ExportProgressModal';
 
 export const useExportManager = () => {
@@ -208,7 +208,12 @@ export const useExportManager = () => {
                 
                 // FINISH CONDITION
                 if (index >= exportState.totalChunks) {
-                    const finalContent = exportState.results.join("");
+                    let finalContent = exportState.results.join("");
+                    
+                    // --- CLEAN MARKDOWN FOR TXT EXPORTS ---
+                    if (exportFormat === 'txt') {
+                        finalContent = stripMarkdown(finalContent);
+                    }
                     
                     const currentStdName = standards[standardKey]?.name || "ISO";
                     let stdShort = "ISO";

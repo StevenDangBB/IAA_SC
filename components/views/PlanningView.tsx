@@ -96,7 +96,7 @@ const RescheduleModal = ({
             <div className="space-y-4">
                 <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800">
                     <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider block mb-1">Target Activity</span>
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{targetItem?.activity}</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{targetItem?.activity}</p>
                     <div className="flex gap-2 mt-1">
                         <span className="text-[9px] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-700/50 text-slate-500">{targetItem?.siteName}</span>
                         <span className="text-[9px] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-700/50 text-slate-500">{targetItem?.processName}</span>
@@ -292,7 +292,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         siteName: "Site",
         auditorName: "Auditor",
         clauseRefs: "Clauses",
-        activity: "Activity",
+        activity: "Detailed Activity / Agenda",
         processName: "Process / Auditee"
     };
 
@@ -987,7 +987,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             <span className="text-[10px] text-slate-400 italic">Drag column headers to sort & group data</span>
                                         </div>
                                         
-                                        {[...new Set(auditSchedule.map(s => s.day))].sort().map(day => {
+                                        {[...new Set(auditSchedule.map(s => Number(s.day)))].sort((a, b) => a - b).map((day: number) => {
                                             const dayItems = auditSchedule.filter(s => s.day === day);
                                             const dateLabel = dayItems[0]?.date || `Day ${day}`;
                                             const daySchedule = getSortedSchedule(dayItems);
@@ -1070,7 +1070,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                                     {col === 'processName' && (
                                                                                         <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1"><Icon name="Session11_GridAdd" size={12}/> {item.processName || "General"}</div>
                                                                                     )}
-                                                                                    {col === 'activity' && <div className="font-bold text-slate-800 dark:text-slate-200">{item.activity}</div>}
+                                                                                    {col === 'activity' && <div className="font-bold text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-tight">{item.activity}</div>}
                                                                                     {col === 'clauseRefs' && (
                                                                                         item.clauseRefs && item.clauseRefs.length > 0 ? (
                                                                                             <div className="flex flex-wrap gap-1">{item.clauseRefs.map((c: string) => <span key={c} className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-600 dark:text-slate-400">{c}</span>)}</div>

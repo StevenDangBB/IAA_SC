@@ -340,7 +340,11 @@ export const generateExecutiveSummary = async (data: any, apiKey?: string, model
     Auditor: ${data.auditor}.
     Findings: ${data.findings.length} Total.
     Lang: ${data.lang}.
-    Summarize compliance, strengths, weaknesses. No Markdown.
+    
+    STRICT RULES:
+    1. Summarize compliance, strengths, weaknesses. 
+    2. No Markdown. No bold (**). No italics (*). Output purely plain text.
+    3. Output ONLY the summary content. Do not include any intro/outro conversational text.
     `;
 
     try {
@@ -418,7 +422,21 @@ export const translateChunk = async (text: string, targetLang: 'en' | 'vi', apiK
     if (!ai) throw new Error("API Key missing");
 
     const langName = targetLang === 'vi' ? 'Vietnamese' : 'English';
-    const prompt = `Translate the following text to professional ${langName} for an ISO Audit Report. Keep technical terms precise.\n\nText:\n"${text}"`;
+    const prompt = `
+    ROLE: Professional ISO Translator.
+    TASK: Translate the input text to ${langName}.
+    
+    CONSTRAINTS:
+    1. Output ONLY the translated content. Do NOT add conversational text.
+    2. Do NOT use Markdown formatting. No bold (**), no italics (*), no headers (#). Output pure plain text.
+    3. Maintain line breaks and lists structure (using - or numbers), but no rich text symbols.
+    4. Use precise ISO auditing terminology.
+
+    INPUT TEXT:
+    """
+    ${text}
+    """
+    `;
 
     try {
         return await executeWithModelCascade(
@@ -476,7 +494,7 @@ export const formatFindingReportSection = async (finding: AnalysisResult, lang: 
 
     const prompt = `
     Format this single ISO Audit Finding into a finalized report section in strictly ${lang === 'vi' ? 'Vietnamese' : 'English'}.
-    Output PLAIN TEXT. No Markdown.
+    Output PLAIN TEXT. No Markdown (no ** or *). No conversational filler.
     
     Format:
     CLAUSE: [Code] [Title]

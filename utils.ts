@@ -184,3 +184,17 @@ export const stripMetadataTags = (text: string) => {
     // Removes [[SOURCE_FILE: ...]] and the newline after it to keep text flow clean
     return text.replace(/\[\[SOURCE_FILE:.*?\]\][\r\n]*/g, "");
 }
+
+// --- NEW: Strip Markdown Formatting ---
+export const stripMarkdown = (text: string) => {
+    if (!text) return "";
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Bold **text** -> text
+        .replace(/\*(.*?)\*/g, '$1')     // Italic *text* -> text
+        .replace(/__(.*?)__/g, '$1')     // Bold __text__ -> text
+        .replace(/_(.*?)_/g, '$1')       // Italic _text_ -> text
+        .replace(/^\s*#+\s+/gm, '')      // Headers # Text -> Text
+        .replace(/`{3}[\s\S]*?`{3}/g, '') // Code blocks
+        .replace(/`/g, '')               // Inline code
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Links
+}
