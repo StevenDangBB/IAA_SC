@@ -1,53 +1,52 @@
 
 import { useAudit } from '../contexts/AuditContext';
-import { useKeyPool } from '../contexts/KeyPoolContext';
-import { fetchFullClauseText } from '../services/geminiService';
 import { KnowledgeStore } from '../services/knowledgeStore'; // Import Store
+import { LocalIntelligence } from '../services/localIntelligence'; // Import Local Intelligence
 import { Clause } from '../types';
 
 export const useReferenceLookup = () => {
-    const { knowledgeBase, standards, standardKey } = useAudit();
-    const { getActiveKey } = useKeyPool();
+    const { knowledgeBase, standardKey } = useAudit();
 
     const handleLookup = async (clause: Clause) => {
         // 1. Dispatch Open Event (shows modal with loading state)
         const openEvent = new CustomEvent('OPEN_REFERENCE', { detail: clause });
         window.dispatchEvent(openEvent);
 
-        // 2. STRATEGY: STRUCTURED LOCAL DB (FASTEST & ZERO TOKEN)
+        // 2. STRATEGY: STRUCTURED LOCAL DB (Primary & Fastest)
+        let offlineContent = null;
         if (standardKey) {
-            const offlineContent = await KnowledgeStore.getClauseContent(standardKey, clause.code);
-            if (offlineContent && offlineContent.length > 20) {
-                // Simulate tiny delay for UX smoothness
-                setTimeout(() => {
-                    const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
-                        detail: { 
-                            en: offlineContent, 
-                            vi: `[OFFLINE MODE - INSTANT LOAD]\n\n${offlineContent}\n\n(Translate feature requires online AI)` 
-                        } 
-                    });
-                    window.dispatchEvent(updateEvent);
-                }, 100);
-                return; // DONE. No AI needed.
-            }
+            offlineContent = await KnowledgeStore.getClauseContent(standardKey, clause.code);
         }
 
-        // 3. FALLBACK: GENERATIVE AI (Online)
-        try {
-            const stdName = standards[standardKey]?.name || "";
-            const activeKeyProfile = getActiveKey();
-            const apiKey = activeKeyProfile?.key || "";
+        // 2.5 STRATEGY: RAW MEMORY LOOKUP (Safety Net)
+        // If structured index missed it (e.g. rare parsing edge case), scan the raw text currently in memory
+        if ((!offlineContent || offlineContent.length < 10) && knowledgeBase) {
+            offlineContent = LocalIntelligence.extractClauseContent(knowledgeBase, clause.code, clause.title);
+        }
 
-            // Pass knowledgeBase as raw context backup if DB failed
-            const result = await fetchFullClauseText(clause, stdName, knowledgeBase, apiKey);
-            const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { detail: result });
-            window.dispatchEvent(updateEvent);
-        } catch (e) {
-            console.error("Reference Fetch Failed", e);
-            const errorEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
-                detail: { en: "Content unavailable. Please upload a standard document to enable offline lookup.", vi: "" } 
-            });
-            window.dispatchEvent(errorEvent);
+        if (offlineContent && offlineContent.length > 20) {
+            // Success - Return immediately
+            setTimeout(() => {
+                const updateEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
+                    detail: { 
+                        en: offlineContent, 
+                        vi: `[LOCAL DB]\n\n${offlineContent}\n\n(Use Translate tool if needed)` 
+                    } 
+                });
+                window.dispatchEvent(updateEvent);
+            }, 50);
+        } else {
+            // Failure - Do NOT call AI here (Too expensive/slow per click). 
+            // The user must upload/index the document correctly first.
+            setTimeout(() => {
+                const errorEvent = new CustomEvent('UPDATE_REFERENCE_CONTENT', { 
+                    detail: { 
+                        en: "Content not found in Local Index.\nPlease ensure you have uploaded the Standard PDF/DOCX in the Sidebar.", 
+                        vi: "" 
+                    } 
+                });
+                window.dispatchEvent(errorEvent);
+            }, 50);
         }
     };
 

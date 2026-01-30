@@ -22,17 +22,18 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         """
         
         RULES:
-        1. Parent-Child: Evidence in sub-clauses (e.g. 6.1) validates parent (6).
-        2. PDCA: PDCA-related clause evidence implies compliance.
-        3. NC: Mark NC only if missing in DIRECT, BROADER, & GENERAL context.
+        1. **Cross-Clause Validation**: Look at "BROADER CONTEXT" in the evidence. If evidence from a related clause (e.g. A.5.24) covers the requirements of this clause (e.g. A.5.25), mark as COMPLIANT. Do NOT mark NC simply because "Direct Evidence" is empty.
+        2. **Process Approach**: Evaluate if the process described in "GENERAL PROCESS EVIDENCE" effectively meets the intent of this clause.
+        3. **Hierarchy**: Evidence in sub-clauses (e.g. 7.5.1) verifies the parent (7.5).
+        4. **Compliance**: Mark NC *only* if the requirement is missing in ALL provided evidence streams (Direct, Broader Context, and General Process).
 
         OUTPUT JSON:
         {
           "status": "COMPLIANT" | "NC_MINOR" | "NC_MAJOR" | "OFI" | "N_A",
-          "reason": "Concise technical justification.",
+          "reason": "Concise technical justification. If based on broader context, explicitly state 'Verified via [Related Clause] evidence'.",
           "reason_en": "English justification.",
           "reason_vi": "Vietnamese justification.",
-          "evidence": "Key quote or summary.",
+          "evidence": "Key quote or summary of the supporting evidence.",
           "suggestion": "If NC/OFI, specific action.",
           "crossRefs": ["ISO 9001: 7.5.3"]
         }
@@ -71,64 +72,58 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
         `
     },
     SCHEDULING: {
-        id: 'smart_scheduler_v3',
-        label: 'Smart Scheduler V3',
-        description: 'Strict Load Balancing & Availability Enforcement.',
+        id: 'smart_scheduler_v4',
+        label: 'Smart Scheduler V4',
+        description: 'Strict 8-Hour Rule & AM/PM Slot Enforcement.',
         isSystemDefault: true,
         template: `
         ROLE: Expert ISO Lead Auditor & Scheduler.
-        TASK: Create a professional audit agenda.
+        TASK: Create a professional audit agenda strictly adhering to availability and work hours.
         
-        PARAMS:
-        Standard Day: 8 Hours Work (1.0 WD).
-        Time: {{START_TIME}}-{{END_TIME}} | Lunch: {{LUNCH_START}}-{{LUNCH_END}}
-        Dates: {{DATES}}
+        GLOBAL PARAMETERS:
+        - Work Day Start: {{START_TIME}}
+        - Work Day End: {{END_TIME}}
+        - Lunch Break: {{LUNCH_START}} to {{LUNCH_END}} (This period MUST be empty for everyone)
+        - 1.0 WD = 8 Hours of Work (excluding lunch).
+        - 0.5 WD = 4 Hours of Work (Morning OR Afternoon).
         
         INPUTS:
         Sites: {{SITES_COMPACT}}
-        Team: {{TEAM_COMPACT}} (Format: Name, Role, Competency, AvailabilityMatrix)
+        Team: {{TEAM_COMPACT}} (Format: Name,Role,Codes,[Date=YYYY-MM-DD|WD=X|Slot=AM/PM/FULL/OFF...])
         Process Requirements:
         {{PROCESS_REQUIREMENTS}}
 
-        CRITICAL RULES (STRICT ENFORCEMENT):
+        CRITICAL RESOURCE ALLOCATION RULES:
         
-        1. **MANDATORY RESOURCE USAGE**: 
-           - Look at the 'Availability' column for EACH auditor.
-           - If an auditor has 'Date=YYYY-MM-DD|WD=X' (where X > 0) for a specific date, you **MUST** assign activity to them on that date.
-           - **FAILURE CONDITION**: If an auditor has WD > 0 on a date but 0 tasks, re-distribute tasks immediately.
+        1. **MANDATORY SLOT ENFORCEMENT (WD ALLOCATION)**: 
+           - You MUST check the 'Slot' and 'WD' for each auditor on each date.
+           - If Slot='OFF' (WD=0): This auditor is UNAVAILABLE. Do not assign them any clauses, meetings, or activities on this specific date.
+           - If Slot='AM' (WD=0.5): Schedule ONLY between {{START_TIME}} and {{LUNCH_START}}. Max duration: 4 hours. Do NOT schedule in PM.
+           - If Slot='PM' (WD=0.5): Schedule ONLY between {{LUNCH_END}} and {{END_TIME}}. Max duration: 4 hours. Do NOT schedule in AM.
+           - If Slot='FULL' (WD=1.0): Schedule active audit tasks for exactly 8 hours total (Morning + Afternoon, skipping lunch).
         
         2. **LOAD BALANCING**:
-           - Do NOT assign all tasks to the Lead Auditor.
-           - If multiple auditors are available on the same day, you must SPLIT the processes/clauses between them.
-           - Create parallel sessions (same time slot, different auditor, different process).
+           - Split processes/clauses among available auditors.
+           - Parallel sessions are allowed if different auditors are used.
 
-        3. **DETAILED ACTIVITY DESCRIPTIONS (IMPORTANT)**:
-           - In the 'activity' field, DO NOT just write "Audit of [Process]".
-           - You MUST list the topics/clauses being covered in that session, grouping them logically.
+        3. **DETAILED ACTIVITY DESCRIPTIONS**:
            - Format: "Topic Name / Tên Chủ đề (Clause IDs)"
-           - Use NEWLINES ("\n") to separate different topics within the same activity string.
-           - Example Output:
-             "Context of Organization / Bối cảnh (4.1, 4.2, 4.3)\nLeadership / Lãnh đạo (5.1, 5.2)\nRisk Management / Quản lý rủi ro (6.1)"
+           - Use NEWLINES to separate topics within one session.
 
         4. **EVENTS**:
-           - Day 1 Start: "Opening Meeting" (All Team).
+           - Day 1 Start: "Opening Meeting" (All Team present).
            - Daily: "Lunch Break" at {{LUNCH_START}} (All Team).
-           - Daily End: "Interim Briefing" (All Team, except last day).
-           - Last Day End: "Closing Meeting" (All Team).
-
-        5. **TIMING**:
-           - Calculate end times based on WD. 
-           - Example: 0.5 WD means finish around 12:00. 1.0 WD means finish at {{END_TIME}}.
+           - Last Day End: "Closing Meeting" (All Team present).
 
         JSON OUTPUT SCHEMA:
         [
           {
             "day": 1,
             "date": "YYYY-MM-DD",
-            "timeSlot": "HH:MM-HH:MM",
-            "activity": "Context (4.1)\nLeadership (5.1)", // Detailed multi-line string
+            "timeSlot": "HH:MM - HH:MM", // Ensure correct math (Start + Duration)
+            "activity": "Context (4.1)\nLeadership (5.1)", 
             "siteName": "Site Name",
-            "auditorName": "Name", // Must match team list
+            "auditorName": "Name", 
             "processName": "Process Name",
             "clauseRefs": ["4.1", "4.2"], 
             "isRemote": false

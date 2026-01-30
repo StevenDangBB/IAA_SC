@@ -4,7 +4,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useKeyPool } from '../contexts/KeyPoolContext';
 import { useUI } from '../contexts/UIContext';
 import { translateChunk } from '../services/geminiService';
-import { cleanFileName as utilsCleanFileName, stripMetadataTags, stripMarkdown } from '../utils'; // Import strip functions
+import { cleanFileName as utilsCleanFileName, stripMetadataTags, stripMarkdown, hasVietnameseChars } from '../utils'; // Clean imports
 import { ExportState } from '../components/modals/ExportProgressModal';
 
 export const useExportManager = () => {
@@ -310,12 +310,22 @@ export const useExportManager = () => {
 
                 // PROCESS CHUNK
                 const chunk = exportState.chunks[index];
+                const isSchedule = exportState.currentType === 'schedule' as any;
                 
-                // --- TRANSLATION LOGIC ---
-                // For HTML content (Schedule DOCX), naive translation might break tags.
-                // Simplification: We SKIP translation for DOCX Schedule export to preserve HTML structure complexity.
-                // Or user can use "Skip" button in modal.
-                const shouldTranslate = exportState.targetLang !== 'en' && exportState.currentType !== 'schedule' as any;
+                // --- SMART TRANSLATION LOGIC ---
+                // We typically skip translation if target is English (assuming source is English).
+                // However, user reports mixing. So we use a heuristic check.
+                // If target is EN, but we detect Vietnamese chars, we FORCE translation.
+                
+                // Check using shared utility
+                const needsTranslationDueToLanguage = hasVietnameseChars(chunk);
+                
+                let shouldTranslate = !isSchedule;
+
+                // Optimization: If target is EN and looks like EN (no VN chars), skip expensive AI call.
+                if (exportState.targetLang === 'en' && !needsTranslationDueToLanguage) {
+                    shouldTranslate = false;
+                }
 
                 if (!shouldTranslate) {
                      setExportState(prev => ({

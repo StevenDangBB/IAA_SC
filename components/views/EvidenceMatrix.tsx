@@ -29,7 +29,8 @@ interface EvidenceMatrixProps {
 const MatrixRowItem = React.memo(({ 
     row, clauseId, clauseCode, 
     isActive, isDone, 
-    onActivate, onRowChange, onPaste 
+    onActivate, onRowChange, onPaste,
+    textareaRef // NEW PROP: Receive Ref
 }: any) => {
     
     // Internal handler to pass ID back
@@ -66,6 +67,7 @@ const MatrixRowItem = React.memo(({
             {/* Large Editor Area */}
             <div className="flex-1 relative group">
                 <textarea
+                    ref={isActive ? textareaRef : null} // Attach ref only if active
                     className="w-full h-full p-6 text-base text-slate-900 dark:text-white bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
                     placeholder="Type verified evidence here... (Drag & Drop files supported)"
                     value={row.evidenceInput}
@@ -108,6 +110,9 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
     // Tracking active row
     const [activeRow, setActiveRow] = useState<{ clauseId: string, rowId: string } | null>(null);
     const [isChecklistCopied, setIsChecklistCopied] = useState(false);
+    
+    // Ref to access the DOM element of the active textarea
+    const activeTextareaRef = useRef<HTMLTextAreaElement>(null);
     
     // Optimized utility hook
     const { getClauseById } = useStandardUtils(standard);
@@ -209,7 +214,36 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
 
     // IMPERATIVE HANDLE
     useImperativeHandle(ref, () => ({
-        insertEvidence: (clauseId, rowId, text) => updateRowData(clauseId, rowId, text),
+        insertEvidence: (clauseId, rowId, text) => {
+            // FIX: Check if we are inserting into the currently focused/active textarea
+            // If so, use cursor position. If not (e.g. inserting into a background row), just append.
+            const isActive = activeRow?.clauseId === clauseId && activeRow?.rowId === rowId;
+            
+            if (isActive && activeTextareaRef.current) {
+                const el = activeTextareaRef.current;
+                const start = el.selectionStart;
+                const end = el.selectionEnd;
+                const oldText = el.value;
+                
+                // Insert at cursor
+                const newText = oldText.substring(0, start) + text + oldText.substring(end);
+                
+                // Update State
+                handleInputChange(clauseId, rowId, newText);
+                
+                // Try to restore cursor position after update (needs timeout for react render)
+                setTimeout(() => {
+                    if (activeTextareaRef.current) {
+                        activeTextareaRef.current.focus();
+                        const newCursorPos = start + text.length;
+                        activeTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                    }
+                }, 0);
+            } else {
+                // Fallback for background insertions
+                updateRowData(clauseId, rowId, text);
+            }
+        },
         handleExternalDictation: (text) => { if (activeRow) updateRowData(activeRow.clauseId, activeRow.rowId, text); },
         getActiveRow: () => activeRow
     }));
@@ -358,6 +392,7 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                                 isDone={activeData.row.status === 'supplied'}
                                 onRowChange={handleInputChange} // Pass stable callback
                                 onPaste={handlePaste}
+                                textareaRef={activeTextareaRef} // PASS THE REF
                             />
 
                             {/* FILES GRID - Always at bottom if present */}

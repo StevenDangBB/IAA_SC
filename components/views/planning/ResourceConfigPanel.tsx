@@ -108,17 +108,29 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
         setActiveSection('team');
     };
 
-    const handleUpdateMatrix = (date: string, field: 'mode' | 'allocation', value: any) => {
+    const handleUpdateMatrix = (date: string, field: 'mode' | 'slot', value: any) => {
         setNewMember(prev => {
             const currentMatrix = prev.availabilityMatrix || {};
-            const currentEntry = currentMatrix[date] || { mode: 'onsite', allocation: 1.0 };
+            // Default to Onsite, Full Day if creating new entry
+            const currentEntry = currentMatrix[date] || { mode: 'onsite', allocation: 1.0, slot: 'FULL' };
+            
+            let newEntry = { ...currentEntry };
+
+            if (field === 'mode') {
+                newEntry.mode = value;
+            } else if (field === 'slot') {
+                newEntry.slot = value;
+                // Auto-calculate Allocation based on Slot
+                if (value === 'OFF') newEntry.allocation = 0.0;
+                else if (value === 'FULL') newEntry.allocation = 1.0;
+                else newEntry.allocation = 0.5; // AM or PM = 0.5 WD
+            }
             
             const newMatrix = {
                 ...currentMatrix,
-                [date]: { ...currentEntry, [field]: value }
+                [date]: newEntry
             };
 
-            // Fix: Explicitly convert to number to avoid 'unknown' is not assignable to 'number' error in strict mode
             const totalAllocation = (Object.values(newMatrix) as any[]).reduce((acc: number, val: any) => acc + (Number(val?.allocation) || 0), 0);
 
             return {
@@ -299,7 +311,7 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                                             </div>
                                             <div className="text-[9px] text-slate-500 flex gap-1 mt-0.5">
                                                 <span>{m.role}</span>
-                                                <span className="font-mono text-slate-400">• {m.manDays || 0} WD</span>
+                                                <span className="font-mono text-slate-400">• {m.manDays?.toFixed(1) || 0} WD</span>
                                                 {m.competencyCodes && <span className="font-mono text-teal-600 bg-teal-50 px-1 rounded">[{m.competencyCodes}]</span>}
                                             </div>
                                             {m.availability && (
@@ -328,43 +340,45 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                                     <option className="bg-white dark:bg-slate-950" value="Observer">Observer</option>
                                 </select>
                                 <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center min-w-0" placeholder="Code" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
-                                <input className="flex-1 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 outline-none text-center cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays?.toFixed(2)} readOnly title="Auto-calculated from allocation below" />
+                                <input className="flex-1 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 outline-none text-center cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays?.toFixed(1)} readOnly title="Auto-calculated from allocation below" />
                             </div>
                             
-                            {/* NEW: HYBRID MATRIX UI */}
+                            {/* NEW: HYBRID MATRIX UI - Updated for AM/PM/Full allocation */}
                             {safeAuditDates.length > 0 && (
                                 <div className="bg-white dark:bg-slate-950 p-2 rounded-lg border border-gray-200 dark:border-slate-700">
-                                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Availability & Mode Per Day</label>
+                                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Session & Mode Per Day</label>
                                     <div className="space-y-1">
                                         {safeAuditDates.map(date => {
-                                            const current = newMember.availabilityMatrix?.[date] || { mode: newMember.isRemote ? 'remote' : 'onsite', allocation: 1.0 };
+                                            const current = newMember.availabilityMatrix?.[date] || { mode: newMember.isRemote ? 'remote' : 'onsite', allocation: 1.0, slot: 'FULL' };
                                             const isRemote = current.mode === 'remote';
+                                            const isOff = current.slot === 'OFF';
                                             
                                             return (
-                                                <div key={date} className="flex items-center gap-2 text-[10px]">
+                                                <div key={date} className={`flex items-center gap-2 text-[10px] transition-opacity ${isOff ? 'opacity-50' : 'opacity-100'}`}>
                                                     <span className="w-16 font-mono text-slate-600 dark:text-slate-400">{date}</span>
                                                     
                                                     {/* Toggle Mode */}
                                                     <div 
                                                         className={`flex-1 flex rounded border cursor-pointer select-none overflow-hidden ${isRemote ? 'border-purple-200 bg-purple-50' : 'border-slate-200 bg-slate-50'}`}
-                                                        onClick={() => handleUpdateMatrix(date, 'mode', isRemote ? 'onsite' : 'remote')}
+                                                        onClick={() => !isOff && handleUpdateMatrix(date, 'mode', isRemote ? 'onsite' : 'remote')}
+                                                        title={isOff ? "Mode irrelevant when Not Participating" : "Toggle Remote/Onsite"}
                                                     >
-                                                        <div className={`flex-1 text-center py-0.5 ${!isRemote ? 'bg-indigo-500 text-white font-bold' : 'text-slate-400'}`}>Onsite</div>
-                                                        <div className={`flex-1 text-center py-0.5 ${isRemote ? 'bg-purple-500 text-white font-bold' : 'text-slate-400'}`}>Remote</div>
+                                                        <div className={`flex-1 text-center py-0.5 ${!isRemote && !isOff ? 'bg-indigo-500 text-white font-bold' : 'text-slate-400'}`}>Onsite</div>
+                                                        <div className={`flex-1 text-center py-0.5 ${isRemote && !isOff ? 'bg-purple-500 text-white font-bold' : 'text-slate-400'}`}>Remote</div>
                                                     </div>
 
-                                                    {/* Allocation Input */}
-                                                    <input 
-                                                        type="number"
-                                                        className="w-10 text-center border rounded p-0.5 outline-none text-slate-800 dark:text-white bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                        placeholder="1.0"
-                                                        step="0.1"
-                                                        max="1.0"
-                                                        min="0.1"
-                                                        value={current.allocation}
-                                                        onChange={(e) => handleUpdateMatrix(date, 'allocation', parseFloat(e.target.value) || 0)}
-                                                        title="Allocation (e.g. 0.5 = Half Day)"
-                                                    />
+                                                    {/* Slot Select (Replaces numeric allocation) */}
+                                                    <select
+                                                        className="w-20 border border-gray-200 dark:border-slate-700 bg-transparent rounded p-0.5 text-slate-800 dark:text-white outline-none cursor-pointer text-xs"
+                                                        value={current.slot || 'FULL'}
+                                                        onChange={(e) => handleUpdateMatrix(date, 'slot', e.target.value)}
+                                                        title="Session Allocation"
+                                                    >
+                                                        <option className="bg-white dark:bg-slate-950" value="FULL">Full Day (1.0)</option>
+                                                        <option className="bg-white dark:bg-slate-950" value="AM">Morning (0.5)</option>
+                                                        <option className="bg-white dark:bg-slate-950" value="PM">Afternoon (0.5)</option>
+                                                        <option className="bg-white dark:bg-slate-950" value="OFF">Off / Not Participating (0.0)</option>
+                                                    </select>
                                                 </div>
                                             );
                                         })}

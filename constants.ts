@@ -5,8 +5,8 @@ import { ISO27001 } from './iso27001Data';
 import { ISO14001 } from './iso14001Data';
 
 // --- APP CONSTANTS ---
-export const APP_VERSION = "4.3.0-REFACTORED"; 
-export const BUILD_TIMESTAMP = "2026-03-08 12:00:00 (GMT+7)"; 
+export const APP_VERSION = "4.4.0-RELEASE"; 
+export const BUILD_TIMESTAMP = "2026-03-09 09:00:00 (GMT+7)"; 
 
 // CHANGE: Default fallback model.
 export const DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"; 
@@ -110,6 +110,15 @@ export const STANDARDS_DATA: StandardsData = {
 
 export const RELEASE_NOTES = [
     {
+        version: "4.4.0-RELEASE",
+        date: "2026-03-09",
+        features: [
+            "INTELLIGENCE: Added 'Context Aggregation'. AI now checks sibling clauses/sub-clauses for evidence (e.g., verifying 7.5 via 7.5.3).",
+            "EXPORT: Smart Multi-language Export. Detects Vietnamese text automatically to force AI translation if needed.",
+            "CORE: Improved Type Safety in Planning Module and optimized Workload Calculation."
+        ]
+    },
+    {
         version: "4.3.0-REFACTORED",
         date: "2026-03-08",
         features: [
@@ -134,15 +143,6 @@ export const RELEASE_NOTES = [
             "REFACTOR: Codebase cleanup and performance optimization for Planning View.",
             "FEATURE: Bi-directional Resource Sync. Adding staff in Planning now auto-updates Global Headcount.",
             "UX: Improved Auditor Competency tagging and visual cues."
-        ]
-    },
-    {
-        version: "4.0.0-GOLD",
-        date: "2026-03-06",
-        features: [
-            "PRD DEPLOYMENT: System Architecture finalized. Dual-Stream Analysis engine is now stable.",
-            "PERFORMANCE: React Rendering optimization for Evidence Matrix with >500 rows.",
-            "DOCS: Added comprehensive 'User Manual' and 'Data Topology' in the Info section."
         ]
     }
 ];

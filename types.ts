@@ -132,8 +132,12 @@ export interface AuditMember {
     manDays: number;
     isRemote: boolean; 
     availability?: string; 
-    // NEW: Hybrid Scheduling Support
-    availabilityMatrix?: Record<string, { mode: 'remote' | 'onsite', allocation: number }>;
+    // NEW: Hybrid Scheduling Support with Slot (AM/PM/OFF)
+    availabilityMatrix?: Record<string, { 
+        mode: 'remote' | 'onsite', 
+        allocation: number,
+        slot?: 'AM' | 'PM' | 'FULL' | 'OFF'
+    }>;
 }
 
 export interface AuditPlanConfig {

@@ -87,11 +87,6 @@ export const LocalIntelligence = {
 
         // 1. Find all headers positions
         while ((match = headerRegex.exec(cleanText)) !== null) {
-            // Filter out obviously wrong matches (e.g. inside a sentence)
-            // A real header usually doesn't have too much text before it on the same line if it was trimmed,
-            // but our regex handles newlines.
-            
-            // Heuristic: Code should not be too long (ISO usually max 3 levels deep e.g. 8.5.1)
             const code = match[1];
             if (code.length > 10) continue; 
 
@@ -114,11 +109,9 @@ export const LocalIntelligence = {
             const rawSection = cleanText.substring(start, end);
             
             // Remove the header line itself to get just the body content
-            // The header is roughly "Code Title" length
             const firstLineBreak = rawSection.indexOf('\n');
             const content = firstLineBreak > -1 ? rawSection.substring(firstLineBreak).trim() : rawSection;
 
-            // Only add if content has substance
             if (content.length > 10) {
                 results.push({
                     code: current.code,
@@ -131,11 +124,77 @@ export const LocalIntelligence = {
         return results;
     },
 
-    // Legacy/Fallback single extractor (Kept for compatibility)
+    /**
+     * HYBRID SEGMENTATION (AI-Assisted)
+     * Takes the high-quality header list from AI and uses it to slice the raw text precisely.
+     * This is far more accurate than Regex alone for cases like "7.5".
+     */
+    performHybridSegmentation(fullText: string, aiHeaders: { code: string, title: string }[]): { code: string, title: string, content: string }[] {
+        if (!fullText || !aiHeaders || aiHeaders.length === 0) return [];
+        
+        const cleanText = fullText.replace(/\r\n/g, '\n');
+        const results: { code: string, title: string, content: string }[] = [];
+        
+        // Sort headers by code length desc to match specific ones first if we searched, 
+        // but here we need them in document order. Assuming AI returns document order.
+        
+        const foundHeaders: { code: string, title: string, index: number }[] = [];
+
+        // 1. Locate each AI-identified header in the text
+        aiHeaders.forEach(h => {
+            // Create a flexible regex for this specific header
+            // Escape special chars in title
+            const safeTitle = h.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Allow some fuzzy spacing between Code and Title
+            const pattern = new RegExp(`(?:^|\\n)\\s*${h.code.replace(/\./g, '\\.')}\\s+(?:${safeTitle.split(' ').slice(0, 3).join('.*?')})`, 'i');
+            
+            const match = cleanText.match(pattern);
+            if (match && match.index !== undefined) {
+                foundHeaders.push({
+                    code: h.code,
+                    title: h.title,
+                    index: match.index
+                });
+            }
+        });
+
+        // Sort found headers by index to ensure correct slicing order
+        foundHeaders.sort((a, b) => a.index - b.index);
+
+        // 2. Slice Text
+        for (let i = 0; i < foundHeaders.length; i++) {
+            const current = foundHeaders[i];
+            const next = foundHeaders[i + 1];
+            
+            const start = current.index;
+            const end = next ? next.index : cleanText.length;
+            
+            const rawSection = cleanText.substring(start, end);
+            
+            // Remove the header line (approximate)
+            const firstLineBreak = rawSection.indexOf('\n');
+            const content = firstLineBreak > -1 ? rawSection.substring(firstLineBreak).trim() : rawSection;
+
+            results.push({
+                code: current.code,
+                title: current.title,
+                content: content
+            });
+        }
+
+        return results;
+    },
+
     extractClauseContent(fullText: string, clauseCode: string, clauseTitle: string): string | null {
-        // ... (This can leverage the new parser cache ideally, but keeping simple regex for now)
-        const parsed = this.parseStandardToStructuralData(fullText);
-        const found = parsed.find(p => p.code === clauseCode);
-        return found ? found.content : null;
+        // Fallback for immediate memory search if DB fails
+        try {
+            const escapedCode = clauseCode.replace(/\./g, '\\.');
+            const regex = new RegExp(`(?:^|\\n)\\s*${escapedCode}(?:\\s+|\\.).*?(?=(?:^|\\n)\\s*\\d+\\.\\d+|$)`, 'is');
+            const match = fullText.match(regex);
+            if (match) return match[0].trim();
+        } catch (e) {
+            console.error("Fallback extraction failed", e);
+        }
+        return null;
     }
 };

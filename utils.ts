@@ -198,3 +198,8 @@ export const stripMarkdown = (text: string) => {
         .replace(/`/g, '')               // Inline code
         .replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Links
 }
+
+// --- NEW: Check for Vietnamese Characters ---
+export const hasVietnameseChars = (text: string): boolean => {
+    return /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(text);
+};

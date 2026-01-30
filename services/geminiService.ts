@@ -250,15 +250,15 @@ export const generateAuditSchedule = async (
     let finalTeam = [...team];
     
     // --- LOGIC 3: COMPACT CSV DATA (IMPROVED) ---
-    // Explicitly serializing date availability to force AI to recognize capacity
+    // Explicitly serializing date availability with Slots (AM/PM)
     const sitesCompact = sites.map(s => `${s.id},${s.name},${s.isMain?'HQ':'Site'}`).join("\n");
     
     const teamCompact = finalTeam.map(m => {
         let availStr = "";
         if (m.availabilityMatrix && Object.keys(m.availabilityMatrix).length > 0) {
-            // Updated serialization: "Date=2024-01-01|WD=1.0" to make it semantically explicit
+            // New Format: "Date=2024-01-01|WD=0.5|Slot=AM"
             const schedule = Object.entries(m.availabilityMatrix)
-                .map(([date, data]) => `Date=${date}|WD=${data.allocation}`)
+                .map(([date, data]) => `Date=${date}|WD=${data.allocation}|Slot=${data.slot || 'FULL'}`)
                 .join("; ");
             availStr = `[${schedule}]`;
         } else {
@@ -488,36 +488,60 @@ export const generateMissingDescriptions = async (clauses: { code: string, title
     }
 };
 
-export const formatFindingReportSection = async (finding: AnalysisResult, lang: 'en' | 'vi', apiKey?: string, model?: string): Promise<string> => {
+// --- ONE-TIME INDEXING FUNCTION ---
+export const mapStandardStructure = async (fullText: string, standardName: string, apiKey?: string): Promise<{ code: string, title: string }[]> => {
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
+    // We only ask for the MAP, not the content. This is cheap on tokens.
     const prompt = `
-    Format this single ISO Audit Finding into a finalized report section in strictly ${lang === 'vi' ? 'Vietnamese' : 'English'}.
-    Output PLAIN TEXT. No Markdown (no ** or *). No conversational filler.
+    Analyze the following ISO Standard document text.
+    Identify EVERY clause, sub-clause, and annex control.
+    Return a strictly structured JSON array of objects with 'code' and 'title'.
     
-    Format:
-    CLAUSE: [Code] [Title]
-    STATUS: [Status]
-    OBSERVATION: [Reason]
-    EVIDENCE: [Summarized Evidence]
+    Example: 
+    [{"code": "4.1", "title": "Understanding the organization"}, {"code": "4.2", "title": "Interested parties"}, ...]
     
-    Input Data:
-    ${JSON.stringify(finding)}
+    Ensure you capture hierarchical clauses (e.g. 7.5, 7.5.1, 7.5.2). 
+    Do NOT invent clauses. Only extract what is in the text.
+    
+    DOCUMENT TEXT:
+    """
+    ${fullText.substring(0, 80000)} ... [truncated if too long]
+    """
     `;
 
+    const config: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    code: { type: Type.STRING },
+                    title: { type: Type.STRING }
+                },
+                required: ["code", "title"]
+            }
+        }
+    };
+
     try {
-        return await executeWithModelCascade(
-            model || "gemini-2.0-flash",
-            "Format Finding",
-            (m) => ai.models.generateContent({ model: m, contents: prompt })
+        const text = await executeWithModelCascade(
+            "gemini-2.0-flash",
+            "Index Structure",
+            (m) => ai.models.generateContent({ model: m, contents: prompt, config })
         );
+        return JSON.parse(text);
     } catch (e) {
-        return `[Error formatting finding ${finding.clauseId}]`;
+        console.error("Indexing Failed", e);
+        throw new Error("Failed to map document structure via AI.");
     }
 };
 
 export const fetchFullClauseText = async (clause: Clause, standardName: string, context: string | null, apiKey?: string): Promise<{ en: string, vi: string }> => {
+    // This is now strictly a backup or for ad-hoc translation, NOT the primary lookup method.
+    // The architecture has shifted to "Index Once, Query Locally".
     const ai = getAiClient(apiKey);
     if (!ai) throw new Error("API Key missing");
 
@@ -528,7 +552,7 @@ export const fetchFullClauseText = async (clause: Clause, standardName: string, 
     Output JSON: { "en": "English explanation...", "vi": "Vietnamese explanation..." }
     
     Context:
-    ${context ? context.substring(0, 2000) : "No specific context."}
+    ${context ? context.substring(0, 50000) : "No specific context."}
     `;
 
     const config: any = {

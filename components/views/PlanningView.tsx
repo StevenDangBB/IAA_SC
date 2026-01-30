@@ -23,10 +23,10 @@ interface PlanningViewProps {
 }
 
 // --- TIME UTILITIES ---
-const timeToMinutes = (time: string) => {
+const timeToMinutes = (time: string): number => {
     if (!time) return 0;
     const [h, m] = time.split(':').map(Number);
-    return (h || 0) * 60 + (m || 0);
+    return (Number(h) || 0) * 60 + (Number(m) || 0);
 };
 
 const minutesToTime = (minutes: number) => {
@@ -71,13 +71,13 @@ const RescheduleModal = ({
 
     // Auto update End time when Start changes (keeping duration)
     const handleStartChange = (newStart: string) => {
-        const oldStartMins = timeToMinutes(start);
-        const oldEndMins = timeToMinutes(end);
+        const oldStartMins = Number(timeToMinutes(start));
+        const oldEndMins = Number(timeToMinutes(end));
         const duration = oldEndMins - oldStartMins;
         
         setStart(newStart);
         if (duration > 0) {
-            const newStartMins = timeToMinutes(newStart);
+            const newStartMins = Number(timeToMinutes(newStart));
             setEnd(minutesToTime(newStartMins + duration));
         }
     };
@@ -204,7 +204,7 @@ const PlanningRow = memo(({
                 let status: 'all' | 'some' | 'none' = 'none';
                 
                 if (isParent) {
-                    const activeCount = selfAndDescendants.reduce((acc, id) => acc + (p.matrixData[id] ? 1 : 0), 0);
+                    const activeCount = selfAndDescendants.reduce((acc: number, id) => acc + (p.matrixData[id] ? 1 : 0), 0);
                     if (activeCount === selfAndDescendants.length) status = 'all';
                     else if (activeCount > 0) status = 'some';
                 } else {
@@ -283,7 +283,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     const [genLogs, setGenLogs] = useState<string[]>([]);
 
     // Schedule Grid Configuration (CUSTOM MAPPING)
-    const [agendaColumns, setAgendaColumns] = useState(['siteName', 'auditorName', 'timeSlot', 'processName', 'activity', 'clauseRefs']);
+    // UPDATED ORDER: Site -> Time -> Auditor -> Process -> Activity -> Clause
+    const [agendaColumns, setAgendaColumns] = useState(['siteName', 'timeSlot', 'auditorName', 'processName', 'activity', 'clauseRefs']);
     const [customHeader, setCustomHeader] = useState<string>("");
     const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
@@ -381,7 +382,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                     }
 
                     if (currentVal === nextVal && parentMatch) {
-                        rowSpans[key]++;
+                        const currentSpan = rowSpans[key] || 0;
+                        rowSpans[key] = currentSpan + 1;
                         rowSpans[nextKey] = 0; 
                     } else {
                         break; 
@@ -429,8 +431,8 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
 
             // 2. If AutoBalance is ON, we need to ripple move conflicting items
             if (autoBalance) {
-                const targetStartMins = timeToMinutes(newStart);
-                const targetEndMins = timeToMinutes(newEnd);
+                const targetStartMins = Number(timeToMinutes(newStart));
+                const targetEndMins = Number(timeToMinutes(newEnd));
                 const auditor = updatedItem.auditorName;
 
                 // Get items on the SAME DAY, SAME AUDITOR, excluding the one we just moved
@@ -438,15 +440,15 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                 const dayItems = schedule
                     .map((item, idx) => ({ ...item, originalIndex: idx }))
                     .filter(item => item.date === newDate && item.auditorName === auditor && item.originalIndex !== targetIndex)
-                    .sort((a, b) => timeToMinutes(a.timeSlot.split('-')[0]) - timeToMinutes(b.timeSlot.split('-')[0]));
+                    .sort((a, b) => Number(timeToMinutes(a.timeSlot.split('-')[0])) - Number(timeToMinutes(b.timeSlot.split('-')[0])));
 
                 let currentFloorMins = targetEndMins; // Anything starting before this needs to move
 
                 for (let i = 0; i < dayItems.length; i++) {
                     const item = dayItems[i];
                     const [s, e] = item.timeSlot.split('-').map(t => t.trim());
-                    const itemStartMins = timeToMinutes(s);
-                    const itemEndMins = timeToMinutes(e);
+                    const itemStartMins = Number(timeToMinutes(s));
+                    const itemEndMins = Number(timeToMinutes(e));
                     const duration = itemEndMins - itemStartMins;
 
                     // If this item starts BEFORE the current floor (overlap), push it
@@ -479,26 +481,27 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         showToast("Schedule updated & re-balanced.");
     };
 
-    // --- WORKLOAD CALCULATOR ---
-    const calculateDailyWorkload = (day: number) => {
+    // --- WORKLOAD CALCULATOR (Cleaned) ---
+    const calculateDailyWorkload = (day: number): number => {
         const items = auditSchedule.filter(s => s.day === day);
-        // Sum durations in minutes
-        
+        if (items.length === 0) return 0;
+
         // Define Lunch Window in minutes
-        const lunchStart = timeToMinutes(auditPlanConfig.lunchStartTime);
-        const lunchEnd = timeToMinutes(auditPlanConfig.lunchEndTime);
+        const lunchStart = Number(timeToMinutes(auditPlanConfig.lunchStartTime));
+        const lunchEnd = Number(timeToMinutes(auditPlanConfig.lunchEndTime));
 
         const auditors = [...new Set(items.map(i => i.auditorName))];
         let maxMinutes = 0;
 
         auditors.forEach(auditor => {
             const auditorItems = items.filter(i => i.auditorName === auditor);
-            const mins = auditorItems.reduce((acc, item) => {
-                const [s, e] = item.timeSlot.split('-');
-                if (!s || !e) return acc;
+            // Strict type safety: ensure reducer accumulator is number
+            const mins = auditorItems.reduce<number>((acc, item) => {
+                const parts = item.timeSlot.split('-');
+                if (parts.length < 2) return acc;
 
-                const start = timeToMinutes(s.trim());
-                const end = timeToMinutes(e.trim());
+                const start = Number(timeToMinutes(parts[0].trim()));
+                const end = Number(timeToMinutes(parts[1].trim()));
                 let duration = end - start;
 
                 // Subtract Lunch Break overlap if any
@@ -550,7 +553,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         if (!isGroup) {
             toggleProcessClause(processId, clause.id);
         } else {
-            const activeCount = allIds.reduce((acc, id) => acc + (proc.matrixData[id] ? 1 : 0), 0);
+            const activeCount = allIds.reduce((acc: number, id) => acc + (proc.matrixData[id] ? 1 : 0), 0);
             const isFullyActive = activeCount === allIds.length;
 
             if (isFullyActive) {
@@ -987,14 +990,17 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                             <span className="text-[10px] text-slate-400 italic">Drag column headers to sort & group data</span>
                                         </div>
                                         
-                                        {[...new Set(auditSchedule.map(s => Number(s.day)))].sort((a, b) => a - b).map((day: number) => {
+                                        {[...new Set(auditSchedule.map(s => Number(s.day)))].sort((a: number, b: number) => a - b).map((day: number) => {
                                             const dayItems = auditSchedule.filter(s => s.day === day);
                                             const dateLabel = dayItems[0]?.date || `Day ${day}`;
                                             const daySchedule = getSortedSchedule(dayItems);
                                             const rowSpans = calculateRowSpans(daySchedule, agendaColumns);
                                             
                                             // --- WORKLOAD INDICATOR ---
-                                            const workload = calculateDailyWorkload(day);
+                                            // Ensure workload is treated as a number
+                                            const rawWorkload = calculateDailyWorkload(day);
+                                            // Ensure type safety - fix TS2362
+                                            const workload: number = (typeof rawWorkload === 'number' && !isNaN(rawWorkload)) ? rawWorkload : 0;
                                             const isOverloaded = workload > 8;
 
                                             return (
@@ -1009,7 +1015,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                             <div className="w-20 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
                                                                 <div 
                                                                     className={`h-full transition-all duration-500 ${isOverloaded ? 'bg-red-500' : 'bg-emerald-500'}`}
-                                                                    style={{ width: `${Math.min((workload/8)*100, 100)}%` }}
+                                                                    style={{ width: `${Math.min((workload / 8) * 100, 100)}%` }}
                                                                 ></div>
                                                             </div>
                                                             <span className={`text-[10px] font-mono font-bold ${isOverloaded ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
