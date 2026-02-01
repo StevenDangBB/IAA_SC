@@ -25,21 +25,46 @@ interface EvidenceMatrixProps {
 }
 
 // --- MEMOIZED ROW COMPONENT ---
-// Extracting row to component avoids re-rendering the whole matrix when typing in one textarea
 const MatrixRowItem = React.memo(({ 
     row, clauseId, clauseCode, 
     isActive, isDone, 
     onActivate, onRowChange, onPaste,
-    textareaRef // NEW PROP: Receive Ref
+    textareaRef 
 }: any) => {
     
+    // --- LOCAL UNDO STATE ---
+    const [showUndo, setShowUndo] = useState(false);
+    const undoBufferRef = useRef<string>("");
+    // Use ReturnType<typeof setTimeout> to handle both Node (NodeJS.Timeout) and Browser (number) environments compatible
+    const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Internal handler to pass ID back
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        // If user starts typing while Undo is active, we assume they accept the clear state, so we dismiss undo
+        if (showUndo) setShowUndo(false);
         onRowChange(clauseId, row.id, e.target.value);
     };
 
     const handleClear = () => {
+        // 1. Snapshot current text
+        undoBufferRef.current = row.evidenceInput;
+        
+        // 2. Clear text
         onRowChange(clauseId, row.id, "");
+        
+        // 3. Activate Undo mode for 5 seconds
+        setShowUndo(true);
+        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = setTimeout(() => {
+            setShowUndo(false);
+        }, 5000);
+    };
+
+    const handleUndo = () => {
+        // Restore from buffer
+        onRowChange(clauseId, row.id, undoBufferRef.current);
+        setShowUndo(false);
+        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     };
 
     const handlePasteWrapper = (e: React.ClipboardEvent) => {
@@ -57,45 +82,74 @@ const MatrixRowItem = React.memo(({
                         <span className="text-xs font-black text-white bg-gradient-to-r from-indigo-500 to-purple-500 px-2 py-0.5 rounded shadow-sm">{clauseCode}</span>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border-l-4 border-indigo-400 dark:border-indigo-600 shadow-sm">
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-lg border-l-4 border-indigo-400 dark:border-indigo-600 shadow-sm">
+                    {/* UPDATED FONT SIZE TO text-base (was text-xs) */}
+                    <p className="text-base text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
                         {row.requirement}
                     </p>
                 </div>
             </div>
 
             {/* Large Editor Area */}
-            <div className="flex-1 relative group">
+            <div className="flex-1 relative group bg-white dark:bg-slate-900">
                 <textarea
-                    ref={isActive ? textareaRef : null} // Attach ref only if active
-                    className="w-full h-full p-6 text-base text-slate-900 dark:text-white bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium"
+                    ref={isActive ? textareaRef : null}
+                    className="w-full h-full p-6 text-base text-slate-900 dark:text-white bg-transparent outline-none resize-none leading-7 placeholder-slate-300 dark:placeholder-slate-600 font-medium custom-scrollbar"
                     placeholder="Type verified evidence here... (Drag & Drop files supported)"
                     value={row.evidenceInput}
                     onChange={handleChange}
                     onPaste={handlePasteWrapper}
                     autoFocus
                 />
-                
-                {/* Floating Actions */}
-                <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    {isDone && (
-                        <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800">
-                            <Icon name="CheckThick" size={12}/> Saved
-                        </span>
-                    )}
-                    <button 
-                        onClick={handleClear}
-                        className="p-2 bg-white dark:bg-slate-800 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors shadow-sm border border-gray-200 dark:border-slate-700"
-                        title="Clear Text"
-                    >
-                        <Icon name="Trash2" size={16}/>
-                    </button>
-                </div>
             </div>
             
-            {/* Footer Info */}
-            <div className="px-6 py-2 border-t border-gray-100 dark:border-slate-800 text-[10px] text-slate-400 flex justify-between bg-gray-50/80 dark:bg-slate-950/80 backdrop-blur-sm">
-                <span className="font-mono">Ln {row.evidenceInput.split('\n').length}, Col {row.evidenceInput.length}</span>
+            {/* Footer Toolbar - Now holding the Actions */}
+            <div className="px-4 py-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/90 dark:bg-slate-950/90 backdrop-blur-sm transition-all min-h-[44px]">
+                
+                {/* Left: Stats */}
+                <div className="text-[10px] text-slate-400 font-mono flex gap-3">
+                    <span>Ln {row.evidenceInput.split('\n').length}</span>
+                    <span>Col {row.evidenceInput.length}</span>
+                </div>
+
+                {/* Right: Actions & Status */}
+                <div className="flex items-center gap-3">
+                    
+                    {/* UNDO MODE */}
+                    {showUndo ? (
+                        <div className="flex items-center gap-2 bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full animate-in slide-in-from-right-5 fade-in duration-300">
+                            <span className="text-[10px] text-slate-500 font-medium">Cleared.</span>
+                            <button 
+                                onClick={handleUndo}
+                                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                            >
+                                <Icon name="Session5_RefreshCircle" size={12}/> Undo
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Saved Status */}
+                            <div className={`flex items-center gap-1 transition-all duration-300 ${isDone ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Saved</span>
+                            </div>
+
+                            {/* Separator */}
+                            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                            {/* Clear Button */}
+                            <button 
+                                onClick={handleClear}
+                                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-[10px] font-bold uppercase tracking-wide group/trash"
+                                title="Clear Evidence"
+                                disabled={!row.evidenceInput}
+                            >
+                                <Icon name="Trash2" size={14} className="group-hover/trash:scale-110 transition-transform"/>
+                                <span>Clear</span>
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -312,7 +366,8 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                 {/* LIST COLUMN */}
                 <div className="w-1/3 min-w-[260px] max-w-[350px] border-r border-gray-100 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/30 backdrop-blur-sm">
                     <div className="p-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white/50 dark:bg-slate-900/50">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requirement Checklist</span>
+                        {/* UPDATE: Increased size from text-[10px] to text-xs */}
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Requirement Checklist</span>
                         <button 
                             onClick={() => { 
                                 const list = selectedClauses.map(cid => {
@@ -325,9 +380,9 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                                     setTimeout(() => setIsChecklistCopied(false), 2000);
                                 }
                             }}
-                            className={`text-[10px] font-bold flex items-center gap-1 transition-all duration-300 ${isChecklistCopied ? 'text-emerald-500 scale-105' : 'text-indigo-500 hover:text-indigo-600'}`}
+                            className={`text-xs font-bold flex items-center gap-1 transition-all duration-300 ${isChecklistCopied ? 'text-emerald-500 scale-105' : 'text-indigo-500 hover:text-indigo-600'}`}
                         >
-                            <Icon name={isChecklistCopied ? "CheckThick" : "Copy"} size={10}/> 
+                            <Icon name={isChecklistCopied ? "CheckThick" : "Copy"} size={12}/> 
                             {isChecklistCopied ? "Copied" : "Copy All"}
                         </button>
                     </div>
@@ -339,17 +394,18 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
 
                             return (
                                 <div key={clauseId} className="space-y-1">
-                                    <div className="flex items-center justify-between gap-2 px-2 py-1.5 group/header rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                                    <div className="flex items-center justify-between gap-2 px-2 py-2 group/header rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors">
                                         <div className="flex items-center gap-2 overflow-hidden">
-                                            <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded flex-shrink-0 border border-indigo-100 dark:border-indigo-800/50">{clause.code}</span>
-                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate" title={clause.title}>{clause.title}</span>
+                                            {/* UPDATE: Increased size */}
+                                            <span className="text-xs font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded flex-shrink-0 border border-indigo-100 dark:border-indigo-800/50">{clause.code}</span>
+                                            <span className="text-base font-bold text-slate-700 dark:text-slate-300 truncate" title={clause.title}>{clause.title}</span>
                                         </div>
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); onLookup && onLookup(clause); }}
                                             className="p-1 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded opacity-0 group-hover/header:opacity-100 transition-all scale-90 hover:scale-100"
                                             title="Read Clause Content"
                                         >
-                                            <Icon name="BookOpen" size={12}/>
+                                            <Icon name="BookOpen" size={14}/>
                                         </button>
                                     </div>
                                     <div className="pl-2 space-y-1">
@@ -363,8 +419,9 @@ export const EvidenceMatrix = forwardRef<EvidenceMatrixHandle, EvidenceMatrixPro
                                                     className={`group relative p-3 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-white dark:bg-slate-800 border-indigo-200 dark:border-indigo-600 shadow-sm ring-1 ring-indigo-500/10' : 'bg-transparent border-transparent hover:bg-white dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700'}`}
                                                 >
                                                     <div className="flex items-start gap-2.5">
-                                                        <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 transition-all shadow-sm ${isDone ? 'bg-emerald-500 scale-110' : isActive ? 'bg-indigo-500 scale-110' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
-                                                        <p className={`text-[11px] leading-relaxed line-clamp-3 ${isActive ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                        <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 transition-all shadow-sm ${isDone ? 'bg-emerald-500 scale-110' : isActive ? 'bg-indigo-500 scale-110' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
+                                                        {/* UPDATE: Increased size from text-[11px] to text-sm */}
+                                                        <p className={`text-sm leading-relaxed line-clamp-3 ${isActive ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 dark:text-slate-400'}`}>
                                                             {row.requirement}
                                                         </p>
                                                     </div>

@@ -81,9 +81,9 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
             <div className="flex flex-col h-full gap-3">
                 {/* Header: Title & Code */}
                 {clause && (
-                    <div className="flex items-start gap-3 pb-2 border-b border-gray-100 dark:border-slate-800">
-                         <span className="text-sm font-black text-indigo-700 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800 shrink-0">{clause.code}</span>
-                         <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-tight mt-1">{clause.title}</h4>
+                    <div className="flex items-start gap-3 pb-3 border-b border-gray-100 dark:border-slate-800">
+                         <span className="text-base font-black text-indigo-700 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800 shrink-0">{clause.code}</span>
+                         <h4 className="text-base md:text-lg font-bold text-slate-800 dark:text-white leading-snug mt-0.5">{clause.title}</h4>
                     </div>
                 )}
                 
@@ -125,12 +125,12 @@ const ReferenceClauseModal = ({ isOpen, onClose, clause, standardName, fullText,
                         </div>
 
                         {/* Content Area */}
-                        <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-gray-50/50 dark:bg-slate-950/50 rounded-2xl border border-gray-100 dark:border-slate-800 relative shadow-inner text-left">
-                            <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <p className="text-xs md:text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-7 font-medium tracking-wide">
+                        <div className="flex-1 p-5 overflow-y-auto custom-scrollbar bg-gray-50/50 dark:bg-slate-950/50 rounded-2xl border border-gray-100 dark:border-slate-800 relative shadow-inner text-left">
+                            <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none">
+                                <p className="text-sm md:text-base text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-8 font-medium tracking-wide">
                                     {streamedText}
                                     {!isLoading && streamedText !== textToDisplay && (
-                                        <span className="inline-block w-1.5 h-4 bg-indigo-500 animate-pulse ml-1 align-middle"></span>
+                                        <span className="inline-block w-1.5 h-5 bg-indigo-500 animate-pulse ml-1 align-middle"></span>
                                     )}
                                 </p>
                             </div>
