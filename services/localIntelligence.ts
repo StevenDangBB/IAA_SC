@@ -78,16 +78,23 @@ export const LocalIntelligence = {
         const cleanText = fullText.replace(/\r\n/g, '\n');
         const results: { code: string, title: string, content: string }[] = [];
         
-        // Regex to identify clause headers (e.g., "4.1 Context", "10.2 Nonconformity")
-        // Matches start of line + Digits.Digits + Space + Title (Words)
-        const headerRegex = /(?:^|\n)\s*(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+([^\n]+)/g;
+        // IMPROVED REGEX:
+        // 1. Supports Annex controls starting with 'A.' (e.g., A.5.1) or just digits (4.1)
+        // 2. Handles optional trailing dots (4.1.) common in PDF extraction
+        // 3. Captures the Title line
+        const headerRegex = /(?:^|\n)\s*((?:A\.)?\d{1,2}\.\d{1,2}(?:\.\d{1,2})?\.?)\s+([^\n]+)/gi;
         
         let match;
         const matches: { code: string, title: string, index: number }[] = [];
 
         // 1. Find all headers positions
         while ((match = headerRegex.exec(cleanText)) !== null) {
-            const code = match[1];
+            let code = match[1].trim();
+            // Normalize: Remove trailing dot if present (e.g. "4.1." -> "4.1") to match System Keys
+            if (code.endsWith('.')) {
+                code = code.slice(0, -1);
+            }
+
             if (code.length > 10) continue; 
 
             matches.push({
@@ -135,23 +142,21 @@ export const LocalIntelligence = {
         const cleanText = fullText.replace(/\r\n/g, '\n');
         const results: { code: string, title: string, content: string }[] = [];
         
-        // Sort headers by code length desc to match specific ones first if we searched, 
-        // but here we need them in document order. Assuming AI returns document order.
-        
         const foundHeaders: { code: string, title: string, index: number }[] = [];
 
         // 1. Locate each AI-identified header in the text
         aiHeaders.forEach(h => {
             // Create a flexible regex for this specific header
-            // Escape special chars in title
+            const safeCode = h.code.replace(/\./g, '\\.');
             const safeTitle = h.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            // Allow some fuzzy spacing between Code and Title
-            const pattern = new RegExp(`(?:^|\\n)\\s*${h.code.replace(/\./g, '\\.')}\\s+(?:${safeTitle.split(' ').slice(0, 3).join('.*?')})`, 'i');
+            
+            // Allow optional trailing dot in code and fuzzy spacing
+            const pattern = new RegExp(`(?:^|\\n)\\s*${safeCode}\\.?\\s+(?:${safeTitle.split(' ').slice(0, 3).join('.*?')})`, 'i');
             
             const match = cleanText.match(pattern);
             if (match && match.index !== undefined) {
                 foundHeaders.push({
-                    code: h.code,
+                    code: h.code, // Use the clean AI code
                     title: h.title,
                     index: match.index
                 });
@@ -189,7 +194,8 @@ export const LocalIntelligence = {
         // Fallback for immediate memory search if DB fails
         try {
             const escapedCode = clauseCode.replace(/\./g, '\\.');
-            const regex = new RegExp(`(?:^|\\n)\\s*${escapedCode}(?:\\s+|\\.).*?(?=(?:^|\\n)\\s*\\d+\\.\\d+|$)`, 'is');
+            // Robust regex: Matches "4.1" or "4.1." at start of line, captures until next numeric header
+            const regex = new RegExp(`(?:^|\\n)\\s*${escapedCode}\\.?\\s+.*?(?=(?:^|\\n)\\s*(?:A\\.)?\\d+\\.\\d+|$)`, 'is');
             const match = fullText.match(regex);
             if (match) return match[0].trim();
         } catch (e) {

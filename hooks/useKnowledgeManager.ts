@@ -35,6 +35,7 @@ export const useKnowledgeManager = () => {
                 
                 // 2. ATTEMPT LOCAL PARSING FIRST (Fast & Free)
                 let structuredClauses = LocalIntelligence.parseStandardToStructuralData(text);
+                console.log(`[KnowledgeManager] Local Parser found ${structuredClauses.length} clauses.`);
                 
                 // 3. AI-ASSISTED INDEXING (One-Time Cost, High Accuracy)
                 // If local parsing yielded poor results (e.g. missed 7.5 because it was a header), 
@@ -42,8 +43,10 @@ export const useKnowledgeManager = () => {
                 const keyProfile = getActiveKey();
                 const stdName = standards[standardKey]?.name || "ISO Standard";
 
+                // Optimization: If local parser found < 5 clauses, it's likely failed, force AI if possible
+                // Or if user explicitly has a key, use it for better quality
                 if (keyProfile && keyProfile.key) {
-                    showToast("⚡ Smart Indexing: Using AI to map document structure (One-time)...");
+                    showToast("⚡ Smart Indexing: Using AI to map document structure...");
                     try {
                         // Ask AI only for the MAP (Code/Titles), not the full text content. 
                         // This uses very few output tokens.
@@ -52,9 +55,9 @@ export const useKnowledgeManager = () => {
                         if (aiMap && aiMap.length > 0) {
                             // Use the AI Map to precisely slice the text locally
                             const hybridClauses = LocalIntelligence.performHybridSegmentation(text, aiMap);
-                            if (hybridClauses.length > structuredClauses.length) {
+                            if (hybridClauses.length >= structuredClauses.length) {
                                 structuredClauses = hybridClauses; // Upgrade to the better list
-                                console.log("Upgraded to AI-Assisted Indexing", structuredClauses.length);
+                                console.log(`[KnowledgeManager] Upgraded to AI-Assisted Indexing: ${structuredClauses.length} clauses`);
                             }
                         }
                     } catch (aiError) {
@@ -64,9 +67,9 @@ export const useKnowledgeManager = () => {
                 
                 if (structuredClauses.length > 0) {
                     await KnowledgeStore.bulkSaveClauses(standardKey, structuredClauses);
-                    showToast(`Success! Indexed ${structuredClauses.length} clauses for offline lookup.`);
+                    showToast(`Success! Indexed ${structuredClauses.length} clauses for lookup.`);
                 } else {
-                    showToast("Document saved. (Note: Auto-indexing found few matches, lookups might be limited).");
+                    showToast("Document saved, but structure parsing failed. Fallback raw search enabled.");
                 }
             }
             
