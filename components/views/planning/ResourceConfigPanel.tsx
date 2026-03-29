@@ -83,8 +83,13 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
     const handleSaveMember = () => {
         if (!newMember.name?.trim()) return;
         
+        const calculatedMD = safeAuditDates.length > 0 ? safeAuditDates.reduce((acc, date) => {
+            const entry = newMember.availabilityMatrix?.[date] || { allocation: 1.0 };
+            return acc + (Number(entry.allocation) || 0);
+        }, 0) : (newMember.manDays || 1);
+
         if (editingMemberId) {
-            setAuditTeam(prev => prev.map(m => m.id === editingMemberId ? { ...m, ...newMember } as AuditMember : m));
+            setAuditTeam(prev => prev.map(m => m.id === editingMemberId ? { ...m, ...newMember, manDays: calculatedMD } as AuditMember : m));
             setEditingMemberId(null);
         } else {
             const member: AuditMember = {
@@ -92,7 +97,7 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                 name: newMember.name.trim(),
                 role: newMember.role as any,
                 competencyCodes: newMember.competencyCodes?.trim() || "",
-                manDays: newMember.manDays || 1,
+                manDays: calculatedMD,
                 isRemote: newMember.isRemote || false,
                 availability: newMember.availability || "",
                 availabilityMatrix: newMember.availabilityMatrix || {}
@@ -131,7 +136,10 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                 [date]: newEntry
             };
 
-            const totalAllocation = (Object.values(newMatrix) as any[]).reduce((acc: number, val: any) => acc + (Number(val?.allocation) || 0), 0);
+            const totalAllocation = safeAuditDates.reduce((acc: number, d: string) => {
+                const entry = newMatrix[d] || { allocation: 1.0 };
+                return acc + (Number(entry.allocation) || 0);
+            }, 0);
 
             return {
                 ...prev,
@@ -139,6 +147,14 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                 manDays: totalAllocation 
             };
         });
+    };
+
+    const calculateManDays = (matrix: Record<string, any> | undefined, dates: string[]) => {
+        if (!dates || dates.length === 0) return 0;
+        return dates.reduce((acc, date) => {
+            const entry = matrix?.[date] || { allocation: 1.0 };
+            return acc + (Number(entry.allocation) || 0);
+        }, 0);
     };
 
     return (
@@ -243,7 +259,9 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                                            <button onClick={(e) => { e.stopPropagation(); setAuditSites(prev => prev.filter(x => x.id !== s.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                            {s.id !== auditSites[0]?.id && (
+                                                <button onClick={(e) => { e.stopPropagation(); setAuditSites(prev => prev.filter(x => x.id !== s.id)); }} className="text-slate-400 hover:text-red-500"><Icon name="X" size={12}/></button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -252,8 +270,8 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                         
                         <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 space-y-2">
                             <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Site Name" value={editingSiteId ? tempSite?.name : newSite.name} onChange={e => editingSiteId ? setTempSite({...tempSite!, name: e.target.value}) : setNewSite({...newSite, name: e.target.value})} />
-                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Address" value={editingSiteId ? tempSite?.address : newSite.address} onChange={e => editingSiteId ? setTempSite({...tempSite!, address: e.target.value}) : setNewSite({...newSite, address: e.target.value})} />
-                            <input className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500" placeholder="Scope (Optional)" value={editingSiteId ? tempSite?.scope : newSite.scope} onChange={e => editingSiteId ? setTempSite({...tempSite!, scope: e.target.value}) : setNewSite({...newSite, scope: e.target.value})} />
+                            <input className={`w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 ${editingSiteId === auditSites[0]?.id ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="Address" value={editingSiteId ? tempSite?.address : newSite.address} onChange={e => editingSiteId ? setTempSite({...tempSite!, address: e.target.value}) : setNewSite({...newSite, address: e.target.value})} disabled={editingSiteId === auditSites[0]?.id} title={editingSiteId === auditSites[0]?.id ? "HQ Address is synced from Audit Details" : ""} />
+                            <input className={`w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 ${editingSiteId === auditSites[0]?.id ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="Scope (Optional)" value={editingSiteId ? tempSite?.scope : newSite.scope} onChange={e => editingSiteId ? setTempSite({...tempSite!, scope: e.target.value}) : setNewSite({...newSite, scope: e.target.value})} disabled={editingSiteId === auditSites[0]?.id} title={editingSiteId === auditSites[0]?.id ? "HQ Scope is synced from Audit Details" : ""} />
                             <div className="flex gap-2">
                                 <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" placeholder="Staff Count" value={editingSiteId ? tempSite?.employeeCount : newSite.employeeCount || ""} onChange={e => editingSiteId ? setTempSite({...tempSite!, employeeCount: parseInt(e.target.value)}) : setNewSite({...newSite, employeeCount: parseInt(e.target.value)})} />
                                 <label className="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
@@ -340,7 +358,7 @@ export const ResourceConfigPanel: React.FC<ResourceConfigPanelProps> = ({
                                     <option className="bg-white dark:bg-slate-950" value="Observer">Observer</option>
                                 </select>
                                 <input className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-orange-500 text-center min-w-0" placeholder="Code" value={newMember.competencyCodes} onChange={e => setNewMember({...newMember, competencyCodes: e.target.value})} />
-                                <input className="flex-1 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 outline-none text-center cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={newMember.manDays?.toFixed(1)} readOnly title="Auto-calculated from allocation below" />
+                                <input className="flex-1 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 outline-none text-center cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-w-0" type="number" placeholder="WD" value={(safeAuditDates.length > 0 ? calculateManDays(newMember.availabilityMatrix, safeAuditDates) : (newMember.manDays || 1)).toFixed(1)} readOnly title="Auto-calculated from allocation below" />
                             </div>
                             
                             {/* NEW: HYBRID MATRIX UI - Updated for AM/PM/Full allocation */}

@@ -297,6 +297,11 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
         processName: "Process / Auditee"
     };
 
+    const COLUMN_WIDTHS: Record<string, string> = {
+        timeSlot: "12%", siteName: "12%", auditorName: "12%",
+        clauseRefs: "8%", activity: "36%", processName: "20%"
+    };
+
     const currentStandard = standards[standardKey];
     const themeConfig = TABS_CONFIG.find(t => t.id === 'planning')!;
     const safeAuditDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
@@ -656,12 +661,26 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
     // --- DATE & SCHEDULE LOGIC ---
     const handleUpdateDates = (newDates: string[]) => {
         setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
+        setAuditTeam(prev => prev.map(m => {
+            const manDays = newDates.reduce((acc, date) => {
+                const entry = m.availabilityMatrix?.[date] || { allocation: 1.0 };
+                return acc + (Number(entry.allocation) || 0);
+            }, 0);
+            return { ...m, manDays };
+        }));
     };
 
     const handleRemoveDate = (date: string) => {
         const currentDates = Array.isArray(auditPlanConfig.auditDates) ? auditPlanConfig.auditDates : [];
         const newDates = currentDates.filter(d => d !== date);
         setAuditPlanConfig({ ...auditPlanConfig, auditDates: newDates });
+        setAuditTeam(prev => prev.map(m => {
+            const manDays = newDates.reduce((acc, d) => {
+                const entry = m.availabilityMatrix?.[d] || { allocation: 1.0 };
+                return acc + (Number(entry.allocation) || 0);
+            }, 0);
+            return { ...m, manDays };
+        }));
     };
 
     const handleGenerateSchedule = async () => {
@@ -1032,6 +1051,7 @@ export const PlanningView: React.FC<PlanningViewProps> = ({ onExport }) => {
                                                                         <th 
                                                                             key={col} 
                                                                             className="p-3 font-bold border-r border-gray-100 dark:border-slate-800 cursor-move hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                                                                            style={{ width: COLUMN_WIDTHS[col] || 'auto' }}
                                                                             draggable
                                                                             onDragStart={(e) => handleDragStart(e, col)}
                                                                             onDragOver={(e) => handleDragOver(e, col)}

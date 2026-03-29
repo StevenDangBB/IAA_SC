@@ -110,10 +110,35 @@ const DEFAULT_PROMPTS: Record<string, PromptTemplate> = {
            - Format: "Topic Name / Tên Chủ đề (Clause IDs)"
            - Use NEWLINES to separate topics within one session.
 
-        4. **EVENTS**:
-           - Day 1 Start: "Opening Meeting" (All Team present).
-           - Daily: "Lunch Break" at {{LUNCH_START}} (All Team).
-           - Last Day End: "Closing Meeting" (All Team present).
+        4. **EVENTS & MEETINGS (STRICT ENFORCEMENT)**:
+           - An audit day MUST be exactly 8 hours of scheduled time (including meetings, excluding lunch).
+           - Daily: "Lunch break" at {{LUNCH_START}} to {{LUNCH_END}} (All Team).
+           - If the audit is 1 day total:
+             - Start of day: "Opening meeting" (30 mins).
+             - End of day: "Audit caucus/Washup Meeting" (30 mins) followed by "Closing Meeting" (30 mins).
+           - If the audit is 2 days total:
+             - Day 1 Start: "Opening meeting" (30 mins).
+             - Day 1 End: "Feedback Meeting day 1" (30 mins).
+             - Day 2 End: "Audit caucus/Washup meeting" (30 mins) followed by "Closing Meeting" (30 mins).
+           - If the audit is 3 or more days:
+             - Day 1 Start: "Opening meeting" (30 mins).
+             - Day 1 End: "Feedback Meeting day 1" (30 mins).
+             - Middle Days End: "Feedback Meeting day X" (30 mins) where X is the day number.
+             - Last Day End: "Audit caucus/Washup meeting" (30 mins) followed by "Closing Meeting" (30 mins).
+
+        5. **SESSION DURATION & AUDITOR ASSIGNMENT**:
+           - Session duration MUST be proportional to the number of clauses planned for that session.
+           - You MUST assign an auditor whose competency code matches the competency code required for the process/session.
+
+        6. **ACTIVITY DESCRIPTIONS (MANDATORY FOR CLAUSES 4-10)**:
+           - The "activity" field MUST use the following descriptions when the respective clause is audited:
+             - Clause 4: Understanding the Organization: Review of internal and external issues (SWOT/PESTEL) affecting information security. Interested Parties: Identification of stakeholders and their specific security requirements. ISMS Scope: Verification of the physical, logical, and organizational boundaries. ISMS Processes: Assessment of how the system is established, implemented, and maintained.
+             - Clause 5: Leadership & Commitment: Evidence of top management’s involvement and support. Information Security Policy: Review of the high-level policy for alignment with strategic direction. Roles & Responsibilities: Evaluation of the organizational structure, ensuring authorities are assigned and communicated.
+             - Clause 6: Risk Assessment Process: Evaluation of the methodology used to identify and analyze risks. Risk Treatment Plan (RTP): Review of how the organization treats, accepts, or transfers risks. Statement of Applicability (SoA): A deep dive into the selection of controls from Annex A and justification for exclusions. Security Objectives: Verification that security goals are measurable, monitored, and documented.
+             - Clause 7: Resources & Competence: Review of staff training records and evidence that personnel are qualified. Awareness: Interviews with staff to verify they understand the policy and their contribution. Communication: Review of the "who, what, when, and how" regarding communications. Documented Information: Assessment of the control of documents and records.
+             - Clause 8: Operational Planning & Control: Evidence that the processes defined in Clause 6 are being executed as planned. Information Security Risk Assessment: Review of the results of regular risk assessments. Information Security Risk Treatment: Evidence that the RTP is being actively implemented.
+             - Clause 9: Monitoring & Measurement: Review of the KPIs used to evaluate ISMS effectiveness. Internal Audit: Evaluation of the internal audit program, reports, and objectivity. Management Review: Review of minutes from top management meetings where ISMS performance was discussed.
+             - Clause 10: Non-conformity & Corrective Action: Evaluation of how the organization reacts to incidents or findings to prevent recurrence. Continual Improvement: Evidence that the organization is actively enhancing the ISMS over time.
 
         JSON OUTPUT SCHEMA:
         [

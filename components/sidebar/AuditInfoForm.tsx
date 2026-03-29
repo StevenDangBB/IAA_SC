@@ -103,6 +103,32 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
     };
 
     // --- TOTAL SITES LOGIC ---
+    const handleAddressChange = (e: any) => {
+        const val = e.target.value;
+        setAuditInfo({ ...auditInfo, address: val });
+        setAuditSites(prev => {
+            if (prev.length === 0) {
+                return [{ id: `site_auto_hq`, name: `HO`, address: val, scope: auditInfo.scope || "", isMain: true, employeeCount: 0 }];
+            }
+            const newSites = [...prev];
+            newSites[0] = { ...newSites[0], address: val, isMain: true };
+            return newSites;
+        });
+    };
+
+    const handleScopeChange = (e: any) => {
+        const val = e.target.value;
+        setAuditInfo({ ...auditInfo, scope: val });
+        setAuditSites(prev => {
+            if (prev.length === 0) {
+                return [{ id: `site_auto_hq`, name: `HO`, address: auditInfo.address || "", scope: val, isMain: true, employeeCount: 0 }];
+            }
+            const newSites = [...prev];
+            newSites[0] = { ...newSites[0], scope: val, isMain: true };
+            return newSites;
+        });
+    };
+
     const handleTotalSitesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = parseInt(e.target.value) || 0;
         const diff = val - auditSites.length;
@@ -264,7 +290,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     <div className="w-[80px]">
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase px-1">Total WD</label>
                         <div className="h-11 bg-slate-100 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl flex items-center justify-center text-xs font-mono font-bold text-slate-700 dark:text-white shadow-inner" title="Total Man-Days calculated from Audit Team list">
-                            {totalManDays}
+                            {totalManDays.toFixed(1)}
                         </div>
                     </div>
                 </div>
@@ -319,7 +345,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     iconColor={auditFieldIconColor} 
                     placeholder="Site Address / Locations..." 
                     value={auditInfo.address || ""} 
-                    onChange={(e: any) => setAuditInfo({...auditInfo, address: e.target.value})}
+                    onChange={handleAddressChange}
                     rows={2}
                 />
 
@@ -328,7 +354,7 @@ export const AuditInfoForm: React.FC<AuditInfoFormProps> = ({
                     iconColor={auditFieldIconColor} 
                     placeholder="Audit Scope Description..." 
                     value={auditInfo.scope || ""} 
-                    onChange={(e: any) => setAuditInfo({...auditInfo, scope: e.target.value})}
+                    onChange={handleScopeChange}
                     rows={3}
                 />
 
